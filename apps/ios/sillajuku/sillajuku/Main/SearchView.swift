@@ -350,6 +350,12 @@ class DiscoveryViewModel {
         // was never re-fetched at all. Now recommendations pass `refresh=1`
         // (skips that cache and reshuffles server-side), local HTTP caching is
         // bypassed, and both listening sources reload alongside.
+        //
+        // 2026-10-17: pull-to-refresh and the bottom Refresh button share this, so a
+        // second trigger while one is in flight is a no-op, not a duplicate fetch.
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
         hasResolvedRecentlyPlayed = false
         await withTaskGroup(of: Void.self) { g in
             g.addTask { await self.reloadDiscoverySections(fresh: true) }
@@ -361,6 +367,9 @@ class DiscoveryViewModel {
     }
 
     private var hasFetchedDiscovery = false
+
+    /// A refresh() is in flight -- drives the bottom Refresh button's spinner.
+    var isRefreshing = false
 
     /// First open with nothing saved yet (fresh install): placeholder shelves instead
     /// of a blank screen while the first fetch is in flight.
@@ -1477,178 +1486,220 @@ struct SearchView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        Color.clear.frame(height: 0).id(Self.discoveryTopId)
 
-                    if discoveryVM.showsPlaceholderShelves {
-                        ForEach(0..<3, id: \.self) { _ in placeholderShelf }
-                    }
+                        if discoveryVM.showsPlaceholderShelves {
+                            ForEach(0..<3, id: \.self) { _ in placeholderShelf }
+                        }
 
-                    // ── Popular Searches ──────────────────────
-                    // Cross-user trending query chips -- see DiscoveryViewModel.popularSearchQueries's
-                    // own comment. Tapping one fills the search bar and runs it immediately, same as
-                    // the web port's PopularSearchChips onSelect behavior.
-                    if !discoveryVM.popularSearchQueries.isEmpty {
-                        sectionLabel("Popular Searches")
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(discoveryVM.popularSearchQueries, id: \.self) { q in
-                                    SearchChip(label: q, active: false) {
-                                        searchVM.query = q
-                                        Task { await searchVM.search() }
+                        // ── Popular Searches ──────────────────────
+                        // Cross-user trending query chips -- see DiscoveryViewModel.popularSearchQueries's
+                        // own comment. Tapping one fills the search bar and runs it immediately, same as
+                        // the web port's PopularSearchChips onSelect behavior.
+                        if !discoveryVM.popularSearchQueries.isEmpty {
+                            sectionLabel("Popular Searches")
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(discoveryVM.popularSearchQueries, id: \.self) { q in
+                                        SearchChip(label: q, active: false) {
+                                            searchVM.query = q
+                                            Task { await searchVM.search() }
+                                        }
                                     }
                                 }
+                                .padding(.horizontal, 16)
                             }
-                            .padding(.horizontal, 16)
-                        }
-                        Spacer().frame(height: 24)
-                    }
-
-                    // ── Spotify: Your Top Artists ─────────────
-                    if !discoveryVM.spotifyArtists.isEmpty {
-                        discoverySectionTitle("Your Top Artists")
-                        spotifyArtistScroll(discoveryVM.spotifyArtists)
-                        Spacer().frame(height: 24)
-                    }
-
-                    // ── Spotify: Recently Listened ────────────
-                    // Renders straight from Spotify's own raw data (recentlyPlayedPreviewScroll),
-                    // not the catalog-matched recentlyPlayedReleases -- tappable immediately,
-                    // resolving against the catalog on tap instead (ResolvingAlbumView), same
-                    // shape as spotifyArtistScroll's ArtistDestination(artistId: nil, ...) above.
-                    // Used to wait for resolveRecentlyPlayedIfNeeded() to finish for every item
-                    // before showing the row at all -- confirmed live 2026-09-21 that a real,
-                    // unavoidable extra DB round trip (matching against the catalog) meant this
-                    // row always appeared several seconds after every other section, read as
-                    // "not uniform/not immediate." resolveRecentlyPlayedIfNeeded() still runs in
-                    // the background (see load()) to warm the Apple Music row below, which keeps
-                    // the old eager-resolution behavior for now.
-                    if !discoveryVM.recentlyPlayed.isEmpty {
-                        discoverySectionTitle("Recently Listened")
-                        recentlyPlayedPreviewScroll(discoveryVM.recentlyPlayed)
-                        Spacer().frame(height: 24)
-                    }
-
-                    // ── Apple Music: Library Artists ──────────
-                    if !discoveryVM.appleMusicArtists.isEmpty {
-                        discoverySectionTitle("Your Library Artists")
-                        appleMusicArtistScroll(discoveryVM.appleMusicArtists)
-                        Spacer().frame(height: 24)
-                    }
-
-                    // ── Apple Music: Recently Listened ────────
-                    if !discoveryVM.appleMusicRecentlyPlayedReleases.isEmpty {
-                        discoverySectionTitle(
-                            discoveryVM.recentlyPlayed.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
-                        )
-                        albumScroll(discoveryVM.appleMusicRecentlyPlayedReleases, hideRated: false)
-                        Spacer().frame(height: 24)
-                    }
-
-                    // ── From Your Taste (4+ star artists) ────
-                    let visibleTaste = discoveryVM.tasteAlbums.filter {
-                        !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
-                    }
-                    if !visibleTaste.isEmpty {
-                        discoverySectionTitle("From Your Taste")
-                        albumScroll(visibleTaste)
-                        Spacer().frame(height: 24)
-                    }
-
-                    // ── For You (DB-based) ────────────────────
-                    if discoveryVM.hasPersonalized {
-                        discoverySectionTitle("For You")
-
-                        if !discoveryVM.personalizedAlbums.isEmpty {
-                            discoverySubheader("Albums")
-                            albumScroll(discoveryVM.personalizedAlbums)
-                        }
-                        if !discoveryVM.personalizedSongs.isEmpty {
-                            discoverySubheader("Songs")
-                            songList(discoveryVM.personalizedSongs, expanded: $showAllPersonalizedSongs)
-                        }
-
-                        Spacer().frame(height: 28)
-                    }
-
-                    // ── Worlds (genre-cluster rows, e.g. "Because you love Dream Pop") ──
-                    ForEach(Array(discoveryVM.worlds.enumerated()), id: \.offset) { _, world in
-                        let visibleWorld = world.albums.filter {
-                            !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
-                        }
-                        if !visibleWorld.isEmpty {
-                            discoverySectionTitle(
-                                LocalizedStringKey(String(format: String(localized: "Because you love %@"), world.label))
-                            )
-                            albumScroll(visibleWorld)
                             Spacer().frame(height: 24)
                         }
-                    }
 
-                    // ── Popular ───────────────────────────────
-                    if !discoveryVM.popularAlbums.isEmpty || !discoveryVM.popularSongs.isEmpty {
-                        discoverySectionTitle("Popular")
-                    }
-                    if !discoveryVM.popularAlbums.isEmpty {
-                        discoverySubheader("Albums")
-                        albumScroll(discoveryVM.popularAlbums)
-                    }
-                    if !discoveryVM.popularSongs.isEmpty {
-                        discoverySubheader("Songs")
-                        songList(discoveryVM.popularSongs, expanded: $showAllPopularSongs)
-                    }
-
-                    // ── New Releases ──────────────────────────
-                    let visibleNewReleases = discoveryVM.newReleaseAlbums.filter {
-                        !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
-                    }
-                    if !visibleNewReleases.isEmpty {
-                        discoverySectionTitle("New Releases")
-                        albumScroll(visibleNewReleases)
-                        Spacer().frame(height: 24)
-                    }
-
-                    // ── Trending ──────────────────────────────
-                    let visibleTrending = discoveryVM.trendingAlbums.filter {
-                        !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
-                    }
-                    if !visibleTrending.isEmpty {
-                        discoverySectionTitle("Trending")
-                        albumScroll(discoveryVM.trendingAlbums)
-                        Spacer().frame(height: 24)
-                    }
-
-                    // ── Connect nudge ──
-                    // Each connect row is independent of the other --
-                    // discoveryVM.isSpotifyLinked/isAppleMusicAuthorized are real connection
-                    // checks (see their own comment), not data-presence proxies, so a
-                    // linked-but-no-data-yet account doesn't get a wrong "Connect" nudge.
-                    VStack(spacing: 10) {
-                        if discoveryVM.isSpotifyLinked == false {
-                            Button { onGoToSettings() } label: {
-                                NudgeRow(icon: "icon-link", title: "Connect Spotify")
-                            }
-                            .buttonStyle(.plain)
+                        // ── Spotify: Your Top Artists ─────────────
+                        if !discoveryVM.spotifyArtists.isEmpty {
+                            discoverySectionTitle("Your Top Artists")
+                            spotifyArtistScroll(discoveryVM.spotifyArtists)
+                            Spacer().frame(height: 24)
                         }
-                        if discoveryVM.isAppleMusicAuthorized == false {
-                            Button { onGoToSettings() } label: {
-                                NudgeRow(icon: "icon-link", title: "Connect Apple Music")
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, discoveryVM.isSpotifyLinked == false || discoveryVM.isAppleMusicAuthorized == false ? 16 : 0)
 
-                    Spacer().frame(height: 36)
+                        // ── Spotify: Recently Listened ────────────
+                        // Renders straight from Spotify's own raw data (recentlyPlayedPreviewScroll),
+                        // not the catalog-matched recentlyPlayedReleases -- tappable immediately,
+                        // resolving against the catalog on tap instead (ResolvingAlbumView), same
+                        // shape as spotifyArtistScroll's ArtistDestination(artistId: nil, ...) above.
+                        // Used to wait for resolveRecentlyPlayedIfNeeded() to finish for every item
+                        // before showing the row at all -- confirmed live 2026-09-21 that a real,
+                        // unavoidable extra DB round trip (matching against the catalog) meant this
+                        // row always appeared several seconds after every other section, read as
+                        // "not uniform/not immediate." resolveRecentlyPlayedIfNeeded() still runs in
+                        // the background (see load()) to warm the Apple Music row below, which keeps
+                        // the old eager-resolution behavior for now.
+                        if !discoveryVM.recentlyPlayed.isEmpty {
+                            discoverySectionTitle("Recently Listened")
+                            recentlyPlayedPreviewScroll(discoveryVM.recentlyPlayed)
+                            Spacer().frame(height: 24)
+                        }
+
+                        // ── Apple Music: Library Artists ──────────
+                        if !discoveryVM.appleMusicArtists.isEmpty {
+                            discoverySectionTitle("Your Library Artists")
+                            appleMusicArtistScroll(discoveryVM.appleMusicArtists)
+                            Spacer().frame(height: 24)
+                        }
+
+                        // ── Apple Music: Recently Listened ────────
+                        if !discoveryVM.appleMusicRecentlyPlayedReleases.isEmpty {
+                            discoverySectionTitle(
+                                discoveryVM.recentlyPlayed.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
+                            )
+                            albumScroll(discoveryVM.appleMusicRecentlyPlayedReleases, hideRated: false)
+                            Spacer().frame(height: 24)
+                        }
+
+                        // ── From Your Taste (4+ star artists) ────
+                        let visibleTaste = discoveryVM.tasteAlbums.filter {
+                            !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
+                        }
+                        if !visibleTaste.isEmpty {
+                            discoverySectionTitle("From Your Taste")
+                            albumScroll(visibleTaste)
+                            Spacer().frame(height: 24)
+                        }
+
+                        // ── For You (DB-based) ────────────────────
+                        if discoveryVM.hasPersonalized {
+                            discoverySectionTitle("For You")
+
+                            if !discoveryVM.personalizedAlbums.isEmpty {
+                                discoverySubheader("Albums")
+                                albumScroll(discoveryVM.personalizedAlbums)
+                            }
+                            if !discoveryVM.personalizedSongs.isEmpty {
+                                discoverySubheader("Songs")
+                                songList(discoveryVM.personalizedSongs, expanded: $showAllPersonalizedSongs)
+                            }
+
+                            Spacer().frame(height: 28)
+                        }
+
+                        // ── Worlds (genre-cluster rows, e.g. "Because you love Dream Pop") ──
+                        ForEach(Array(discoveryVM.worlds.enumerated()), id: \.offset) { _, world in
+                            let visibleWorld = world.albums.filter {
+                                !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
+                            }
+                            if !visibleWorld.isEmpty {
+                                discoverySectionTitle(
+                                    LocalizedStringKey(String(format: String(localized: "Because you love %@"), world.label))
+                                )
+                                albumScroll(visibleWorld)
+                                Spacer().frame(height: 24)
+                            }
+                        }
+
+                        // ── Popular ───────────────────────────────
+                        if !discoveryVM.popularAlbums.isEmpty || !discoveryVM.popularSongs.isEmpty {
+                            discoverySectionTitle("Popular")
+                        }
+                        if !discoveryVM.popularAlbums.isEmpty {
+                            discoverySubheader("Albums")
+                            albumScroll(discoveryVM.popularAlbums)
+                        }
+                        if !discoveryVM.popularSongs.isEmpty {
+                            discoverySubheader("Songs")
+                            songList(discoveryVM.popularSongs, expanded: $showAllPopularSongs)
+                        }
+
+                        // ── New Releases ──────────────────────────
+                        let visibleNewReleases = discoveryVM.newReleaseAlbums.filter {
+                            !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
+                        }
+                        if !visibleNewReleases.isEmpty {
+                            discoverySectionTitle("New Releases")
+                            albumScroll(visibleNewReleases)
+                            Spacer().frame(height: 24)
+                        }
+
+                        // ── Trending ──────────────────────────────
+                        let visibleTrending = discoveryVM.trendingAlbums.filter {
+                            !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
+                        }
+                        if !visibleTrending.isEmpty {
+                            discoverySectionTitle("Trending")
+                            albumScroll(discoveryVM.trendingAlbums)
+                            Spacer().frame(height: 24)
+                        }
+
+                        // ── Connect nudge ──
+                        // Each connect row is independent of the other --
+                        // discoveryVM.isSpotifyLinked/isAppleMusicAuthorized are real connection
+                        // checks (see their own comment), not data-presence proxies, so a
+                        // linked-but-no-data-yet account doesn't get a wrong "Connect" nudge.
+                        VStack(spacing: 10) {
+                            if discoveryVM.isSpotifyLinked == false {
+                                Button { onGoToSettings() } label: {
+                                    NudgeRow(icon: "icon-link", title: "Connect Spotify")
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            if discoveryVM.isAppleMusicAuthorized == false {
+                                Button { onGoToSettings() } label: {
+                                    NudgeRow(icon: "icon-link", title: "Connect Apple Music")
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, discoveryVM.isSpotifyLinked == false || discoveryVM.isAppleMusicAuthorized == false ? 16 : 0)
+
+                        // ── Refresh ──
+                        // Same refresh as pull-to-refresh, for someone who has scrolled to the
+                        // end: jumps back to the top so the new rows are what they see next.
+                        Button {
+                            Haptics.light()
+                            withAnimation { proxy.scrollTo(Self.discoveryTopId, anchor: .top) }
+                            Task { await discoveryVM.refresh() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if discoveryVM.isRefreshing {
+                                    ProgressView().tint(Color.sjBlue).scaleEffect(0.7)
+                                } else {
+                                    Image("icon-rotate-cw")
+                                        .renderingMode(.template)
+                                        .resizable().scaledToFit()
+                                        .frame(width: 13, height: 13)
+                                }
+                                Text(discoveryVM.isRefreshing ? String(localized: "Refreshing…") : String(localized: "Refresh"))
+                                    .font(.jakarta(13, weight: .semibold))
+                            }
+                            .foregroundStyle(Color.sjBlue)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 9)
+                            .background(Color.sjSurface.opacity(0.7))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color.sjBlue.opacity(0.25), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(discoveryVM.isRefreshing)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+
+                        Spacer().frame(height: 36)
+                    }
+                    .padding(.top, 4)
                 }
-                .padding(.top, 4)
-            }
-            .refreshable {
-                await discoveryVM.refresh()
+                .refreshable {
+                    // 2026-10-17 ("make add tab reloadable when swiped down"): the pull's own
+                    // task is cancelled by SwiftUI when the rows it reloads re-render
+                    // mid-refresh, which cancelled the in-flight URLSession requests -- they
+                    // came back as nil and nothing changed. An unstructured Task isn't tied
+                    // to that lifetime; awaiting its value keeps the spinner until it's done.
+                    await Task { await discoveryVM.refresh() }.value
+                }
             }
         }
     }
+
+    private static let discoveryTopId = "discovery-top"
 
     // MARK: - Helpers
 

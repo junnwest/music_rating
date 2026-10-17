@@ -4,6 +4,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-17 (Windows, evening) — Add tab: 맞춤 (For You) rebuilt on the Taste map, working refresh; profile album taps from follower lists (web recs API + iOS).**
+
+- **맞춤 didn't match the user's taste.** `/api/recommendations` still ranked against the old embedding clusters (`buildClusters`), which have no language axis and weigh a genre by Σ(score − 3). For junnwest (59% Korean Hip-Hop on the Taste map, many albums untagged) For You was idol K-pop and Western canon (Beatles, Pink Floyd, Radiohead) with no Korean hip-hop at all. The ranking now lives in `lib/taste/recommendations.ts` and runs on the Taste tab's worlds (`lib/taste/worlds.ts`): each liked world (avg ≥ 2.75) gets its own pool (its genre spellings, restricted to the language's countries, best prestige first, no longer requiring a prestige score); a candidate must be *placed* in that world (tags first, then the top 40 per world re-placed with their artist prior, so an idol album tagged `[hip hop, pop]` stays out of Korean Hip-Hop); slots split across worlds by mass × liking, flattened by adventurousness; one album per artist, loved artists left to "From Your Taste". World rows now read "Because you love Korean Hip-Hop" and carry `labelKo`. After: junnwest's For You opens with Swings, BewhY, 우원재, Nafla, JUSTHIS…, alongside R&B/electronic/K-pop picks in proportion. Route is now auth + cache only; cache key `recs:v5`. ~3s uncached (was ~1.7s), still behind the 2-min Redis cache.
+- **New read-only script:** `scripts/dump-recommendations.ts --user=<name> [--vary]` prints liked worlds (pool / fits / slots) and the rows shipped.
+- **iOS Add tab pull-to-refresh did nothing.** SwiftUI cancels the `.refreshable` task when the rows it reloads re-render, which cancelled the in-flight requests (they return nil → nothing changed). The pull now awaits an unstructured `Task`. Also a **Refresh button at the bottom** of the Add tab (scrolls back to the top and refreshes); `DiscoveryViewModel.isRefreshing` makes a second trigger a no-op.
+- **iOS: a profile opened from Followers/Following couldn't open albums.** `FollowListModal` has its own `NavigationStack` with no `Release`/`ArtistDestination` destinations, so `ProfilePostCard`'s links did nothing. Added them (same as the Find People sheet). **Not fixed (out of scope, same likely cause):** the comment sheets, Mix share card/comment sheet and Home's likers sheet also push `UserProfileView` in stacks without a `Release` destination.
+- `tsc` + eslint clean. **iOS not built** (Windows session).
+
+---
+
 **2026-10-17 (Windows, later) — Bug pass: comment avatar, profile jump, Taste pager, "Other" world, repeated thumbnails (iOS + web taste API).**
 
 - **iOS comment sheets showed a blank avatar in the compose bar.** `CommentSheetView` and `MixShareCommentSheetView` rendered `DefaultAvatarView` unconditionally. New `CurrentUserAvatarView` (in `DefaultAvatarView.swift`) fetches your own `avatar_url` (session-cached, refreshed on appear).
