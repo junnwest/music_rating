@@ -252,6 +252,23 @@
         }
       }
     },
+    "%@ rated %lld albums" : {
+      "comment" : "Grouped post notification: someone you follow rated several albums in a row. First argument is their handle, second the count.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ rated %2$lld albums"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@님이 앨범 %2$lld개를 평가했습니다"
+          }
+        }
+      }
+    },
     "%@ rated an album" : {
       "comment" : "Post notification: someone you follow rated an album.",
       "localizations" : {

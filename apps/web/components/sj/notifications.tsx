@@ -17,6 +17,8 @@ export interface NotificationEntry {
   mix_id: string | null;
   mix_share_id: string | null;
   actor_id: string | null;
+  /** following_rating only: consecutive ratings folded into this row (20261017000001). */
+  group_count: number | null;
   actor: { username: string | null; display_name: string | null; avatar_url: string | null } | null;
   rating: {
     release_groups: {
@@ -32,7 +34,7 @@ export interface NotificationEntry {
 }
 
 export const NOTIFICATION_SELECT =
-  'id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, ' +
+  'id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, group_count, ' +
   'actor:actor_id(username, display_name, avatar_url), ' +
   'rating:rating_id(release_groups(id, title, artist_display, native_title, ' +
   'artists!release_groups_primary_artist_id_fkey(name_native))), ' +
@@ -70,6 +72,11 @@ export function notificationBody(
     case 'mix_share_comment':
       return t('sj.notifications.mixShareCommented').replace('{who}', who);
     case 'following_rating':
+      if ((n.group_count ?? 1) > 1) {
+        return t('sj.notifications.followingRatedMany')
+          .replace('{who}', who)
+          .replace('{n}', String(n.group_count));
+      }
       return title
         ? t('sj.notifications.followingRatedOf').replace('{who}', who).replace('{title}', title)
         : t('sj.notifications.followingRated').replace('{who}', who);
@@ -87,6 +94,10 @@ export function notificationBody(
 // shows aggregate community stats, never individual posts). These route to the dedicated
 // /post page instead -- web sibling of iOS's albumPostDestination.
 export function notificationHref(n: NotificationEntry): string | null {
+  // A grouped "rated n albums" is several posts -- their profile shows them all.
+  if (n.type === 'following_rating' && (n.group_count ?? 1) > 1 && n.actor?.username) {
+    return `/profile/${n.actor.username}`;
+  }
   if (
     (n.type === 'like' || n.type === 'comment' || n.type === 'following_rating' || n.type === 'following_comment') &&
     n.rating_id

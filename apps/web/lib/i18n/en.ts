@@ -888,6 +888,7 @@ const en = {
       mixShareCommented: '{who} commented on your shared mix',
       followingRatedOf: '{who} rated {title}',
       followingRated: '{who} rated an album',
+      followingRatedMany: '{who} rated {n} albums',
       followingCommentedOn: '{who} commented on a rating of {title}',
       followingCommented: '{who} left a comment',
       interacted: '{who} interacted with your content',

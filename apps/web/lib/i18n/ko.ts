@@ -890,6 +890,7 @@ const ko: Translations = {
       mixShareCommented: '{who}님이 공유한 믹스에 댓글을 남겼습니다',
       followingRatedOf: '{who}님이 {title}을(를) 평가했습니다',
       followingRated: '{who}님이 앨범을 평가했습니다',
+      followingRatedMany: '{who}님이 앨범 {n}개를 평가했습니다',
       followingCommentedOn: '{who}님이 {title} 평가에 댓글을 남겼습니다',
       followingCommented: '{who}님이 댓글을 남겼습니다',
       interacted: '{who}님이 내 콘텐츠에 반응했습니다',

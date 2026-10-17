@@ -11,6 +11,9 @@ struct AppNotification: Codable, Identifiable {
     let mixId: UUID?
     let mixShareId: UUID?
     let actorId: UUID?
+    /// following_rating only: consecutive ratings folded into this row
+    /// (migration 20261017000001). Optional so a missing column decodes.
+    let groupCount: Int?
     let actor: Actor?
     let rating: RatingInfo?
     let mix: MixInfo?
@@ -79,8 +82,12 @@ struct AppNotification: Codable, Identifiable {
         case mixId         = "mix_id"
         case mixShareId    = "mix_share_id"
         case actorId       = "actor_id"
+        case groupCount    = "group_count"
         case mixShare      = "mix_share"
     }
+
+    /// A grouped "rated n albums" -- several posts, so it opens their profile.
+    private var isRatingGroup: Bool { type == "following_rating" && (groupCount ?? 1) > 1 }
 
     // A like/comment notification is about a specific post (the rating, with its own review
     // text/like-comment thread) -- linking to the bare release page loses that entirely
@@ -88,12 +95,13 @@ struct AppNotification: Codable, Identifiable {
     // route to a real single-post screen instead.
     var albumPostDestination: AlbumPostDestination? {
         guard ["like", "comment", "following_rating", "following_comment"].contains(type),
-              let ratingId else { return nil }
+              !isRatingGroup, let ratingId else { return nil }
         return AlbumPostDestination(ratingId: ratingId)
     }
 
     var actorDestination: UserProfileDestination? {
-        guard ["follow", "follow_request", "follow_accept"].contains(type), let actorId else { return nil }
+        guard ["follow", "follow_request", "follow_accept"].contains(type) || isRatingGroup,
+              let actorId else { return nil }
         return UserProfileDestination(userId: actorId, handle: actor?.handle ?? String(localized: "someone"))
     }
 
@@ -138,6 +146,9 @@ struct AppNotification: Codable, Identifiable {
         case "mix_share_comment":
             return String(format: String(localized: "%@ commented on your shared mix"), who)
         case "following_rating":
+            if let n = groupCount, n > 1 {
+                return String(format: String(localized: "%@ rated %lld albums"), who, n)
+            }
             if let title = rating?.releaseGroups?.displayTitle {
                 return String(format: String(localized: "%@ rated %@"), who, title)
             }
@@ -241,7 +252,7 @@ struct NotificationsView: View {
         isLoading = true
         notifications = (try? await supabase
             .from("notifications")
-            .select("id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, actor:actor_id(username, display_name, avatar_url), rating:rating_id(release_groups(id, title, artist_display, native_title, cover_url, artists!release_groups_primary_artist_id_fkey(name_native))), mix:mix_id(id, user_id, name, description, is_public, is_default, created_at, kind), mix_share:mix_share_id(mixes(id, user_id, name, description, is_public, is_default, created_at, kind))")
+            .select("id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, group_count, actor:actor_id(username, display_name, avatar_url), rating:rating_id(release_groups(id, title, artist_display, native_title, cover_url, artists!release_groups_primary_artist_id_fkey(name_native))), mix:mix_id(id, user_id, name, description, is_public, is_default, created_at, kind), mix_share:mix_share_id(mixes(id, user_id, name, description, is_public, is_default, created_at, kind))")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)

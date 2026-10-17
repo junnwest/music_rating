@@ -52,7 +52,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-> **2026-10-17 (Windows) — post notifications for followed accounts (web + iOS).** A bell next to "Following" on a profile subscribes to that account's new album ratings and their comments on album ratings (migration `20261017000000_activity_subscriptions`, ✅ applied and verified live; pushed to `main`, so web deploys). **To do:** build the iOS changes on the Mac (`UserProfileView`, `NotificationsView`, `FollowService`, `Localizable.xcstrings`), since this was a Windows session. Details in SESSIONS.md.
+> **2026-10-17 (Windows) — post notifications for followed accounts (web + iOS).** A bell next to "Following" on a profile subscribes to that account's new album ratings and their comments on album ratings (migrations `20261017000000_activity_subscriptions` + `…000001_…_grouping`, ✅ applied and verified live; back-to-back ratings within 2 minutes group into one "rated n albums" notification; pushed to `main`, so web deploys). **To do:** build the iOS changes on the Mac (`UserProfileView`, `NotificationsView`, `FollowService`, `Localizable.xcstrings`), since this was a Windows session. Details in SESSIONS.md.
 
 > **SESSION CLOSE (2026-10-13, Mac) — profile social links shipped to `main` (migration `20261013000000` applied
 > and verified live). Web deploys from `main`; iOS needs a build.** Earlier: everything through 10-06 (Mac, later)
