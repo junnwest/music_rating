@@ -39,11 +39,26 @@ import { chooseWorld, evidenceOf, familiesOf, type PlacementInput } from '../gen
 import { primaryOf, resolveGenre } from '../genres/resolver';
 import { NODE_BY_ID } from '../genres/taxonomy';
 
-/** Most worlds shown before the rest fold into "Other". */
-export const MAX_WORLDS = 7;
-/** A world below this share of the user's rated mass folds into "Other". */
+/**
+ * Most named worlds on the map (plus at most one "Other"). Was 7, which folded
+ * K-Pop / J-Pop / Korean R&B into "Other" for users with ten small worlds
+ * (2026-10-17 audit, scripts/dump-taste-map.ts); nine still reads on the web
+ * treemap and the iOS list.
+ */
+export const MAX_WORLDS = 9;
+/** A world needs this share of the user's rated mass… */
 export const MIN_WORLD_SHARE = 0.04;
+/** …or this many albums to stand on its own. */
+export const MIN_WORLD_ALBUMS = 2;
 export const OTHER_WORLD = 'other';
+/** Tiles per world the clients show (the route's sub-genre bubbles). */
+export const WORLD_TILE_LIMIT = 8;
+/**
+ * Tiles an album's thumbnail shows under: its primary + one co-tag. An album
+ * still adds mass to every in-world genre it carries; this only stops one cover
+ * repeating across most of a world's tiles (OK Computer was under 9).
+ */
+export const MAX_ALBUM_TILES = 2;
 
 /** Language → the genre whose vector stands for that language's scene. */
 const LANG_ANCHOR: Record<string, string> = {
@@ -102,6 +117,35 @@ function weightedCentroid(items: { id: string; weight: number }[]): number[] | n
 
 // ── per album ─────────────────────────────────────────────────────────────────
 
+/**
+ * Only the album's first few in-world sound tags compete for its primary.
+ * genres[] is stored in vote / merge-rank order, so the long tail is the weakest
+ * evidence — without this, a tag in eighth place picked the primary because it
+ * was the most specific (A Rush of Blood to the Head → Post-Rock, Parachutes →
+ * Dream Pop).
+ */
+export const PRIMARY_TOP_TAGS = 3;
+/**
+ * A runner-up family needs this share of the winner's evidence to be an alternate
+ * home. At 0.5 Lauryn Hill (R&B, hip-hop 0.69) and Tiffany Day's electropop (Pop,
+ * electronic 0.73) can move; The Life of Pablo (Hip-Hop, R&B 0.26) cannot.
+ */
+export const ALTERNATE_MIN_RATIO = 0.5;
+
+interface WorldTiles {
+  /** Qualified primary genre inside the world. */
+  primary: string;
+  /** The world (qualified family). */
+  world: string;
+  /** In-world tiles with their within-album weight (primary 1.0, co-tag 0.5). */
+  tiles: { id: string; weight: number }[];
+}
+
+/** A runner-up world, with its evidence relative to the winner's (0–1]. */
+export interface AlternateWorld extends WorldTiles {
+  support: number;
+}
+
 export interface AlbumPlacement {
   lang: string | null;
   langSource: LanguageSource | null;
@@ -113,30 +157,24 @@ export interface AlbumPlacement {
   tiles: { id: string; weight: number }[];
   /** Every qualified genre on the album, in or out of its world. */
   all: string[];
+  /**
+   * Runner-up worlds (same language), best first — where the album goes when its
+   * own world is too small to show on the user's map. Optional so hand-built
+   * placements (tests) stay valid.
+   */
+  alternates?: AlternateWorld[];
 }
 
-/**
- * Where one album sits on the map. The WORLD is the family with the most evidence
- * — the album's tags plus its artist prior (lib/genres/placement.ts) — in the
- * album's language. The tiles are the album's own genres inside that world (a
- * hybrid counts in each of its parents' worlds: pop rap is a Hip-Hop tile), and
- * the primary is the most specific of them (shoegaze over rock). An album whose
- * own tags say nothing about its world (untagged, or only "k-pop" on a rap record
- * placed by its artist) gets the world itself as its one tile.
- */
-export function placeAlbum(input: PlacementInput): AlbumPlacement {
-  const { family, lang, source } = chooseWorld(input);
-  const all = qualifyAlbum(input.genres, lang);
-  if (!family) return { lang, langSource: source, primary: null, world: null, tiles: [], all };
+/** The album's tiles inside one family's world (see placeAlbum). */
+function tilesIn(genres: readonly string[] | null | undefined, family: string, lang: string | null): WorldTiles {
   const world = qualify(family, lang);
-
-  const inWorld = (input.genres ?? []).filter((g) => {
+  const inWorld = (genres ?? []).filter((g) => {
     const id = resolveGenre(g);
     return id != null && !NODE_BY_ID.get(id)?.isScene && familiesOf(id).includes(family);
   });
   // Descriptors (ballad, instrumental…) are tiles but never the primary unless alone.
   const sound = inWorld.filter((g) => evidenceOf(resolveGenre(g)!) > 0);
-  const primaryBase = primaryOf(sound.length > 0 ? sound : inWorld);
+  const primaryBase = primaryOf((sound.length > 0 ? sound : inWorld).slice(0, PRIMARY_TOP_TAGS));
   const primary = primaryBase ? qualify(primaryBase, lang) : world;
 
   const tileIds: string[] = [];
@@ -145,8 +183,30 @@ export function placeAlbum(input: PlacementInput): AlbumPlacement {
     if (!tileIds.includes(q)) tileIds.push(q);
   }
   if (tileIds.length === 0) tileIds.push(world);
-  const tiles = tileIds.map((id) => ({ id, weight: id === primary ? 1 : 0.5 }));
-  return { lang, langSource: source, primary, world, tiles, all: all.length > 0 ? all : [world] };
+  return { primary, world, tiles: tileIds.map((id) => ({ id, weight: id === primary ? 1 : 0.5 })) };
+}
+
+/**
+ * Where one album sits on the map. The WORLD is the family with the most evidence
+ * — the album's tags plus its artist prior (lib/genres/placement.ts) — in the
+ * album's language. The tiles are the album's own genres inside that world (a
+ * hybrid counts in each of its parents' worlds: pop rap is a Hip-Hop tile), and
+ * the primary is the most specific of its first few (shoegaze over rock). An album
+ * whose own tags say nothing about its world (untagged, or only "k-pop" on a rap
+ * record placed by its artist) gets the world itself as its one tile.
+ */
+export function placeAlbum(input: PlacementInput): AlbumPlacement {
+  const { family, lang, source, ranked } = chooseWorld(input);
+  const all = qualifyAlbum(input.genres, lang);
+  if (!family) return { lang, langSource: source, primary: null, world: null, tiles: [], all };
+  const { world, primary, tiles } = tilesIn(input.genres, family, lang);
+  const best = ranked[0]?.mass ?? 0;
+  const alternates = ranked
+    .slice(1)
+    .filter((r) => r.mass >= ALTERNATE_MIN_RATIO * best)
+    .map((r) => ({ ...tilesIn(input.genres, r.family, lang), support: Math.round((r.mass / best) * 100) / 100 }))
+    .filter((a) => a.world !== world);
+  return { lang, langSource: source, primary, world, tiles, all: all.length > 0 ? all : [world], alternates };
 }
 
 // ── per user ──────────────────────────────────────────────────────────────────
@@ -163,6 +223,12 @@ export interface RatedAlbum {
 
 export interface WorldTile {
   id: string;
+  /**
+   * The tile's key on the map — `id`, unless the same genre is a tile in two
+   * worlds (a hybrid: pop rock in Rock and in Pop), when it is `id#world` so each
+   * world's tile only holds its own albums. Clients look albums up by this.
+   */
+  key: string;
   /** Plain genre name — the world already names the language. */
   display: { en: string; ko: string };
   /** Language-prefixed name, for contexts outside the world (dislikes). */
@@ -174,6 +240,12 @@ export interface WorldTile {
   avg: number;
   /** Share of the world's tile mass. */
   share: number;
+  /**
+   * Albums whose thumbnail shows under this tile (see TasteMap.albumTiles) — 0
+   * for a tile outside the world's top WORLD_TILE_LIMIT, or one whose albums all
+   * show elsewhere. Clients get only tiles with albums > 0.
+   */
+  albums: number;
 }
 
 export interface TasteWorld {
@@ -195,7 +267,12 @@ export interface TasteWorld {
 
 export interface TasteMap {
   worlds: TasteWorld[];
-  /** album id → the tile ids it shows under (folded worlds map to their key). */
+  /**
+   * album id → the tile KEYS its thumbnail shows under: its primary and at most
+   * MAX_ALBUM_TILES − 1 co-tags among the world's top WORLD_TILE_LIMIT tiles
+   * (a tile nobody else covers can add one more, so ≤ MAX_ALBUM_TILES + 1).
+   * Folded worlds map to their key.
+   */
   albumTiles: Map<string, string[]>;
 }
 
@@ -222,12 +299,14 @@ function finish(a: Acc, total: number, tileOverride?: WorldTile[]): TasteWorld {
     [...a.tiles.entries()]
       .map(([id, t]) => ({
         id,
+        key: id,
         display: qualifiedInfo(id)?.shortDisplay ?? { en: id, ko: id },
         fullDisplay: qualifiedInfo(id)?.display ?? { en: id, ko: id },
         mass: round(t.mass, 1),
         w: round(t.w, 3),
         avg: round(3 + t.w / (t.mass || 1)),
         share: round(t.mass / tileMass, 3),
+        albums: 0,
       }))
       .sort((x, y) => y.mass - x.mass || y.avg - x.avg || x.id.localeCompare(y.id));
   const meanYear = a.years.length > 0 ? a.years.reduce((s, y) => s + y, 0) / a.years.length : null;
@@ -265,63 +344,164 @@ function finish(a: Acc, total: number, tileOverride?: WorldTile[]): TasteWorld {
   };
 }
 
-/** The user's taste map from their rated albums. Deterministic. */
+const newAcc = (key: string): Acc => ({
+  key,
+  mass: 0,
+  scoreSum: 0,
+  tiles: new Map(),
+  albumIds: [],
+  years: [],
+  scenes: [],
+});
+
+function addTo(acc: Acc, a: RatedAlbum, tiles: { id: string; weight: number }[]) {
+  const c = a.confidence ?? 1;
+  acc.mass += c;
+  acc.scoreSum += a.score * c;
+  acc.albumIds.push(a.id);
+  if (a.year != null) acc.years.push(a.year);
+  const sc = sceneOf(a.country);
+  if (sc) acc.scenes.push(sc);
+  for (const t of tiles) {
+    const e = acc.tiles.get(t.id) ?? { mass: 0, w: 0 };
+    e.mass += t.weight * c;
+    e.w += (a.score - 3) * t.weight * c;
+    acc.tiles.set(t.id, e);
+  }
+}
+
+const byMass = (x: Acc, y: Acc) =>
+  y.mass - x.mass || y.scoreSum - x.scoreSum || x.key.localeCompare(y.key);
+
+interface Home {
+  world: string;
+  primary: string;
+  tiles: { id: string; weight: number }[];
+}
+
+/**
+ * Which of a world's tiles each album's thumbnail shows under (tile ids). Albums
+ * go best-first; each takes its primary (if visible) and then the visible co-tag
+ * with the fewest thumbnails so far, so covers spread across tiles instead of the
+ * same top album heading every one. A visible tile left empty takes the album
+ * carrying it that shows under the fewest tiles — one extra tile per album at
+ * most, so a lone album can't fill a whole world. An album with no visible tile
+ * falls back to the world's own tile when that is visible.
+ */
+function chooseAlbumTiles(world: TasteWorld, members: { a: RatedAlbum; home: Home }[]): Map<string, string[]> {
+  const visible = world.tiles.slice(0, WORLD_TILE_LIMIT).map((t) => t.id);
+  const rank = new Map(visible.map((id, i) => [id, i]));
+  const count = new Map<string, number>();
+  const out = new Map<string, string[]>();
+  const order = [...members].sort((x, y) => y.a.score - x.a.score || x.a.id.localeCompare(y.a.id));
+  for (const { a, home } of order) {
+    const cands = home.tiles.map((t) => t.id).filter((id) => rank.has(id));
+    if (cands.length === 0) {
+      if (!rank.has(world.key)) continue;
+      cands.push(world.key);
+    }
+    const chosen = [cands.includes(home.primary) ? home.primary : cands[0]];
+    const rest = cands.filter((id) => id !== chosen[0]);
+    while (chosen.length < MAX_ALBUM_TILES && rest.length > 0) {
+      rest.sort((x, y) => (count.get(x) ?? 0) - (count.get(y) ?? 0) || rank.get(x)! - rank.get(y)!);
+      chosen.push(rest.shift()!);
+    }
+    for (const id of chosen) count.set(id, (count.get(id) ?? 0) + 1);
+    out.set(a.id, chosen);
+  }
+  for (const id of visible) {
+    if ((count.get(id) ?? 0) > 0) continue;
+    let pick: string | null = null;
+    for (const { a, home } of order) {
+      const n = out.get(a.id)?.length ?? 0;
+      if (n > MAX_ALBUM_TILES || !home.tiles.some((t) => t.id === id)) continue;
+      if (pick == null || n < (out.get(pick)?.length ?? 0)) pick = a.id;
+    }
+    if (pick) {
+      out.set(pick, [...(out.get(pick) ?? []), id]);
+      count.set(id, 1);
+    }
+  }
+  return out;
+}
+
+/**
+ * The user's taste map from their rated albums. Deterministic.
+ *
+ * Every album starts in its own world. A world stands on its own when it ranks in
+ * the top MAX_WORLDS and holds MIN_WORLD_SHARE of the mass or MIN_WORLD_ALBUMS
+ * albums. An album of a smaller world moves to its runner-up world (same
+ * language, ≥ ALTERNATE_MIN_RATIO of the evidence — placement alternates) when
+ * that one stands; the small worlds still left then fill any free slots, and only
+ * what is left after that folds into "Other" — which never holds a single world
+ * (it shows as that world instead).
+ */
 export function buildTasteMap(albums: RatedAlbum[]): TasteMap {
+  const placed = albums.filter((a) => a.placement.world && a.placement.tiles.length > 0);
+  const byId = new Map(placed.map((a) => [a.id, a]));
+
+  // 1. Every world by the albums' own placement; which ones stand on their own.
+  const raw = new Map<string, Acc>();
+  for (const a of placed) {
+    const k = a.placement.world!;
+    if (!raw.has(k)) raw.set(k, newAcc(k));
+    addTo(raw.get(k)!, a, a.placement.tiles);
+  }
+  const total = [...raw.values()].reduce((s, a) => s + a.mass, 0);
+  const keep = new Set<string>();
+  for (const w of [...raw.values()].sort(byMass)) {
+    if (keep.size >= MAX_WORLDS) break;
+    const big = w.mass / (total || 1) >= MIN_WORLD_SHARE || w.albumIds.length >= MIN_WORLD_ALBUMS;
+    if (keep.size === 0 || big) keep.add(w.key);
+  }
+
+  // 2. Rehome the albums of worlds that didn't make it.
+  const homes = new Map<string, Home>();
+  for (const a of placed) {
+    const p = a.placement;
+    const alt = keep.has(p.world!) ? null : p.alternates?.find((x) => keep.has(x.world));
+    homes.set(a.id, alt ?? { world: p.world!, primary: p.primary ?? p.world!, tiles: p.tiles });
+  }
+  // Small worlds left over fill any free slots, biggest first; "Other" only takes
+  // what is still left — and never a single world (it would just be renamed).
+  const left = new Map<string, number>();
+  for (const a of placed) {
+    const w = homes.get(a.id)!.world;
+    if (!keep.has(w)) left.set(w, (left.get(w) ?? 0) + (a.confidence ?? 1));
+  }
+  const leftover = [...left.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]));
+  while (leftover.length > 0 && keep.size < MAX_WORLDS) keep.add(leftover.shift()![0]);
+  if (leftover.length === 1) keep.add(leftover[0][0]);
+
+  // 3. The final worlds.
   const accs = new Map<string, Acc>();
-  for (const a of albums) {
-    const { world, tiles } = a.placement;
-    if (!world || tiles.length === 0) continue;
-    const c = a.confidence ?? 1;
-    let acc = accs.get(world);
-    if (!acc) {
-      acc = { key: world, mass: 0, scoreSum: 0, tiles: new Map(), albumIds: [], years: [], scenes: [] };
-      accs.set(world, acc);
-    }
-    acc.mass += c;
-    acc.scoreSum += a.score * c;
-    acc.albumIds.push(a.id);
-    if (a.year != null) acc.years.push(a.year);
-    const sc = sceneOf(a.country);
-    if (sc) acc.scenes.push(sc);
-    for (const t of tiles) {
-      const e = acc.tiles.get(t.id) ?? { mass: 0, w: 0 };
-      e.mass += t.weight * c;
-      e.w += (a.score - 3) * t.weight * c;
-      acc.tiles.set(t.id, e);
-    }
+  const folded = new Map<string, Acc>();
+  for (const a of placed) {
+    const h = homes.get(a.id)!;
+    const into = keep.has(h.world) ? accs : folded;
+    if (!into.has(h.world)) into.set(h.world, newAcc(h.world));
+    addTo(into.get(h.world)!, a, h.tiles);
   }
-  const total = [...accs.values()].reduce((s, a) => s + a.mass, 0);
-  const ordered = [...accs.values()].sort(
-    (x, y) => y.mass - x.mass || y.scoreSum - x.scoreSum || x.key.localeCompare(y.key),
-  );
+  const worlds = [...accs.values()].sort(byMass).map((a) => finish(a, total));
 
-  const kept: Acc[] = [];
-  const folded: Acc[] = [];
-  for (const a of ordered) {
-    const fits = kept.length < MAX_WORLDS && (kept.length === 0 || a.mass / (total || 1) >= MIN_WORLD_SHARE);
-    (fits ? kept : folded).push(a);
-  }
-
-  const worlds = kept.map((a) => finish(a, total));
   const albumTiles = new Map<string, string[]>();
-  for (const a of albums) {
-    const { world, tiles } = a.placement;
-    if (world && kept.some((k) => k.key === world)) albumTiles.set(a.id, tiles.map((t) => t.id));
+  for (const w of worlds) {
+    const members = w.albumIds.map((id) => ({ a: byId.get(id)!, home: homes.get(id)! }));
+    const chosen = chooseAlbumTiles(w, members);
+    const n = new Map<string, number>();
+    for (const [id, tiles] of chosen) {
+      albumTiles.set(id, tiles);
+      for (const t of tiles) n.set(t, (n.get(t) ?? 0) + 1);
+    }
+    for (const t of w.tiles) t.albums = n.get(t.id) ?? 0;
   }
 
-  if (folded.length > 0) {
+  if (folded.size > 0) {
     // "Other": one tile per folded world, so the treemap still shows where the
     // long tail of ratings went and each tile still focuses its own albums.
-    const other: Acc = {
-      key: OTHER_WORLD,
-      mass: 0,
-      scoreSum: 0,
-      tiles: new Map(),
-      albumIds: [],
-      years: [],
-      scenes: [],
-    };
-    for (const f of folded) {
+    const fs = [...folded.values()].sort(byMass);
+    const other = newAcc(OTHER_WORLD);
+    for (const f of fs) {
       other.mass += f.mass;
       other.scoreSum += f.scoreSum;
       other.albumIds.push(...f.albumIds);
@@ -330,20 +510,38 @@ export function buildTasteMap(albums: RatedAlbum[]): TasteMap {
       const w = [...f.tiles.values()].reduce((s, t) => s + t.w, 0);
       other.tiles.set(f.key, { mass: f.mass, w });
     }
-    const tiles: WorldTile[] = folded.map((f) => {
+    const tiles: WorldTile[] = fs.map((f) => {
       const fw = finish(f, total);
       return {
         id: f.key,
+        key: f.key,
         display: fw.label,
         fullDisplay: fw.label,
         mass: fw.mass,
         w: round([...f.tiles.values()].reduce((s, t) => s + t.w, 0), 3),
         avg: fw.avg,
         share: round(f.mass / (other.mass || 1), 3),
+        albums: f.albumIds.length,
       };
     });
     worlds.push(finish(other, total, tiles));
-    for (const f of folded) for (const id of f.albumIds) albumTiles.set(id, [f.key]);
+    for (const f of fs) for (const id of f.albumIds) albumTiles.set(id, [f.key]);
+  }
+
+  // 4. A genre that is a tile in two worlds (a hybrid) gets a per-world key, so a
+  // client looking albums up by tile never pulls another world's albums in.
+  const uses = new Map<string, number>();
+  for (const w of worlds) for (const t of w.tiles) uses.set(t.id, (uses.get(t.id) ?? 0) + 1);
+  for (const w of worlds) {
+    const keyOf = new Map<string, string>();
+    for (const t of w.tiles) {
+      if ((uses.get(t.id) ?? 0) > 1) t.key = `${t.id}#${w.key}`;
+      keyOf.set(t.id, t.key);
+    }
+    for (const id of w.albumIds) {
+      const tiles = albumTiles.get(id);
+      if (tiles) albumTiles.set(id, tiles.map((t) => keyOf.get(t) ?? t));
+    }
   }
   return { worlds, albumTiles };
 }

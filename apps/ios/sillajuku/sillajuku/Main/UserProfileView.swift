@@ -399,6 +399,9 @@ struct UserProfileView: View {
     // minHeight parameter.
     @State private var heroHeight: CGFloat = 0
     @State private var tabMinHeight: CGFloat = 0
+    // The ScrollView's own height -- floor for the Rated tab's empty states
+    // (same reason as ProfileView.emptyStateMinHeight).
+    @State private var viewportHeight: CGFloat = 0
 
     init(userId: UUID, initialHandle: String) {
         self.userId = userId
@@ -461,8 +464,12 @@ struct UserProfileView: View {
                             swipeableTabContent
                         }
                     }
-                    .onAppear { tabMinHeight = max(0, outerGeo.size.height - heroHeight) }
+                    .onAppear {
+                        viewportHeight = outerGeo.size.height
+                        tabMinHeight = max(0, outerGeo.size.height - heroHeight)
+                    }
                     .onChange(of: outerGeo.size.height) { _, newValue in
+                        viewportHeight = newValue
                         tabMinHeight = max(0, newValue - heroHeight)
                     }
                     .onChange(of: heroHeight) { _, newValue in
@@ -770,8 +777,8 @@ struct UserProfileView: View {
                     .font(.jakarta(15))
                     .foregroundStyle(Color.sjMuted)
             }
-            .frame(maxWidth: .infinity)
             .padding(.top, 60)
+            .frame(maxWidth: .infinity, minHeight: viewportHeight, alignment: .top)
         } else {
             LazyVStack(spacing: 0) {
                 HStack(spacing: 4) {
@@ -845,7 +852,8 @@ struct UserProfileView: View {
                         Text(String(format: String(localized: "No %@ rated yet"), ratingTypeFilter.noun))
                             .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                     }
-                    .frame(maxWidth: .infinity).padding(.top, 40)
+                    .padding(.top, 40)
+                    .frame(maxWidth: .infinity, minHeight: viewportHeight, alignment: .top)
                 } else if ratingDisplayMode == .list {
                     ForEach(items) { item in
                         ExpandableRatingListRow(

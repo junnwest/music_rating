@@ -808,6 +808,9 @@ struct ProfileView: View {
     // rest of the visible screen even when its own content doesn't fill it.
     @State private var heroHeight: CGFloat = 0
     @State private var tabMinHeight: CGFloat = 0
+    // The ScrollView's own height. The Rated tab's empty states use it as a
+    // floor (see `emptyStateMinHeight`).
+    @State private var viewportHeight: CGFloat = 0
     @State private var showSettings       = false
     @State private var showEditProfile    = false
     @State private var showShareSheet     = false
@@ -949,8 +952,12 @@ struct ProfileView: View {
                         .padding(.bottom, 32)
                 }
             }
-            .onAppear { tabMinHeight = max(0, outerGeo.size.height - heroHeight) }
+            .onAppear {
+                viewportHeight = outerGeo.size.height
+                tabMinHeight = max(0, outerGeo.size.height - heroHeight)
+            }
             .onChange(of: outerGeo.size.height) { _, newValue in
+                viewportHeight = newValue
                 tabMinHeight = max(0, newValue - heroHeight)
             }
             .onChange(of: heroHeight) { _, newValue in
@@ -1215,6 +1222,13 @@ struct ProfileView: View {
         item.score ?? 0
     }
 
+    // An empty Rated tab (or an empty Albums/EPs/Singles filter) is much shorter
+    // than a filled one, so switching to it while scrolled down shrank the page
+    // and the ScrollView snapped the whole profile down. Tall enough to keep
+    // any offset that still shows the tab bar valid: hero + this + the 32pt
+    // bottom padding >= hero + viewport.
+    private var emptyStateMinHeight: CGFloat { max(0, viewportHeight - 32) }
+
     @ViewBuilder
     private var ratedGrid: some View {
         let items = filteredItems
@@ -1231,8 +1245,8 @@ struct ProfileView: View {
                     .font(.jakarta(15))
                     .foregroundStyle(Color.sjMuted)
             }
-            .frame(maxWidth: .infinity)
             .padding(.top, 60)
+            .frame(maxWidth: .infinity, minHeight: emptyStateMinHeight, alignment: .top)
         } else {
             LazyVStack(spacing: 0) {
                 // Type filter tabs + display mode toggle
@@ -1319,8 +1333,8 @@ struct ProfileView: View {
                             .font(.jakarta(14))
                             .foregroundStyle(Color.sjMuted)
                     }
-                    .frame(maxWidth: .infinity)
                     .padding(.top, 40)
+                    .frame(maxWidth: .infinity, minHeight: emptyStateMinHeight, alignment: .top)
                 } else if ratingDisplayMode == .list {
                     ForEach(items) { item in
                         ExpandableRatingListRow(

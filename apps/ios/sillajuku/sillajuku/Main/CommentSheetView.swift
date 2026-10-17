@@ -193,7 +193,7 @@ struct CommentSheetView: View {
                 .padding(.bottom, 2)
             }
             HStack(spacing: 10) {
-                DefaultAvatarView(size: 30)
+                CurrentUserAvatarView(size: 30)
 
                 CommentInputField(text: $newComment, isFocused: $isInputFocused) {
                     Task { await submitInput() }

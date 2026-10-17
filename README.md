@@ -52,6 +52,8 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-10-17 (Windows, later) — bug pass.** iOS: own avatar in the comment compose bar, no profile jump on an empty Rated tab/filter, Taste pager no longer snaps back (scroll-position binding removed), nested Taste lists no longer fight the pager, distinct row covers on the Taste map. Web taste API (deploys from `main`): "Other" no longer swallows K-Pop/J-Pop/Korean R&B (≤9 worlds, small worlds rehome to their runner-up), thumbnails capped per album (`taste:profile:v19`). **To do:** build iOS on the Mac and test the Taste pager swipes (first launch especially) and the map/standings lists by hand. Details in SESSIONS.md.
+
 > **2026-10-17 (Windows) — post notifications for followed accounts (web + iOS).** A bell next to "Following" on a profile subscribes to that account's new album ratings and their comments on album ratings (migrations `20261017000000_activity_subscriptions` + `…000001_…_grouping`, ✅ applied and verified live; back-to-back ratings within 2 minutes group into one "rated n albums" notification; pushed to `main`, so web deploys). **To do:** build the iOS changes on the Mac (`UserProfileView`, `NotificationsView`, `FollowService`, `Localizable.xcstrings`), since this was a Windows session. Details in SESSIONS.md.
 
 > **SESSION CLOSE (2026-10-13, Mac) — profile social links shipped to `main` (migration `20261013000000` applied

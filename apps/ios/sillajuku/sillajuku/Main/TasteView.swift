@@ -951,13 +951,95 @@ private struct PagerScrollViewFinder: UIViewRepresentable {
     }
 }
 
+/// Keeps a vertical list nested inside the Taste pager from fighting the
+/// pager. Drop it in the inner `ScrollView`'s *content* (same placement rule
+/// as `PagerScrollViewFinder`): it finds the inner `UIScrollView` and the
+/// pager's above it, and while a drag is actually scrolling the inner list
+/// it switches the pager's pan off, so reaching the end of a list never
+/// flips the page underneath it (live feedback: "in scrollable elements it
+/// interferes with entire page scroll"). A list that fits never takes the
+/// drag at all -- pair with `.scrollBounceBehavior(.basedOnSize)` -- so the
+/// page still swipes from anywhere on it. Internal: `TasteMapView.swift`
+/// uses it too.
+struct NestedScrollIsolator: UIViewRepresentable {
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isHidden = true
+        view.isUserInteractionEnabled = false
+        let coordinator = context.coordinator
+        DispatchQueue.main.async { coordinator.attach(startingFrom: view) }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        let coordinator = context.coordinator
+        DispatchQueue.main.async { coordinator.attach(startingFrom: uiView) }
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    final class Coordinator: NSObject {
+        private weak var inner: UIScrollView?
+        private weak var outer: UIScrollView?
+
+        func attach(startingFrom view: UIView) {
+            var found: [UIScrollView] = []
+            var current = view.superview
+            while let v = current, found.count < 2 {
+                if let scrollView = v as? UIScrollView { found.append(scrollView) }
+                current = v.superview
+            }
+            guard found.count == 2 else { return }
+            if inner !== found[0] {
+                inner?.panGestureRecognizer.removeTarget(self, action: #selector(innerPanChanged(_:)))
+                found[0].panGestureRecognizer.addTarget(self, action: #selector(innerPanChanged(_:)))
+                inner = found[0]
+            }
+            outer = found[1]
+        }
+
+        func detach() {
+            inner?.panGestureRecognizer.removeTarget(self, action: #selector(innerPanChanged(_:)))
+            outer?.panGestureRecognizer.isEnabled = true
+        }
+
+        @objc private func innerPanChanged(_ pan: UIPanGestureRecognizer) {
+            switch pan.state {
+            case .began:
+                // Only when the list really scrolls; a list that fits leaves
+                // the drag to the pager.
+                guard let inner, inner.contentSize.height > inner.bounds.height + 1 else { return }
+                outer?.panGestureRecognizer.isEnabled = false
+            case .ended, .cancelled, .failed:
+                outer?.panGestureRecognizer.isEnabled = true
+            default:
+                break
+            }
+        }
+    }
+}
+
+extension View {
+    /// The inner scroll area of a Taste page, held a little smaller than the
+    /// space it's given: a margin at the sides and bottom that always swipes
+    /// the page, so a long list never covers the whole screen.
+    func nestedTasteScrollRegion() -> some View {
+        padding(.horizontal, 6)
+            .padding(.bottom, 28)
+    }
+}
+
 /// Vertical, Reels/Shorts-style paging container: one full-screen page per
 /// index, snapping via `LoopGuardedPaging` (standard one-page-per-swipe
-/// paging -- see its own doc comment). A real swipe is tracked read-only via
-/// `.scrollPosition(id:)` (for the dot rail + page-change haptic); a dot
-/// tap/drag jumps via `ScrollViewReader.scrollTo(_:anchor:)` instead -- the
-/// purpose-built API for jumping straight to an arbitrary id, vs. driving
-/// the same `scrollPosition` binding both ways. The last page also gets an
+/// paging -- see its own doc comment). A real swipe is tracked read-only, by
+/// the paging commit and `onScrollPhaseChange` (for the dot rail + page-change
+/// haptic); a dot tap/drag jumps via `ScrollViewReader.scrollTo(_:anchor:)`.
+/// Nothing binds the scroll position to state, so nothing can pull a swipe
+/// back to a stale page. The last page also gets an
 /// explicit "back to top" button (see `body`'s bottom overlay) -- replaces
 /// the wrap-around swipe-past-the-last-page transition this container used
 /// to have, removed 2026-09-23 per user ask.
@@ -1030,31 +1112,26 @@ private struct TastePagerContainer<Content: View>: View {
                             PagerScrollViewFinder()
                         }
                     }
+                    // 2026-10-17: no `.scrollPosition(id:)` binding any more. Its getter
+                    // returned `currentPage`, which only catches up with a swipe after
+                    // the async `onCommit` below -- so any re-render in between (covers
+                    // and reveal animations loading, i.e. constantly on first launch)
+                    // had SwiftUI reconcile the scroll back to the stale page: the
+                    // reported "snaps back". `currentPage` is now read-only with
+                    // respect to the scroll: set by the commit (dots + haptic as the
+                    // page turns) and re-derived from the real offset once scrolling
+                    // goes idle. Moves go through `jump(to:proxy:)` only.
                     .scrollTargetBehavior(LoopGuardedPaging(onCommit: { page in
-                        // 2026-09-23: a real swipe's commit was reading as a hard cut with
-                        // zero visible motion, even though LoopGuardedPaging delegates target
-                        // resolution to the real native PagingScrollTargetBehavior.paging.
-                        // Same root cause `jump(to:proxy:)` above already had fixed for the
-                        // dot-tap path: `.scrollPosition(id:)`'s binding reconciles directly
-                        // off `currentPage`, so writing it in the ambient (unanimated)
-                        // transaction lets SwiftUI's own reconciliation snap to the new
-                        // position instantly, on top of/ahead of whatever native glide the
-                        // resolved target was supposed to produce. `jump` already writes its
-                        // own `currentPage` inside `withAnimation` for exactly this reason --
-                        // this call site never got the same treatment. Short, easeOut duration
-                        // (not jump's 0.4s easeInOut) since a real swipe's remaining distance
-                        // at release is typically small, not a full page -- a long duration
-                        // here risks the "fixed multi-second glide across the entire page"
-                        // feel a much earlier freeze-based attempt already ran into (see
-                        // LoopGuardedPaging's own doc comment).
-                        withAnimation(.easeOut(duration: 0.25)) {
-                            currentPage = page
-                        }
+                        currentPage = page
                     }))
-                    .scrollPosition(id: Binding(
-                        get: { Optional(currentPage) },
-                        set: { if let v = $0 { currentPage = v } }
-                    ))
+                    .onScrollPhaseChange { _, phase, context in
+                        guard phase == .idle else { return }
+                        let height = context.geometry.containerSize.height
+                        guard height > 0, count > 0 else { return }
+                        let y = context.geometry.contentOffset.y + context.geometry.contentInsets.top
+                        let page = min(max(Int((y / height).rounded()), 0), count - 1)
+                        if page != currentPage { currentPage = page }
+                    }
                     .scrollIndicators(.hidden)
                     .scrollBounceBehavior(.basedOnSize, axes: .vertical)
                     .background(Color.sjCream.ignoresSafeArea())
@@ -1117,15 +1194,9 @@ private struct TastePagerContainer<Content: View>: View {
     /// so starting this glide from rest is correct here in a way it stopped
     /// being for a real swipe.
     ///
-    /// `currentPage = target` lives *inside* the `withAnimation` block, not
-    /// before it -- confirmed live as load-bearing back when this also
-    /// handled real swipes: `.scrollPosition(id:)` binds its `get` straight
-    /// to `currentPage`, so writing it in the ambient (unanimated)
-    /// transaction let SwiftUI's own scroll reconciliation snap to the
-    /// destination immediately, before this explicit `scrollTo` had
-    /// anything left to visibly cover. Keeping the write inside still
-    /// matters here for the same reason, even though this path no longer
-    /// carries the swipe traffic that originally surfaced the bug.
+    /// (The `.scrollPosition(id:)` binding whose write ordering this used to
+    /// work around is gone -- see the note at `.scrollTargetBehavior` -- so
+    /// `currentPage` here only drives the dot rail.)
     private func jump(to target: Int, proxy: ScrollViewProxy) {
         withAnimation(.easeInOut(duration: 0.4)) {
             currentPage = target
@@ -1384,9 +1455,11 @@ private struct SceneCanonContent: View {
                 rows
             } else {
                 ScrollView(.vertical) {
-                    rows
+                    rows.background { NestedScrollIsolator() }
                 }
                 .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+                .nestedTasteScrollRegion()
             }
         }
         .frame(maxHeight: .infinity)
@@ -1495,9 +1568,11 @@ private struct StandingsList: View {
                     cardStack
                 } else {
                     ScrollView(.vertical) {
-                        cardStack
+                        cardStack.background { NestedScrollIsolator() }
                     }
                     .scrollIndicators(.hidden)
+                    .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+                    .nestedTasteScrollRegion()
                 }
             }
             .frame(maxHeight: .infinity)

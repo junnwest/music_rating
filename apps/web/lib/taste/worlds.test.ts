@@ -5,6 +5,8 @@ import {
   placeAlbum,
   worldAffinity,
   worldStandings,
+  MAX_ALBUM_TILES,
+  MAX_WORLDS,
   OTHER_WORLD,
   type RatedAlbum,
 } from './worlds';
@@ -63,6 +65,14 @@ describe('placeAlbum', () => {
     expect(p.tiles.map((t) => t.id)).toEqual(['k-rap']);
   });
 
+  it('picks the primary from the first few tags, not a long-tail one', () => {
+    // A Rush of Blood to the Head: post-rock is the most specific tag but sits 8th.
+    const tags = ['alternative rock', 'rock', 'piano rock', 'pop rock', 'art rock', 'post-britpop', 'pop', 'post-rock', 'britpop'];
+    const p = placeAlbum({ genres: tags, title: 'x', artistCountry: 'GB' });
+    expect(p.world).toBe('rock');
+    expect(p.primary).toBe('alternative-rock');
+  });
+
   it('places the same tags from a British act in plain Rock', () => {
     const p = placeAlbum({ genres: ['alternative rock', 'rock'], title: 'x', artistCountry: 'GB' });
     expect(p.world).toBe('rock');
@@ -119,15 +129,131 @@ describe('buildTasteMap', () => {
     expect(b).toEqual(a);
   });
 
-  it('folds small worlds into Other without losing their albums', () => {
+  it('keeps a small world on its own while the map has room', () => {
     const many = [
       ...Array.from({ length: 30 }, (_, i) => rated(`r${i}`, 4, ['rock'], 'GB')),
       rated('j1', 4, ['jazz'], 'US'),
     ];
     const { worlds, albumTiles } = buildTasteMap(many);
-    const other = worlds.find((w) => w.key === OTHER_WORLD)!;
-    expect(other.tiles.map((t) => t.id)).toEqual(['jazz']);
+    expect(worlds.map((w) => w.key)).toEqual(['rock', 'jazz']);
     expect(albumTiles.get('j1')).toEqual(['jazz']);
+  });
+
+  it('never folds K-Pop, J-Pop or Korean R&B behind bigger worlds (2026-10-17 report)', () => {
+    // The shape of a real map: three big unmarked worlds plus six small language
+    // worlds — the old 7-world cap pushed K-R&B / J-Pop / K-Pop into "Other".
+    const albums = [
+      ...Array.from({ length: 15 }, (_, i) => rated(`r${i}`, 4, ['rock'], 'GB')),
+      ...Array.from({ length: 13 }, (_, i) => rated(`p${i}`, 4, ['pop'], 'GB')),
+      ...Array.from({ length: 10 }, (_, i) => rated(`h${i}`, 4, ['hip hop'], 'KR')),
+      ...Array.from({ length: 4 }, (_, i) => rated(`e${i}`, 4, ['house'], 'GB')),
+      ...Array.from({ length: 4 }, (_, i) => rated(`jr${i}`, 4, ['rock'], 'JP')),
+      ...Array.from({ length: 4 }, (_, i) => rated(`kf${i}`, 4, ['korean folk'], 'KR')),
+      ...Array.from({ length: 4 }, (_, i) => rated(`kr${i}`, 4, ['indie rock'], 'KR')),
+      ...Array.from({ length: 3 }, (_, i) => rated(`krb${i}`, 4, ['r&b'], 'KR')),
+      ...Array.from({ length: 2 }, (_, i) => rated(`jp${i}`, 4, ['j-pop'], 'JP')),
+      rated('kp0', 4, ['k-pop'], 'KR'),
+    ];
+    const keys = buildTasteMap(albums).worlds.map((w) => w.key);
+    expect(keys).not.toContain(OTHER_WORLD);
+    expect(keys).toEqual(expect.arrayContaining(['k-r-and-b', 'j-pop', 'k-pop']));
+    expect(keys).toHaveLength(MAX_WORLDS + 1);
+  });
+
+  it('moves an album of a too-small world to a well-supported runner-up world', () => {
+    // [neo soul, r&b, hip hop, conscious hip hop]: R&B by a hair, Hip-Hop close behind.
+    const lauryn = rated('lh', 5, ['neo soul', 'r&b', 'hip hop', 'conscious hip hop'], 'US');
+    expect(lauryn.placement.world).toBe('rnb-soul');
+    expect(lauryn.placement.alternates?.[0]).toMatchObject({ world: 'hip-hop' });
+    const albums = [...Array.from({ length: 30 }, (_, i) => rated(`h${i}`, 4, ['hip hop'], 'US')), lauryn];
+    const { worlds, albumTiles } = buildTasteMap(albums);
+    expect(worlds.map((w) => w.key)).toEqual(['hip-hop']);
+    expect(worlds[0].albumIds).toContain('lh');
+    expect(albumTiles.get('lh')).toContain('conscious-hip-hop');
+  });
+
+  it('does not move an album on weak runner-up evidence', () => {
+    // One r&b co-tag on a rap album is not enough to file it under R&B.
+    const pablo = rated('tlop', 4, ['hip hop', 'pop rap', 'trap', 'contemporary r&b', 'experimental hip hop'], 'US');
+    expect(pablo.placement.alternates?.some((a) => a.world === 'rnb-soul')).toBe(false);
+    const albums = [...Array.from({ length: 30 }, (_, i) => rated(`r${i}`, 4, ['neo soul'], 'US')), pablo];
+    expect(buildTasteMap(albums).worlds.map((w) => w.key)).toEqual(['rnb-soul', 'hip-hop']);
+  });
+
+  it('folds into Other only past MAX_WORLDS, and never a single world', () => {
+    const big: [string, string, string][] = [
+      ['rock', 'rock', 'GB'],
+      ['hip hop', 'hip-hop', 'US'],
+      ['jazz', 'jazz', 'US'],
+      ['k-pop', 'k-pop', 'KR'],
+      ['j-pop', 'j-pop', 'JP'],
+      ['indie rock', 'rock@ko', 'KR'],
+      ['house', 'electronic', 'GB'],
+      ['rock', 'j-rock', 'JP'],
+      ['classical', 'classical', 'DE'],
+    ];
+    expect(big).toHaveLength(MAX_WORLDS);
+    const base = big.flatMap(([tag, , c], i) => [rated(`b${i}a`, 4, [tag], c), rated(`b${i}b`, 4, [tag], c)]);
+    const one = buildTasteMap([...base, rated('m1', 3, ['heavy metal'], 'GB')]);
+    expect(one.worlds.map((w) => w.key)).not.toContain(OTHER_WORLD);
+    expect(one.worlds).toHaveLength(MAX_WORLDS + 1);
+
+    const two = buildTasteMap([...base, rated('m1', 3, ['heavy metal'], 'GB'), rated('g1', 3, ['reggae'], 'JM')]);
+    expect(two.worlds.slice(0, MAX_WORLDS).map((w) => w.key).sort()).toEqual(big.map(([, k]) => k).sort());
+    const other = two.worlds.find((w) => w.key === OTHER_WORLD)!;
+    expect(other.tiles.map((t) => t.id).sort()).toEqual(['metal', 'reggae']);
+    expect(two.albumTiles.get('m1')).toEqual(['metal']);
+  });
+});
+
+describe('buildTasteMap — thumbnails', () => {
+  it('shows an album under its primary and at most one co-tag when others cover the rest', () => {
+    const okc = ['alternative rock', 'rock', 'art rock', 'indie rock', 'britpop', 'grunge'];
+    const albums = [rated('okc', 5, okc, 'GB'), ...okc.map((t, i) => rated(`x${i}`, 4, [t], 'GB'))];
+    const { worlds, albumTiles } = buildTasteMap(albums);
+    expect(albumTiles.get('okc')).toHaveLength(MAX_ALBUM_TILES);
+    expect(albumTiles.get('okc')![0]).toBe(placeAlbum({ genres: okc, artistCountry: 'GB' }).primary);
+    // Every tile still holds a thumbnail, and mass still counts every tag.
+    const rock = worlds.find((w) => w.key === 'rock')!;
+    expect(rock.tiles.every((t) => t.albums > 0)).toBe(true);
+    expect(rock.tiles.find((t) => t.id === 'britpop')!.mass).toBe(1.5);
+  });
+
+  it('spreads co-tags across tiles instead of stacking the same one', () => {
+    const albums = [
+      rated('a', 5, ['rock', 'indie rock', 'britpop'], 'GB'),
+      rated('b', 4.5, ['rock', 'indie rock', 'britpop'], 'GB'),
+    ];
+    const { albumTiles } = buildTasteMap(albums);
+    const [pa, ca] = albumTiles.get('a')!;
+    const [pb, cb] = albumTiles.get('b')!;
+    expect(pa).toBe(pb); // both primaries are the same tile
+    expect(ca).not.toBe(cb); // …but their co-tags differ
+  });
+
+  it('lets a lone album fill at most one extra tile', () => {
+    const brat = ['electropop', 'dance-pop', 'electro house', 'electronic', 'hyperpop', 'electroclash', 'synth-pop'];
+    const { worlds, albumTiles } = buildTasteMap([rated('brat', 4, brat, 'GB')]);
+    const shown = albumTiles.get('brat')!;
+    expect(shown.length).toBeLessThanOrEqual(MAX_ALBUM_TILES + 1);
+    expect(worlds[0].tiles.filter((t) => t.albums > 0)).toHaveLength(shown.length);
+  });
+
+  it('keys a hybrid tile per world so one world never shows another world’s albums', () => {
+    const albums = [
+      rated('rk', 4, ['rock', 'pop rock'], 'GB'),
+      rated('rk2', 4, ['rock'], 'GB'),
+      rated('pp', 4, ['pop', 'pop rock'], 'GB'),
+      rated('pp2', 4, ['pop'], 'GB'),
+    ];
+    const { worlds, albumTiles } = buildTasteMap(albums);
+    const rock = worlds.find((w) => w.key === 'rock')!;
+    const pop = worlds.find((w) => w.key === 'pop')!;
+    expect(rock.tiles.find((t) => t.id === 'pop-rock')!.key).toBe('pop-rock#rock');
+    expect(pop.tiles.find((t) => t.id === 'pop-rock')!.key).toBe('pop-rock#pop');
+    expect(rock.tiles.find((t) => t.id === 'rock')!.key).toBe('rock');
+    expect(albumTiles.get('rk')).toContain('pop-rock#rock');
+    expect(albumTiles.get('pp')).toContain('pop-rock#pop');
   });
 });
 

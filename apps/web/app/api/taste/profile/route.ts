@@ -15,7 +15,9 @@ import {
   worldStandings,
   qualifiedVector,
   worldAffinity,
+  MAX_WORLDS,
   OTHER_WORLD,
+  WORLD_TILE_LIMIT,
   type AlbumPlacement,
 } from '../../../../lib/taste/worlds';
 import { countriesOfLanguage, qualifiedInfo } from '../../../../lib/genres/language';
@@ -36,10 +38,11 @@ export const maxDuration = 15;
 
 const TTL_SECONDS = 60;
 /** Tags per world that become sub-genre bubbles (and get their own rec list). */
-const GRAPH_TAGS = 8;
+const GRAPH_TAGS = WORLD_TILE_LIMIT;
 /** Worlds that get a prestige candidate pool for the graph's side panel — every
- *  world the taste map can emit (MAX_WORLDS), each filtered to its own language. */
-const REC_POOL_WORLDS = 7;
+ *  world the taste map can emit (MAX_WORLDS, plus a lone leftover world shown in
+ *  place of "Other"), each filtered to its own language. */
+const REC_POOL_WORLDS = MAX_WORLDS + 1;
 /** Community-per-world totals are the same for every user — cached globally. */
 const COMMUNITY_CACHE_KEY = 'taste:community-worlds:v4';
 const COMMUNITY_TTL_SECONDS = 600;
@@ -160,7 +163,11 @@ export async function GET(req: NextRequest) {
   // v18: 2026-09-29 — placement by weighted evidence + artist prior
   // (lib/genres/placement.ts, GENRE_AUDIT.md §8): the world is the best-supported
   // family, not the most specific tag; untagged albums are placed by their artist.
-  const cacheKey = `taste:profile:v18:${userId}`;
+  // v19: 2026-10-17 — up to 9 worlds; albums of a world too small to show move
+  // to their runner-up world (same language) instead of "Other"; an album's
+  // thumbnail shows under ≤ 2 tiles (graph.albums[].tags); a hybrid genre that is
+  // a tile in two worlds gets a per-world tag key ("pop-rock#rock").
+  const cacheKey = `taste:profile:v19:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -453,8 +460,12 @@ export async function GET(req: NextRequest) {
   // is a tile, its qualified genres are the sub-genre tiles you zoom into. The
   // similarity matrices ride along for clients that lay out by similarity.
   const r3 = (x: number) => Math.round(x * 1000) / 1000;
+  // A world's sub-genre tiles: its top GRAPH_TAGS by mass that hold at least one
+  // thumbnail (an album shows under ≤ 2–3 tiles, so in a one-album world most of
+  // its genres have none — shipping them would draw empty tiles).
+  const shownTiles = (w: (typeof worlds)[number]) => w.tiles.slice(0, GRAPH_TAGS).filter((t) => t.albums > 0);
   const graphWorlds = worlds.map((w, i) => {
-    const tags = w.tiles.slice(0, GRAPH_TAGS);
+    const tags = shownTiles(w);
     const vecs = tags.map((t) => qualifiedVector(t.id));
     return {
       key: `world:${i}`,
@@ -467,7 +478,9 @@ export async function GET(req: NextRequest) {
       avg: w.avg,
       sim: worlds.map((o) => (w.centroid && o.centroid ? r3(cosine(w.centroid, o.centroid)) : 0)),
       tags: tags.map((t) => ({
-        tag: t.id,
+        // The tile KEY (unique across worlds) — graph.albums[].tags and the
+        // `tag:` recs use the same key.
+        tag: t.key,
         display: t.display.en,
         displayKo: t.display.ko,
         mass: t.mass,
@@ -592,9 +605,9 @@ export async function GET(req: NextRequest) {
       return out;
     };
     recs[`world:${i}`] = take(pool);
-    for (const t of graphWorlds[i].tags) {
-      const forTag = pool.filter((c) => c.placement.all.includes(t.tag));
-      if (forTag.length > 0) recs[`tag:${t.tag}`] = take(forTag);
+    for (const t of shownTiles(world)) {
+      const forTag = pool.filter((c) => c.placement.all.includes(t.id));
+      if (forTag.length > 0) recs[`tag:${t.key}`] = take(forTag);
     }
   });
 

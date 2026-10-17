@@ -207,6 +207,12 @@ export interface WorldChoice extends AlbumLanguage {
   family: string | null;
   /** 0–1: how much of the decision came from the album's own tags. */
   albumStrength: number;
+  /**
+   * Every family with evidence, best first (the winner is ranked[0]). The
+   * runners-up are where the album would go if its own world is not on the map
+   * (lib/taste/worlds.ts rehomes albums of worlds too small to show).
+   */
+  ranked: { family: string; mass: number }[];
 }
 
 /** The album's family (by weighted evidence) and language. */
@@ -259,6 +265,13 @@ export function chooseWorld(input: PlacementInput): WorldChoice {
       best = m;
     }
   }
+  const order = [...mass.keys()];
+  const ranked = [...mass.entries()]
+    .filter(([, m]) => m > 1e-12)
+    .map(([f, m]) => ({ family: f, mass: m }))
+    .sort((a, b) =>
+      a.family === family ? -1 : b.family === family ? 1 : b.mass - a.mass || order.indexOf(a.family) - order.indexOf(b.family),
+    );
 
   // Language: the album's tags; artist-level tags only when the artist's country is
   // unknown (Wikidata lists "samba" for Michael Jackson — a US act must never read
@@ -289,7 +302,7 @@ export function chooseWorld(input: PlacementInput): WorldChoice {
       source = 'artist-releases';
     }
   }
-  return { family, lang, source, albumStrength: strength };
+  return { family, lang, source, albumStrength: strength, ranked };
 }
 
 /** The artist's dominant release language, or null (see ARTIST_LANGUAGE_*). */

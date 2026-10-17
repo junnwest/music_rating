@@ -52,25 +52,30 @@ struct TasteMapView: View {
         return m
     }
 
-    /// A world's hero cover: its highest-scored rated album across any of its tags.
-    private func worldHeroCover(_ world: TasteProfileResponse.TasteGraph.GraphWorld,
-                                 in byTag: [String: [TasteProfileResponse.TasteGraph.GraphAlbum]]) -> String? {
+    /// A world's candidate covers: every rated album under any of its tags, once.
+    private func worldAlbums(_ world: TasteProfileResponse.TasteGraph.GraphWorld,
+                             in byTag: [String: [TasteProfileResponse.TasteGraph.GraphAlbum]]) -> [TasteProfileResponse.TasteGraph.GraphAlbum] {
         var seen = Set<UUID>()
-        var best: (cover: String, score: Double)?
+        var out: [TasteProfileResponse.TasteGraph.GraphAlbum] = []
         for tag in world.tags {
-            for a in byTag[tag.tag] ?? [] {
-                guard !seen.contains(a.id) else { continue }
-                seen.insert(a.id)
-                guard let cover = a.coverUrl else { continue }
-                if best == nil || a.score > best!.score { best = (cover, a.score) }
-            }
+            for a in byTag[tag.tag] ?? [] where seen.insert(a.id).inserted { out.append(a) }
         }
-        return best?.cover
+        return out
     }
 
-    private func tagHeroCover(_ tag: TasteProfileResponse.TasteGraph.GraphWorld.GraphTag,
-                               in byTag: [String: [TasteProfileResponse.TasteGraph.GraphAlbum]]) -> String? {
-        (byTag[tag.tag] ?? []).max(by: { $0.score < $1.score })?.coverUrl
+    /// One cover per row, assigned top row first: each row takes its
+    /// best-scored album that no earlier row is already showing, and only
+    /// repeats one when it has nothing else. An album carries several tags, so
+    /// picking each row's top album on its own put the same cover on most rows
+    /// of a world (live feedback: the same thumbnail "way too many times").
+    private func distinctCovers(_ rows: [[TasteProfileResponse.TasteGraph.GraphAlbum]]) -> [String?] {
+        var used = Set<UUID>()
+        return rows.map { candidates in
+            let ranked = candidates.filter { $0.coverUrl != nil }.sorted { $0.score > $1.score }
+            guard let pick = ranked.first(where: { !used.contains($0.id) }) ?? ranked.first else { return nil }
+            used.insert(pick.id)
+            return pick.coverUrl
+        }
     }
 
     private var worldOrder: [Int] {
@@ -123,8 +128,14 @@ struct TasteMapView: View {
                                                removal: .move(edge: .leading).combined(with: .opacity))
                                 : .asymmetric(insertion: .move(edge: .leading).combined(with: .opacity),
                                                removal: .move(edge: .trailing).combined(with: .opacity)))
+                            .background { NestedScrollIsolator() }
                     }
                     .scrollIndicators(.hidden)
+                    // A list that fits doesn't take the drag (the page swipes
+                    // from it); one that scrolls holds the pager still while
+                    // it does -- see `NestedScrollIsolator`.
+                    .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+                    .nestedTasteScrollRegion()
                 }
             }
             .frame(maxHeight: .infinity)
@@ -148,6 +159,7 @@ struct TasteMapView: View {
         let byTag = albumsByTag
         VStack(spacing: 0) {
             if let openWorld {
+                let covers = distinctCovers(tagOrder.map { byTag[openWorld.tags[$0].tag] ?? [] })
                 ForEach(Array(tagOrder.enumerated()), id: \.element) { i, idx in
                     let tag = openWorld.tags[idx]
                     if i > 0 { Divider() }
@@ -156,7 +168,7 @@ struct TasteMapView: View {
                         meta: "\(Int((tag.share * 100).rounded()))% \(String(localized: "share"))",
                         avg: tag.avg,
                         pct: tag.share,
-                        cover: tagHeroCover(tag, in: byTag),
+                        cover: covers[i],
                         onTap: {
                             Haptics.light()
                             openSheet(world: openWorld, tag: tag)
@@ -164,6 +176,7 @@ struct TasteMapView: View {
                     )
                 }
             } else {
+                let covers = distinctCovers(worldOrder.map { worldAlbums(data.worlds[$0], in: byTag) })
                 ForEach(Array(worldOrder.enumerated()), id: \.element) { i, idx in
                     let w = data.worlds[idx]
                     if i > 0 { Divider() }
@@ -172,7 +185,7 @@ struct TasteMapView: View {
                         meta: "\(Int((w.share * 100).rounded()))% \(String(localized: "share"))",
                         avg: w.avg,
                         pct: w.share,
-                        cover: worldHeroCover(w, in: byTag),
+                        cover: covers[i],
                         onTap: { drillIn(idx) }
                     )
                 }
