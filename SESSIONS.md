@@ -4,6 +4,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-17 (Windows) — Post notifications for people you follow (web + iOS).** A bell next to "Following" on someone's profile turns on notifications for their new album ratings and their comments on album ratings.
+
+- **Migration `20261017000000_activity_subscriptions.sql` (✅ applied via `db-exec`):** new `activity_subscriptions(subscriber_id, target_id)` table. RLS: you read, add and remove only your own rows, and can only subscribe to an account you follow; unfollowing deletes the row (`trg_unsubscribe_on_unfollow`). AFTER INSERT triggers on `ratings` and `rating_comments` write `following_rating` / `following_comment` notifications. The existing push webhook then sends them. They skip: the actor's own deactivated account, blocks in either direction, re-rates (upserts are UPDATEs), rows with no score and no review, and, for comments, ratings the subscriber can't see. The rating owner is skipped too, since they already get the normal `comment`. Each recipient + actor + type pair is throttled to one per 10 minutes. Errors are swallowed, so the fan-out can't block the write that triggered it. `notifications_type_check` = upstream's list (from `20261006000001`) + the two new types.
+- **Song ratings don't notify**, because they stopped being posts in `20261006000001`. A first draft also had a `track_ratings` trigger: it was applied, then removed when this was rebased onto that change (the migration drops it).
+- **Verified live** inside aborted transactions (nothing persisted, no push sent): a rating notifies the subscriber; a second rating within 10 minutes doesn't; a comment notifies; unfollowing removes the subscription. As an `authenticated` user, subscribing to a followed account works and to a non-followed one is denied.
+- **Web:** bell/bell-ring toggle in `ProfileView` (shown only while following), new rows in `components/sj/notifications.tsx` (link to `/post/…`), en/ko strings, and push text in `api/push/send-webhook` (reuses its album-title lookup).
+- **iOS:** `FollowService.isSubscribed` / `setSubscribed`, a bell next to the Follow button in `UserProfileView`, new types in `NotificationsView` (tap → album post), and ko strings in `Localizable.xcstrings`. **Not built** (Windows session): build on the Mac before shipping.
+
+---
+
 **2026-10-13 (Mac) — Profile social links (web + iOS). Migration applied and verified live; pushed to `main`. iOS rides the next build.**
 
 - Users can list up to 5 outside links (YouTube, Instagram, a Twitch/CHZZK/SOOP channel, Spotify, a website...),

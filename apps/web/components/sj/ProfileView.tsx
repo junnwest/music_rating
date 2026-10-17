@@ -17,6 +17,8 @@ import {
   Plus,
   ExternalLink,
   Lock,
+  Bell,
+  BellRing,
   Link2,
 } from 'lucide-react';
 import Modal from './Modal';
@@ -165,6 +167,9 @@ export default function ProfileView({ username }: { username?: string }) {
   // 'requested' = a pending follow request to a private account.
   const [followState, setFollowState] = useState<'none' | 'requested' | 'following'>('none');
   const [isPrivate, setIsPrivate] = useState(false);
+  // Post notifications for this account (activity_subscriptions, migration
+  // 20261017000000) — only offered while following.
+  const [notifyPosts, setNotifyPosts] = useState(false);
   // False when this is someone else's private account and we're not an
   // approved follower: only the header is shown.
   const [canView, setCanView] = useState(true);
@@ -332,6 +337,16 @@ export default function ProfileView({ username }: { username?: string }) {
         .eq('blocker_id', myId)
         .eq('blocked_id', uid);
       setIsBlocked(((blockRows as any[] | null) ?? []).length > 0);
+      if (fs?.is_following) {
+        const { data: subRows } = await supabase
+          .from('activity_subscriptions')
+          .select('target_id')
+          .eq('subscriber_id', myId)
+          .eq('target_id', uid);
+        setNotifyPosts(((subRows as any[] | null) ?? []).length > 0);
+      } else {
+        setNotifyPosts(false);
+      }
     }
 
     if (!visible) {
@@ -536,6 +551,20 @@ export default function ProfileView({ username }: { username?: string }) {
       ]);
     }
     load();
+  }
+
+  async function toggleNotifyPosts() {
+    if (!supabase || !myId || !targetId) return;
+    const next = !notifyPosts;
+    setNotifyPosts(next);
+    const { error } = next
+      ? await supabase.from('activity_subscriptions').insert({ subscriber_id: myId, target_id: targetId })
+      : await supabase
+          .from('activity_subscriptions')
+          .delete()
+          .eq('subscriber_id', myId)
+          .eq('target_id', targetId);
+    if (error) setNotifyPosts(!next);
   }
 
   function onFollowClick() {
@@ -747,7 +776,7 @@ export default function ProfileView({ username }: { username?: string }) {
           </div>
         )}
         {!isSelf && myId && myId !== targetId && (
-          <div className="mt-3">
+          <div className="mt-3 flex items-center gap-2">
             {isBlocked ? (
               <button
                 onClick={toggleBlock}
@@ -771,6 +800,19 @@ export default function ProfileView({ username }: { username?: string }) {
                     : isPrivate
                       ? t('sj.common.requestBtn')
                       : t('sj.common.followBtn')}
+              </button>
+            )}
+            {!isBlocked && followState === 'following' && (
+              <button
+                onClick={toggleNotifyPosts}
+                aria-pressed={notifyPosts}
+                aria-label={notifyPosts ? t('sj.profile.notifyPostsOff') : t('sj.profile.notifyPostsOn')}
+                title={notifyPosts ? t('sj.profile.notifyPostsOff') : t('sj.profile.notifyPostsOn')}
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition ${
+                  notifyPosts ? 'bg-accent text-white hover:opacity-90' : 'bg-divider/50 text-ink'
+                }`}
+              >
+                {notifyPosts ? <BellRing size={16} /> : <Bell size={16} />}
               </button>
             )}
           </div>

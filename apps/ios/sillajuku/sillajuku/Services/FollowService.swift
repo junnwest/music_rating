@@ -107,6 +107,47 @@ enum FollowService {
         NotificationCenter.default.post(name: .followChanged, object: nil)
     }
 
+    // MARK: Post notifications (activity_subscriptions, migration 20261017000000)
+
+    private struct SubscriptionRow: Codable {
+        let subscriberId: UUID; let targetId: UUID
+        enum CodingKeys: String, CodingKey {
+            case subscriberId = "subscriber_id"; case targetId = "target_id"
+        }
+    }
+
+    /// Whether the current user gets notified when `target` posts a rating or comment.
+    static func isSubscribed(to target: UUID) async -> Bool {
+        guard let me = supabase.auth.currentUser?.id else { return false }
+        let rows: [SubscriptionRow] = (try? await supabase.from("activity_subscriptions")
+            .select("subscriber_id, target_id")
+            .eq("subscriber_id", value: me).eq("target_id", value: target)
+            .execute().value) ?? []
+        return !rows.isEmpty
+    }
+
+    /// Turns post notifications for an account on or off. Only works while
+    /// following it (RLS); unfollowing removes it server-side. Returns the
+    /// resulting state.
+    static func setSubscribed(_ on: Bool, to target: UUID) async -> Bool {
+        guard let me = supabase.auth.currentUser?.id else { return false }
+        do {
+            if on {
+                try await supabase.from("activity_subscriptions")
+                    .insert(SubscriptionRow(subscriberId: me, targetId: target))
+                    .execute()
+            } else {
+                try await supabase.from("activity_subscriptions").delete()
+                    .eq("subscriber_id", value: me).eq("target_id", value: target)
+                    .execute()
+            }
+            return on
+        } catch {
+            print("FollowService.setSubscribed(\(on), to: \(target)) failed: \(error)")
+            return !on
+        }
+    }
+
     /// Accounts the current user has asked to follow and is still waiting on.
     static func outgoingRequestIds() async -> Set<UUID> {
         guard let me = supabase.auth.currentUser?.id else { return [] }

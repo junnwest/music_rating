@@ -62,6 +62,11 @@ export async function POST(req: NextRequest) {
     follow: `${actorName} started following you`,
     follow_request: `${actorName} requested to follow you`,
     follow_accept: `${actorName} accepted your follow request`,
+    // Post notifications from accounts you follow (migration 20261017000000).
+    following_rating: releaseTitle ? `${actorName} rated ${releaseTitle}` : `${actorName} rated an album`,
+    following_comment: releaseTitle
+      ? `${actorName} commented on a rating of ${releaseTitle}`
+      : `${actorName} left a comment`,
   };
   const body_ = messages[notification.type] ?? `${actorName} interacted with your activity`;
 

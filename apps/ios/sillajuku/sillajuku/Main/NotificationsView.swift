@@ -87,7 +87,8 @@ struct AppNotification: Codable, Identifiable {
     // (AlbumDetailView only shows aggregate community stats, never individual posts). These
     // route to a real single-post screen instead.
     var albumPostDestination: AlbumPostDestination? {
-        guard (type == "like" || type == "comment"), let ratingId else { return nil }
+        guard ["like", "comment", "following_rating", "following_comment"].contains(type),
+              let ratingId else { return nil }
         return AlbumPostDestination(ratingId: ratingId)
     }
 
@@ -136,6 +137,16 @@ struct AppNotification: Codable, Identifiable {
             return String(format: String(localized: "%@ liked your shared mix"), who)
         case "mix_share_comment":
             return String(format: String(localized: "%@ commented on your shared mix"), who)
+        case "following_rating":
+            if let title = rating?.releaseGroups?.displayTitle {
+                return String(format: String(localized: "%@ rated %@"), who, title)
+            }
+            return String(format: String(localized: "%@ rated an album"), who)
+        case "following_comment":
+            if let title = rating?.releaseGroups?.displayTitle {
+                return String(format: String(localized: "%@ commented on a rating of %@"), who, title)
+            }
+            return String(format: String(localized: "%@ left a comment"), who)
         default:
             return String(format: String(localized: "%@ interacted with your content"), who)
         }
@@ -144,7 +155,9 @@ struct AppNotification: Codable, Identifiable {
     var iconName: String {
         switch type {
         case "like", "mix_like", "mix_share_like":   return "icon-heart-filled"
-        case "comment", "mix_share_comment":         return "icon-message-square"
+        case "comment", "mix_share_comment",
+             "following_comment":                    return "icon-message-square"
+        case "following_rating":                     return "icon-star"
         case "follow", "follow_request":             return "icon-user-plus"
         case "follow_accept":                        return "icon-check"
         default:                                     return "icon-bell"
@@ -154,7 +167,8 @@ struct AppNotification: Codable, Identifiable {
     var iconColor: Color {
         switch type {
         case "like", "mix_like", "mix_share_like":           return .red
-        case "comment", "mix_share_comment":                 return Color.sjAmber
+        case "comment", "mix_share_comment",
+             "following_comment", "following_rating":        return Color.sjAmber
         case "follow", "follow_request", "follow_accept":    return Color.sjAmber
         default:                                             return Color.sjMuted
         }

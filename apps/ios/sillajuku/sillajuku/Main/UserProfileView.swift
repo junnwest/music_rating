@@ -98,6 +98,8 @@ final class UserProfileViewModel {
     private(set) var isBlocked   = false
     var isTogglingFollow = false
     var isTogglingBlock  = false
+    /// Post notifications for this account -- only offered while following.
+    private(set) var notifyPosts = false
 
     // Posts-mode (Rated tab, list/posts toggle) needs like/comment state for
     // catalogAlbums specifically -- mirrors ProfileViewModel's own load().
@@ -136,6 +138,11 @@ final class UserProfileViewModel {
         isDeactivated  = (status?.isDeactivated ?? false) && userId != currentUserId
         if isDeactivated { isLoading = false; return }
         isBlocked      = blocked
+        if followState == .following {
+            notifyPosts = await FollowService.isSubscribed(to: userId)
+        } else {
+            notifyPosts = false
+        }
 
         // Each RPC re-checks visibility itself (returns empty if disallowed)
         // -- gating on `access` here too is just avoiding pointless network
@@ -337,6 +344,12 @@ final class UserProfileViewModel {
         await load()
     }
 
+    func toggleNotifyPosts() async {
+        let next = !notifyPosts
+        notifyPosts = next
+        notifyPosts = await FollowService.setSubscribed(next, to: userId)
+    }
+
     func toggleLike(ratingId: UUID) async {
         guard let userId = currentUserId else { return }
         let wasLiked = likedRatingIds.contains(ratingId)
@@ -533,7 +546,12 @@ struct UserProfileView: View {
                 if vm.isBlocked {
                     unblockButton
                 } else {
-                    followButton
+                    HStack(spacing: 8) {
+                        followButton
+                        if vm.followState == .following {
+                            notifyPostsButton
+                        }
+                    }
                 }
             }
         }
@@ -616,6 +634,28 @@ struct UserProfileView: View {
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.15), value: vm.followState)
         .sensoryFeedback(.impact(weight: .light), trigger: vm.followState)
+    }
+
+    /// Bell next to "Following": notify me when they rate or comment.
+    private var notifyPostsButton: some View {
+        Button {
+            Task { await vm.toggleNotifyPosts() }
+        } label: {
+            Image("icon-bell")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 16, height: 16)
+                .foregroundStyle(vm.notifyPosts ? .white : Color.sjInk)
+                .frame(width: 36, height: 36)
+                .background(vm.notifyPosts ? Color.sjAmber : Color.sjBorder.opacity(0.4))
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(vm.notifyPosts
+            ? String(localized: "Turn off post notifications")
+            : String(localized: "Turn on post notifications"))
+        .animation(.easeInOut(duration: 0.15), value: vm.notifyPosts)
+        .sensoryFeedback(.impact(weight: .light), trigger: vm.notifyPosts)
     }
 
     private var followButtonLabel: LocalizedStringKey {

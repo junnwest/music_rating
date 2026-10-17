@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Bell, Heart, MessageSquare, UserCheck, UserPlus } from 'lucide-react';
+import { Bell, Heart, MessageSquare, Star, UserCheck, UserPlus } from 'lucide-react';
 import Avatar from './Avatar';
 import { displayName, relativeTime } from '../../lib/sj/display';
 import { supabase } from '../../lib/supabaseClient';
@@ -69,6 +69,14 @@ export function notificationBody(
       return t('sj.notifications.mixShareLiked').replace('{who}', who);
     case 'mix_share_comment':
       return t('sj.notifications.mixShareCommented').replace('{who}', who);
+    case 'following_rating':
+      return title
+        ? t('sj.notifications.followingRatedOf').replace('{who}', who).replace('{title}', title)
+        : t('sj.notifications.followingRated').replace('{who}', who);
+    case 'following_comment':
+      return title
+        ? t('sj.notifications.followingCommentedOn').replace('{who}', who).replace('{title}', title)
+        : t('sj.notifications.followingCommented').replace('{who}', who);
     default:
       return t('sj.notifications.interacted').replace('{who}', who);
   }
@@ -79,7 +87,10 @@ export function notificationBody(
 // shows aggregate community stats, never individual posts). These route to the dedicated
 // /post page instead -- web sibling of iOS's albumPostDestination.
 export function notificationHref(n: NotificationEntry): string | null {
-  if ((n.type === 'like' || n.type === 'comment') && n.rating_id) {
+  if (
+    (n.type === 'like' || n.type === 'comment' || n.type === 'following_rating' || n.type === 'following_comment') &&
+    n.rating_id
+  ) {
     return `/post/${n.rating_id}`;
   }
   if ((n.type === 'follow' || n.type === 'follow_request' || n.type === 'follow_accept') && n.actor?.username) {
@@ -102,7 +113,10 @@ function typeBadgeStyle(type: string): { icon: typeof Heart; className: string }
       return { icon: Heart, className: 'bg-red-500 text-white' };
     case 'comment':
     case 'mix_share_comment':
+    case 'following_comment':
       return { icon: MessageSquare, className: 'bg-accent text-white' };
+    case 'following_rating':
+      return { icon: Star, className: 'bg-accent text-white' };
     case 'follow':
     case 'follow_request':
       return { icon: UserPlus, className: 'bg-accent text-white' };

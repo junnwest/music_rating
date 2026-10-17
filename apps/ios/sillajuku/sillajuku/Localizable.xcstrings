@@ -207,6 +207,62 @@
     "%@ commented on your shared mix" : {
 
     },
+    "%@ commented on a rating of %@" : {
+      "comment" : "Post notification: someone you follow commented on a rating. First argument is their handle, second the album title.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ commented on a rating of %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@님이 %2$@ 평가에 댓글을 남겼습니다"
+          }
+        }
+      }
+    },
+    "%@ left a comment" : {
+      "comment" : "Post notification: someone you follow commented on a rating.",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@님이 댓글을 남겼습니다"
+          }
+        }
+      }
+    },
+    "%@ rated %@" : {
+      "comment" : "Post notification: someone you follow rated an album. First argument is their handle, second the album title.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ rated %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@님이 %2$@을(를) 평가했습니다"
+          }
+        }
+      }
+    },
+    "%@ rated an album" : {
+      "comment" : "Post notification: someone you follow rated an album.",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@님이 앨범을 평가했습니다"
+          }
+        }
+      }
+    },
     "%@ interacted with your content" : {
       "localizations" : {
         "ko" : {
@@ -6107,6 +6163,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "알림을 켜주세요."
+          }
+        }
+      }
+    },
+    "Turn off post notifications" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "게시물 알림 끄기"
+          }
+        }
+      }
+    },
+    "Turn on post notifications" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "게시물 알림 켜기"
           }
         }
       }
