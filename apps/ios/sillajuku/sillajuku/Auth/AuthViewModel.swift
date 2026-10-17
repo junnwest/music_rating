@@ -87,9 +87,34 @@ class AuthViewModel {
                 queryParams: accountChooserParams(for: provider)
             )
         } catch {
+            // Closing the provider's web sheet throws canceledLogin. App Review
+            // rejected build 27 (Guideline 2.1(a), 2026-10-15, iPad Air 11" M3)
+            // after cancelling the Spotify sheet 3× and getting a "Sign-in
+            // failed … WebAuthenticationSession error 1" alert each time — a
+            // user backing out isn't a failure, same as the Apple path's
+            // .canceled check above.
+            if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin { return }
             SentrySDK.capture(error: error)
-            errorMessage = error.localizedDescription
+            errorMessage = unverifiedProviderEmailMessage(error) ?? error.localizedDescription
         }
+    }
+
+    // Spotify never asserts email_verified, so a new Spotify account starts
+    // unconfirmed and GoTrue redirects back with provider_email_needs_verification
+    // in two shapes: "…A confirmation email has been sent…" on the first attempt
+    // (expected — the link lands on /auth/confirmed), and "…Verify the email with
+    // spotify…" on later attempts before it's clicked. GoTrue's wording tells the
+    // user to verify with Spotify, which changes nothing; the fix is our own link.
+    // The PKCE redirect error's errorCode is always .unknown, so match the raw
+    // code it carries, with the message as a fallback.
+    private func unverifiedProviderEmailMessage(_ error: Error) -> String? {
+        guard case let .pkceGrantCodeExchange(message, _, code) = error as? AuthError,
+              code == ErrorCode.providerEmailNeedsVerification.rawValue
+                || message.localizedCaseInsensitiveContains("Unverified email") else { return nil }
+        if message.localizedCaseInsensitiveContains("confirmation email has been sent") {
+            return String(localized: "We sent a confirmation link to the email on your Spotify account. Open it, then tap Continue with Spotify again.")
+        }
+        return String(localized: "Your account isn't confirmed yet. Open the confirmation link we sent to the email on your Spotify account, then try again. Can't find it? Contact support.")
     }
 
     // Without this, both providers silently reuse whichever account already has a

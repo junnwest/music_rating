@@ -19,6 +19,28 @@
         }
       }
     },
+    "We sent a confirmation link to the email on your Spotify account. Open it, then tap Continue with Spotify again." : {
+      "comment" : "Error shown on a first Spotify sign-in, when Supabase has emailed a confirmation link.",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spotify 계정의 이메일로 확인 링크를 보냈어요. 링크를 연 뒤 Spotify로 계속하기를 다시 눌러 주세요."
+          }
+        }
+      }
+    },
+    "Your account isn't confirmed yet. Open the confirmation link we sent to the email on your Spotify account, then try again. Can't find it? Contact support." : {
+      "comment" : "Error shown on a repeat Spotify sign-in before the emailed confirmation link was opened.",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 계정이 확인되지 않았어요. Spotify 계정의 이메일로 보낸 확인 링크를 연 뒤 다시 시도해 주세요. 링크를 찾을 수 없다면 고객 지원에 문의해 주세요."
+          }
+        }
+      }
+    },
     "–" : {
 
     },

@@ -56,6 +56,19 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 > **2026-10-17 (Windows) — post notifications for followed accounts (web + iOS).** A bell next to "Following" on a profile subscribes to that account's new album ratings and their comments on album ratings (migrations `20261017000000_activity_subscriptions` + `…000001_…_grouping`, ✅ applied and verified live; back-to-back ratings within 2 minutes group into one "rated n albums" notification; pushed to `main`, so web deploys). **To do:** build the iOS changes on the Mac (`UserProfileView`, `NotificationsView`, `FollowService`, `Localizable.xcstrings`), since this was a Windows session. Details in SESSIONS.md.
 
+> **⚑ APP REVIEW REJECTED BUILD 27 (2026-10-15, iPad Air 11" M3) — 2.1 demo account + 2.1(a) Spotify error.**
+> Sentry shows the reviewer opening the Spotify sheet 3× and cancelling; no account got created. The demo
+> credentials (`junn223@gmail.com`) are Jun's personal Spotify/Google login, which has no email/password identity,
+> and the app has no email form. So the reviewer could only use them on Spotify's own login page, where a new
+> device most likely asks for an emailed code. Each cancel then showed a "Sign-in failed" alert.
+> 1. ✅ Cancelling the Spotify/Google sheet no longer shows an error (`AuthViewModel.signIn`). Shipped in build 29.
+> 2. ✅ **App Review notes:** kept Jun's Apple ID in Sign-In Information (Jun's call; it worked through the July
+>    approval). The note now points to More options → Continue with Apple and gives the current Apple onboarding
+>    (username → notifications → Apple Music). **Change that Apple ID's password** after approval.
+> 3. ✅ **Spotify signup tested live** with a fresh account (10-17). Apple sign-in also verified live.
+> 4. **Build 30 (not uploaded):** clear Spotify messages for an unconfirmed email. Mostly moot now: **email confirmation is OFF and the Email provider is disabled (2026-10-17)**. **Verify:** while signed out, Continue with Spotify (`junn223@gmail.com`) should land in Jun's main account with its ratings, showing that GoTrue attaches Spotify by email. If it doesn't, reconnect Spotify from Settings → Connected Accounts while signed in with Google. ✅ Main account restored (Google, with Spotify reconnected); test accounts deleted. ✅ Sign in with Apple verified live 10-17 → App Review route works.
+> 5. ✅ **Build 29 resubmitted to App Review** (by 2026-10-17); waiting for review. Build 30 (Spotify messages) rides the next update.
+
 > **SESSION CLOSE (2026-10-13, Mac) — profile social links shipped to `main` (migration `20261013000000` applied
 > and verified live). Web deploys from `main`; iOS needs a build.** Earlier: everything through 10-06 (Mac, later)
 > is on `main` (`147650d` → `f39bc5f`) with all migrations applied.
