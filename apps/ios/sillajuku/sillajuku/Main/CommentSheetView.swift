@@ -102,6 +102,11 @@ struct CommentSheetView: View {
             .navigationDestination(for: UserProfileDestination.self) { dest in
                 UserProfileView(userId: dest.userId, initialHandle: dest.handle)
             }
+            // A profile opened from this sheet lives in THIS stack, so its album/artist
+            // links (ProfilePostCard's NavigationLink(value: Release)) need their
+            // destinations here too -- without them a tap on a rating did nothing.
+            .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
+            .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
         }
         .task { await loadComments() }
         // While typing, a swipe down closes the keyboard (above) instead of the
