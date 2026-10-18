@@ -39,6 +39,17 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-17 (Mac, later) — Spotify sign-in turned off on iOS + web (Spotify Development Mode).**
+
+- **Why:** a brand-new Spotify account got "Error getting user profile from external provider" (iOS and `sillajuku.com/login`). Spotify's [Quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes) page: Development Mode serves **up to 5 allowlisted users** with a Premium owner. Extended quota is only for organizations: a registered business with a launched service and **≥250k MAU**. Not reachable before launch.
+- **Impact check:** 28 accounts, only Jun's has Spotify (it also has Google), so nobody is locked out.
+- **iOS** (`Config.spotifyEnabled = false`): the sign-in screen shows Continue with Apple + Continue with Google up front (no Spotify, no "More options"). Connected Accounts hides the Spotify row unless it's already linked. The Add tab's "Connect Spotify" nudge and the onboarding Spotify row are hidden. Spotify data sections still show for accounts that have data. Release build compiles. Rides **build 30**.
+- **Web** (`lib/spotifyAuth.ts` `SPOTIFY_ENABLED = false`): same change on `/login` and the invite flow (`InviteSwipeFlow`). ESLint clean; `tsc` clean except a pre-existing `playwright` import in `scripts/render-ig-poster.ts`.
+- **Not touched:** the catalog pipeline (it uses Spotify with the app's own credentials, not user logins), the server-side Spotify routes, and the legal/help copy that mentions Spotify.
+- **App Review:** build 29 (in review) still shows Spotify as the main button. Plan: pull 29, upload build 30, resubmit.
+
+---
+
 **2026-10-15 (Mac) — App Review rejected build 27 (iPad Air 11" M3, iPadOS 27.0.1): 2.1 "couldn't sign in with demo account" + 2.1(a) "error when logging in with Spotify".**
 
 - **Sentry (apple-ios), device `iPad15,3`, 11:41–11:45 UTC:** 3× `WebAuthenticationSession Code=1` (= `canceledLogin`). The breadcrumbs show the Spotify sheet opened, typing in it, then the sheet closed. A WatchdogTermination followed at 11:48. No new accounts were created today.

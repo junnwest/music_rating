@@ -1635,7 +1635,7 @@ struct SearchView: View {
                         // checks (see their own comment), not data-presence proxies, so a
                         // linked-but-no-data-yet account doesn't get a wrong "Connect" nudge.
                         VStack(spacing: 10) {
-                            if discoveryVM.isSpotifyLinked == false {
+                            if Config.spotifyEnabled && discoveryVM.isSpotifyLinked == false {
                                 Button { onGoToSettings() } label: {
                                     NudgeRow(icon: "icon-link", title: "Connect Spotify")
                                 }
@@ -1649,7 +1649,7 @@ struct SearchView: View {
                             }
                         }
                         .padding(.horizontal, 16)
-                        .padding(.bottom, discoveryVM.isSpotifyLinked == false || discoveryVM.isAppleMusicAuthorized == false ? 16 : 0)
+                        .padding(.bottom, (Config.spotifyEnabled && discoveryVM.isSpotifyLinked == false) || discoveryVM.isAppleMusicAuthorized == false ? 16 : 0)
 
                         // ── Refresh ──
                         // Same refresh as pull-to-refresh, for someone who has scrolled to the

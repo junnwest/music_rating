@@ -58,6 +58,11 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 > **2026-10-17 (Windows) — post notifications for followed accounts (web + iOS).** A bell next to "Following" on a profile subscribes to that account's new album ratings and their comments on album ratings (migrations `20261017000000_activity_subscriptions` + `…000001_…_grouping`, ✅ applied and verified live; back-to-back ratings within 2 minutes group into one "rated n albums" notification; pushed to `main`, so web deploys). **To do:** build the iOS changes on the Mac (`UserProfileView`, `NotificationsView`, `FollowService`, `Localizable.xcstrings`), since this was a Windows session. Details in SESSIONS.md.
 
+> **⚑ SPOTIFY SIGN-IN OFF (2026-10-17, iOS + web).** Spotify Development Mode only serves 5 allowlisted users, so new
+> Spotify sign-ins fail. Extended quota needs a registered business and ≥250k MAU. Apple + Google are now the up-front
+> buttons (`Config.spotifyEnabled` / `lib/spotifyAuth.ts`). **Next:** pull build 29 from review → upload **build 30** →
+> resubmit. Simplify the review note to "tap Continue with Apple" (no More options anymore). Flip the switches back once extended quota is granted.
+
 > **⚑ APP REVIEW REJECTED BUILD 27 (2026-10-15, iPad Air 11" M3) — 2.1 demo account + 2.1(a) Spotify error.**
 > Sentry shows the reviewer opening the Spotify sheet 3× and cancelling; no account got created. The demo
 > credentials (`junn223@gmail.com`) are Jun's personal Spotify/Google login, which has no email/password identity,

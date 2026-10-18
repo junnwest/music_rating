@@ -16,4 +16,12 @@ enum Config {
     // business portfolio verification applies), iOS platform, bundle ID
     // com.sillajuku.app.
     static let instagramFacebookAppID: String? = "2171948313662107"
+    // Off since 2026-10-17: Spotify's Web API is in Development Mode, which only
+    // serves 5 allowlisted users (extended quota needs a registered business and
+    // 250k MAU), so any other Spotify sign-in fails with "Error getting user
+    // profile from external provider". Hides every place a user is offered
+    // Spotify (sign-in, Connected Accounts, Add-tab nudge, onboarding).
+    // Already-linked accounts keep their Spotify row and data. Flip back on once
+    // extended quota is granted.
+    static let spotifyEnabled = false
 }

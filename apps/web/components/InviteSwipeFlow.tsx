@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { SPOTIFY_ENABLED } from '../lib/spotifyAuth';
 import { getInviteTokenPreview, getFoundingCohortSummary, type InviteTokenPreview } from '../lib/sj/founding';
 
 type Provider = 'spotify' | 'apple' | 'google';
@@ -212,23 +213,27 @@ export default function InviteSwipeFlow({ token }: { token: string }) {
             )}
 
             <div className="w-full flex flex-col gap-3">
-              <button
-                onClick={() => signIn('spotify')}
-                disabled={loading !== null}
-                className="flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-spotify text-white text-[15px] font-semibold hover:opacity-90 disabled:opacity-60 transition"
-              >
-                <SpotifyIcon />
-                {loading === 'spotify' ? '연결하는 중…' : 'Spotify로 계속하기'}
-              </button>
+              {SPOTIFY_ENABLED && (
+                <>
+                  <button
+                    onClick={() => signIn('spotify')}
+                    disabled={loading !== null}
+                    className="flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-spotify text-white text-[15px] font-semibold hover:opacity-90 disabled:opacity-60 transition"
+                  >
+                    <SpotifyIcon />
+                    {loading === 'spotify' ? '연결하는 중…' : 'Spotify로 계속하기'}
+                  </button>
 
-              <button
-                onClick={() => setMore((m) => !m)}
-                className="text-[13px] text-muted hover:text-ink transition"
-              >
-                더 보기
-              </button>
+                  <button
+                    onClick={() => setMore((m) => !m)}
+                    className="text-[13px] text-muted hover:text-ink transition"
+                  >
+                    더 보기
+                  </button>
+                </>
+              )}
 
-              {more && (
+              {(more || !SPOTIFY_ENABLED) && (
                 <>
                   <button
                     onClick={() => signIn('apple')}

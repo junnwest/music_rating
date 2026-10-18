@@ -84,28 +84,32 @@ struct AuthView: View {
 
                 // Auth buttons
                 VStack(spacing: 12) {
-                    SpotifyAuthButton(isLoading: viewModel.isLoading) {
-                        Task { await viewModel.signInWithSpotify() }
+                    if Config.spotifyEnabled {
+                        SpotifyAuthButton(isLoading: viewModel.isLoading) {
+                            Task { await viewModel.signInWithSpotify() }
+                        }
+
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showMoreOptions.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("More options")
+                                    .font(.jakarta(14))
+                                    .foregroundStyle(Color.sjMuted)
+                                Image(showMoreOptions ? "icon-chevron-up" : "icon-chevron-down")
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 11, height: 11)
+                                    .foregroundStyle(Color.sjMuted)
+                            }
+                        }
                     }
 
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showMoreOptions.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text("More options")
-                                .font(.jakarta(14))
-                                .foregroundStyle(Color.sjMuted)
-                            Image(showMoreOptions ? "icon-chevron-up" : "icon-chevron-down")
-                                .renderingMode(.template)
-                                .resizable().scaledToFit()
-                                .frame(width: 11, height: 11)
-                                .foregroundStyle(Color.sjMuted)
-                        }
-                    }
-
-                    if showMoreOptions {
+                    // Spotify off (see Config.spotifyEnabled): Apple + Google are
+                    // the only options, shown up front with no disclosure.
+                    if showMoreOptions || !Config.spotifyEnabled {
                         AppleAuthButton(isLoading: viewModel.isLoading) {
                             Task { await viewModel.signInWithApple() }
                         }

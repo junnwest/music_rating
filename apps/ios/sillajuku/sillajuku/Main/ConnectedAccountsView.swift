@@ -26,7 +26,11 @@ struct ConnectedAccountsView: View {
         List {
             Section {
                 ForEach(Self.socialProviders, id: \.provider) { entry in
-                    providerRow(entry)
+                    // With Spotify off, keep the row only for an account that already
+                    // has it linked, so it can still be unlinked.
+                    if entry.provider != .spotify || Config.spotifyEnabled || vm.isLinked(.spotify) {
+                        providerRow(entry)
+                    }
                 }
             } header: {
                 Text("Social accounts")

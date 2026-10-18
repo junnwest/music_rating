@@ -48,7 +48,7 @@ struct StepAppleMusic: View {
                     action: { Task { await requestAppleMusic() } }
                 )
 
-                if !spotifyLinked {
+                if Config.spotifyEnabled && !spotifyLinked {
                     connectionRow(
                         // Spotify's mark is a full-color asset everywhere else
                         // in this app (AuthView, ConnectedAccountsView) — no

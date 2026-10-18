@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
+import { SPOTIFY_ENABLED } from '../../../lib/spotifyAuth';
 
 type Provider = 'spotify' | 'apple' | 'google';
 
@@ -94,24 +95,28 @@ export default function LoginPage() {
         )}
 
         <div className="w-full flex flex-col gap-3">
-          <button
-            onClick={() => signIn('spotify')}
-            disabled={loading !== null}
-            className="flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-spotify text-white text-[15px] font-semibold hover:opacity-90 disabled:opacity-60 transition"
-          >
-            <SpotifyIcon />
-            {loading === 'spotify' ? t('sj.auth.connecting') : t('sj.auth.spotify')}
-          </button>
+          {SPOTIFY_ENABLED && (
+            <>
+              <button
+                onClick={() => signIn('spotify')}
+                disabled={loading !== null}
+                className="flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-spotify text-white text-[15px] font-semibold hover:opacity-90 disabled:opacity-60 transition"
+              >
+                <SpotifyIcon />
+                {loading === 'spotify' ? t('sj.auth.connecting') : t('sj.auth.spotify')}
+              </button>
 
-          <button
-            onClick={() => setMore((m) => !m)}
-            className="flex items-center justify-center gap-1.5 py-1 text-[13px] text-muted hover:text-ink transition"
-          >
-            {t('sj.auth.moreOptions')}
-            {more ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-          </button>
+              <button
+                onClick={() => setMore((m) => !m)}
+                className="flex items-center justify-center gap-1.5 py-1 text-[13px] text-muted hover:text-ink transition"
+              >
+                {t('sj.auth.moreOptions')}
+                {more ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
+            </>
+          )}
 
-          {more && (
+          {(more || !SPOTIFY_ENABLED) && (
             <>
               <button
                 onClick={() => signIn('apple')}
