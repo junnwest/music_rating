@@ -58,6 +58,17 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 > **2026-10-17 (Windows) — post notifications for followed accounts (web + iOS).** A bell next to "Following" on a profile subscribes to that account's new album ratings and their comments on album ratings (migrations `20261017000000_activity_subscriptions` + `…000001_…_grouping`, ✅ applied and verified live; back-to-back ratings within 2 minutes group into one "rated n albums" notification; pushed to `main`, so web deploys). **To do:** build the iOS changes on the Mac (`UserProfileView`, `NotificationsView`, `FollowService`, `Localizable.xcstrings`), since this was a Windows session. Details in SESSIONS.md.
 
+> **SESSION CLOSE (2026-10-20, Mac) — App Review rejection handled, Spotify sign-in turned off, all pushed (`6c97b20`).**
+> **Next session:**
+> 1. **App Store:** install build 30 on the iPhone and check the sign-in screen (Apple + Google only), the Add tab (merge
+>    conflict area) and the taste map (Windows' For You). Then pull build 29 from review → upload 30 → set the review note
+>    to "tap Continue with Apple" → resubmit. Change Jun's Apple ID password after approval.
+> 2. **Pipeline is down since ~10-13** (PIPELINE_CHECKS 10-20). Restart it on Windows, then run `pipeline:status` + `pipeline:verify`.
+> 3. **Check sillajuku.com/login** shows only Apple + Google after the Vercel deploy.
+> 4. Later: a Spotify extended-quota application once there's a registered business and real MAU. Then flip
+>    `Config.spotifyEnabled` / `SPOTIFY_ENABLED`. Optional: look up the build 29 tester (iPhone18,3) who hit the Spotify
+>    confirmation error on 10-16. Small iOS gap: a session for a deleted account shows "Forbidden" instead of signing out.
+
 > **⚑ SPOTIFY SIGN-IN OFF (2026-10-17, iOS + web).** Spotify Development Mode only serves 5 allowlisted users, so new
 > Spotify sign-ins fail. Extended quota needs a registered business and ≥250k MAU. Apple + Google are now the up-front
 > buttons (`Config.spotifyEnabled` / `lib/spotifyAuth.ts`). **Next:** pull build 29 from review → upload **build 30** →

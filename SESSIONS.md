@@ -39,6 +39,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-20 (Mac) — session close.** The rejection work (10-15→10-17) and the Spotify switch-off are pushed (`9208b91`, `6c97b20`). The second push was rebased onto Windows' `45cdb0e`/`b0e259b`: `SearchView.swift` conflicted, so I took Windows' version and re-applied the two-line nudge switch, and the merged Release build compiles. The scheduled pipeline check found the **pipeline stopped since ~10-13** (all lane heartbeats ~6.7 days old, queue empty); reported, not touched.
+
+---
+
 **2026-10-17 (Mac, later) — Spotify sign-in turned off on iOS + web (Spotify Development Mode).**
 
 - **Why:** a brand-new Spotify account got "Error getting user profile from external provider" (iOS and `sillajuku.com/login`). Spotify's [Quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes) page: Development Mode serves **up to 5 allowlisted users** with a Premium owner. Extended quota is only for organizations: a registered business with a launched service and **≥250k MAU**. Not reachable before launch.
