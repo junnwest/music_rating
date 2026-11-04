@@ -228,5 +228,8 @@ Palette addendum (2026-11-04 night): **family rollups** (palette.ts step 3b). A 
 6. **Semantic zoom** to album covers; fisheye / overlap removal at each zoom level.
 7. **"What's here?"** on empty space: the smoothed tag mix at that point plus unrated catalog albums nearby (fog of war / blind spots).
 
+### Slice 3 — schematic 2D (built 2026-11-04 afternoon)
+**Schematic / To scale** toggle on the 2D stage. Schematic is the default. `schematic.ts` treats countries as VSEPR domains around a "YOU" nucleus: they repel, bigger ones take wider angles, and linked ones sit side by side. Members fill orbital shells (capital, then 6k) around each country's center, spaced evenly and turned toward the countries they link to. Stars morph between the views. The density layers belong to the true plane and fade out. Drag is off in the schematic. zero: honest map 0.69 schematic vs 0.75 true. Open: octilinear bonds, drag in the schematic, what to do with many one-member countries.
+
 ### Later
 More lenses (Era, Frontier, predicted affinity once the Phase 5 model exists), a minimap, keyboard hops between neighbors, the iOS view decoding `palette`/`mix`, and a time-lapse of the map by year.

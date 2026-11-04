@@ -4,6 +4,21 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-11-04 (Windows, Nov 4 afternoon) — Taste map 2D: schematic (subway-map) view, default; true-to-scale behind a toggle.**
+
+- Jun: the 2D map is better but vector directions are hard to read. Wanted a distance/accuracy toggle with a deformed, easy-to-read default "like subway maps", positions decided by atomic orbitals and VSEPR (repel/attract).
+- `lib/tasteMap/schematic.ts` (pure, slot units, bounding box centered on the origin):
+  - **Country seats (VSEPR).** The gap between neighboring countries is proportional to r_a + r_b + 1.4. R is the smallest radius that clears every consecutive pair and keeps the nucleus 1.2 slots off every disc.
+  - **Order.** Brute force over circular orders (≤ 8 countries). Score: Σ adjacent (normalized link weight + 0.35·cos of true-angle difference).
+  - **Rotation.** Weighted circular-mean fit to the true angles, mirrored when that fits better. Then the ring is stretched to the stage aspect (≤ 1.8).
+  - **Shells (orbitals).** Centrality = home sims − ½ abroad sims (+ a small mass tie-break). Capacity 1, 6, 12, 18… Each shell is spaced evenly, then the best cyclic shift and rotation is fitted to preferred angles: the true-map offset plus 2 × Σ sim × direction to the neighbor's country.
+- `Map2D.tsx`: `placeAt` lerps pos2d → schematic (fitted to the stage box via `schScale`; height reserves 36px for the top disc's name). True-plane layers fade by 1 − s. New layer: disc, shell rings, dashed nucleus bonds, a YOU mark. Country names slide from the territory centroid to above the disc and level out. Their boxes feed label collision. Bundled links anchor on disc centers, trimmed at the rims. Compass on raw slot coords (the gradients are scale-invariant). Hit tests use the drawn morph. Drag only at s = 0.
+- `TasteMapView.tsx`: `scale` state (default schematic), `schematic` memo, honesty on the schematic coords, `editable` false in the schematic, `onStageAspect` from Map2D.
+- zero: 5 countries (Korean Hip-Hop, Alternative Rock, Electronic, J-Pop, Korean Rock). Alt Rock ↔ Electronic and Korean Hip-Hop ↔ Korean Rock are seated side by side. Radiohead is the Alternative Rock capital. Honest map: schematic 0.687 vs true 0.753.
+- Checks: vitest `lib/tasteMap` 243 + 1 expected fail, tsc 0, eslint clean. Screenshots via the zero fixture on :3100 (an existing dev server from an earlier session served the new code).
+
+---
+
 **2026-11-04 (Windows, late night) — Taste map: missing genre data scraped from the web (stopgap).**
 
 - Jun: "fill in those missing data with scraping data from web for now and flag as todo… asking the user to place it themselves or asking them some questions for ambiguous ones."

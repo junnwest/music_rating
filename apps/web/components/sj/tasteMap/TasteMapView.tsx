@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Box, Download, Map as MapIcon, Maximize2, Minimize2, Pencil, Pin, PinOff, Scissors, Shuffle, SlidersHorizontal, Square, Upload, UserPlus, X } from 'lucide-react';
+import { Atom, Box, Download, Map as MapIcon, Maximize2, Minimize2, Pencil, Pin, PinOff, Scissors, Shuffle, Ruler, SlidersHorizontal, Square, Upload, UserPlus, X } from 'lucide-react';
 import Cover from '../Cover';
 import { FlowerSpinner } from '../Loading';
 import { useLanguage } from '../../../lib/i18n';
@@ -14,6 +14,7 @@ import { distortionRgb, hasGenreLens, hueMap, nodeRgb, oklabToRgb, rgbCss, type 
 import { HONEST_K, neighborHonesty, type Honesty, type HonestySummary } from '../../../lib/tasteMap/honesty';
 import { buildAtlas, type Atlas } from '../../../lib/tasteMap/regions';
 import { fromPlane, planeBasis, toPlane, type PlaneBasis } from '../../../lib/tasteMap/plane';
+import { schematicLayout, type Schematic } from '../../../lib/tasteMap/schematic';
 import type { NodeKey, TasteMapPayload, TasteMapPayloadNode, Vec2, Vec3 } from '../../../lib/tasteMap/types';
 import AddArtist from './AddArtist';
 import EraEditor from './EraEditor';
@@ -69,6 +70,8 @@ const Scene3D = dynamic(() => import('./Scene3D'), {
 });
 
 export type MapMode = '3d' | '2d';
+/** 2D only: a tidy diagram (lib/tasteMap/schematic.ts) or the true plane, to scale. */
+export type MapScale = 'schematic' | 'true';
 
 /** Canvas-side theme colors, read from the app's CSS variables. */
 export interface MapTheme {
@@ -131,6 +134,14 @@ export interface SceneProps {
   honesty: HonestySummary;
   /** Countries, bridges and their links over the visible nodes (lib/tasteMap/regions.ts). */
   atlas: Atlas;
+  /** 2D: schematic (subway-map) or true-to-scale positions. 3D ignores it. */
+  scale: MapScale;
+  /** The schematic layout of the visible nodes; null in 3D. */
+  schematic: Schematic | null;
+  /** The schematic's center mark ("you"). */
+  nucleusLabel: string;
+  /** 2D reports the width / height of the box it fits the schematic into (rounded to 0.1). */
+  onStageAspect: (aspect: number) => void;
 }
 
 function cssVar(name: string): string {
@@ -237,6 +248,12 @@ const COPY = {
     other: 'other',
     fullscreen: 'Fullscreen',
     exitFullscreen: 'Exit fullscreen',
+    scaleSchematic: 'Schematic',
+    scaleTrue: 'To scale',
+    scaleSchematicTip: 'A tidy diagram: sound worlds spread around you, core artists in the middle of each. Not to scale.',
+    scaleTrueTip: 'True distances: the similarity space, flattened.',
+    legendSchematic: 'direction = sound world · center = core · not to scale',
+    you: 'YOU',
   },
   ko: {
     title: '취향 지도',
@@ -299,6 +316,12 @@ const COPY = {
     other: '기타',
     fullscreen: '전체 화면',
     exitFullscreen: '전체 화면 종료',
+    scaleSchematic: '도식',
+    scaleTrue: '실제 거리',
+    scaleSchematicTip: '정리된 도식: 사운드 세계가 나를 중심으로 퍼져 있고, 각 세계의 핵심 아티스트가 가운데에 있어요. 실제 거리는 아니에요.',
+    scaleTrueTip: '실제 거리: 유사도 공간을 평면에 펼친 모습이에요.',
+    legendSchematic: '방향 = 사운드 세계 · 가운데 = 핵심 · 실제 거리 아님',
+    you: '나',
   },
 } as const;
 type Copy = { [K in keyof (typeof COPY)['en']]: string };
@@ -355,6 +378,8 @@ export default function TasteMapView({
   const theme = useMapTheme();
 
   const [mode, setMode] = useState<MapMode>('2d');
+  const [scale, setScale] = useState<MapScale>('schematic');
+  const [stageAspect, setStageAspect] = useState(1.3);
   const genreOk = hasGenreLens(payload.palette);
   const [lensPick, setLens] = useState<MapLens>('genre');
   // Older cached payloads and fixtures have no palette: score is all they can show.
@@ -541,18 +566,31 @@ export default function TasteMapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [work, hiddenGroups, edits.version]);
 
-  // Honest map: neighborhoods kept by the view on screen (2D plane or 3D), live under drags.
-  const honesty = useMemo(
-    () => neighborHonesty(new Map(work.map((n) => [n.key, mode === '2d' ? n.pos2d : n.pos])), payload.neighbors),
-    // layoutVersion stands in for the in-place position changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [work, payload.neighbors, mode, layoutVersion],
-  );
-
   // Countries and bridges over what's visible (the graph, not positions: no layoutVersion).
   const atlas = useMemo(
     () => buildAtlas(work, payload.neighbors, visible, payload.palette, Object.fromEntries(edits.groups.map((g) => [g.id, g.name]))),
     [work, payload.neighbors, visible, payload.palette, edits.groups],
+  );
+
+  // 2D schematic: from the atlas, oriented by the true plane, so it follows the layout.
+  const schematic = useMemo(
+    () => (mode === '2d' ? schematicLayout(work, atlas, payload.neighbors, stageAspect) : null),
+    // layoutVersion stands in for the in-place position changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [work, atlas, payload.neighbors, mode, layoutVersion, stageAspect],
+  );
+  const schematicOn = mode === '2d' && scale === 'schematic';
+
+  // Honest map: neighborhoods kept by the view on screen (2D plane, schematic or 3D), live under drags.
+  const honesty = useMemo(
+    () =>
+      neighborHonesty(
+        new Map(work.map((n) => [n.key, mode === '3d' ? n.pos : (schematicOn && schematic?.pos.get(n.key)) || n.pos2d])),
+        payload.neighbors,
+      ),
+    // layoutVersion stands in for the in-place position changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [work, payload.neighbors, mode, layoutVersion, schematicOn, schematic],
   );
 
   // Hiding a group drops a selection that just became invisible.
@@ -874,7 +912,8 @@ export default function TasteMapView({
         payload: live,
         layoutVersion,
         pins,
-        editable: !running && !importing,
+        // The schematic is a diagram of the graph: there is no true position to drop a node at.
+        editable: !running && !importing && !schematicOn,
         busy: running || dragging,
         onDragNode,
         visible,
@@ -890,6 +929,10 @@ export default function TasteMapView({
         basis,
         honesty,
         atlas,
+        scale,
+        schematic,
+        nucleusLabel: c.you,
+        onStageAspect: setStageAspect,
       }
     : null;
 
@@ -1169,9 +1212,31 @@ export default function TasteMapView({
                 ))}
               </div>
             )}
+            {mode === '2d' && (
+              <div role="group" className="inline-flex rounded-full border border-divider bg-surface/85 p-0.5 text-[11.5px] font-semibold backdrop-blur">
+                {(
+                  [
+                    ['schematic', c.scaleSchematic, c.scaleSchematicTip, Atom],
+                    ['true', c.scaleTrue, c.scaleTrueTip, Ruler],
+                  ] as const
+                ).map(([sc, label, tip, Icon]) => (
+                  <button
+                    key={sc}
+                    type="button"
+                    aria-pressed={scale === sc}
+                    title={tip}
+                    onClick={() => setScale(sc)}
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 transition ${scale === sc ? 'bg-ink text-page' : 'text-muted hover:text-ink'}`}
+                  >
+                    <Icon size={12} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <Legend c={c} lens={lens} genreOk={genreOk} onLens={setLens} palette={payload.palette} depth={mode === '2d'} honesty={honesty} />
+          <Legend c={c} lens={lens} genreOk={genreOk} onLens={setLens} palette={payload.palette} depth={mode === '2d'} schematic={schematicOn} honesty={honesty} />
 
 
           {/* Phone: the inspector (or an open panel) is a bottom sheet over the stage. */}
@@ -1266,6 +1331,7 @@ function Legend({
   onLens,
   palette,
   depth,
+  schematic,
   honesty,
 }: {
   c: Copy;
@@ -1274,6 +1340,7 @@ function Legend({
   onLens: (l: MapLens) => void;
   palette: TasteMapPayload['palette'];
   depth: boolean;
+  schematic: boolean;
   honesty: HonestySummary;
 }) {
   return (
@@ -1342,6 +1409,7 @@ function Legend({
             <span className="text-[10px] text-muted">{c.score}</span>
           </div>
         )}
+        {schematic && <p className="mt-0.5 text-right text-[10px] leading-snug text-muted">{c.legendSchematic}</p>}
       </div>
     </>
   );

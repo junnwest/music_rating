@@ -6,8 +6,8 @@ import { depthLightness, distortionRgb, GRAY, hueMap, nodeRgb, oklabToRgb, rgbCs
 import { colorField, spanningTree, tagGradients, type FieldPoint } from '../../../lib/tasteMap/fields';
 import { toPlane } from '../../../lib/tasteMap/plane';
 import { regionFields } from '../../../lib/tasteMap/regions';
-import type { NodeKey, TasteMapPayloadNode } from '../../../lib/tasteMap/types';
-import type { SceneProps } from './TasteMapView';
+import type { NodeKey, TasteMapPayloadNode, Vec2 } from '../../../lib/tasteMap/types';
+import type { SceneGhost, SceneProps } from './TasteMapView';
 
 /**
  * 2D taste map: a star chart of the payload's principal plane (`pos2d`), the
@@ -41,6 +41,15 @@ import type { SceneProps } from './TasteMapView';
  *   widens as it tears; on select, links to torn neighbors are dashed and
  *   intruders (drawn close, not similar) get a dotted ring.
  *
+ * - Schematic scale (the default; lib/tasteMap/schematic.ts): the same stars
+ *   moved to a subway-map diagram. Countries are discs set around a nucleus
+ *   ("you") by VSEPR-style repulsion, members sit on orbital shells around
+ *   their country's capital, faint bonds join the nucleus to each disc. The
+ *   density layers (graticule, color field, contours, territories, group
+ *   outlines) belong to the true plane and fade out; country names sit
+ *   level above their discs. Switching scales morphs every star between its
+ *   two positions. Dragging is off in the schematic (the shell sets editable).
+ *
  * Interaction is unchanged: pan by dragging the background, wheel / pinch to
  * zoom, drag a node to move + pin it (D5: x, y fixed, depth soft), pin badges
  * (filled = full pin, hollow = 2D pin). Draws on demand; an animation (focus,
@@ -54,6 +63,8 @@ const MAX_K = 10;
 const LENS_MS = 650;
 const LINK_MS = 550;
 const REGION_N = 120;
+const MORPH_MS = 900;
+const TAU = Math.PI * 2;
 
 /** The sky. Fixed so the colors read the same in light and dark app themes. */
 const SKY = {
@@ -93,6 +104,10 @@ const smooth = (t: number) => {
 const lerpRgb = (a: Rgb, b: Rgb, t: number): Rgb => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 const lighten = (c: Rgb, t: number): Rgb => lerpRgb(c, [255, 255, 255], t);
 
+/** A country's tint: its palette hue in OKLCh, or the sky's line color. */
+const tintOf = (hue: number | null, L: number, C: number): Rgb =>
+  hue == null ? [205, 218, 255] : oklabToRgb(L, C * Math.cos((hue * Math.PI) / 180), C * Math.sin((hue * Math.PI) / 180));
+
 function hexAlpha(hex: string, a: number): string {
   const h = hex.replace('#', '');
   const n = parseInt(h.length === 3 ? h.replace(/(.)/g, '$1$1') : h, 16);
@@ -131,7 +146,7 @@ function niceStep(raw: number): number {
 }
 
 export default function Map2D(props: SceneProps) {
-  const { payload, focus, layoutVersion, busy, lens, basis, visible, honesty, atlas } = props;
+  const { payload, focus, layoutVersion, busy, lens, basis, visible, honesty, atlas, scale, schematic } = props;
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const propsRef = useRef(props);
@@ -151,6 +166,48 @@ export default function Map2D(props: SceneProps) {
   }
   const linkAnim = useRef<{ key: NodeKey | null; t0: number }>({ key: null, t0: 0 });
   if (linkAnim.current.key !== props.selectedKey) linkAnim.current = { key: props.selectedKey, t0: performance.now() };
+
+  // Scale morph: s = 0 is the true plane, 1 the schematic. A toggle mid-morph starts from where it is.
+  const sTarget = scale === 'schematic' && schematic ? 1 : 0;
+  const morph = useRef({ s0: sTarget, s1: sTarget, t0: 0 });
+  const morphAt = (now: number) => {
+    const m = morph.current;
+    return m.s0 === m.s1 ? m.s1 : m.s0 + (m.s1 - m.s0) * smooth((now - m.t0) / MORPH_MS);
+  };
+  if (morph.current.s1 !== sTarget) {
+    const now = performance.now();
+    morph.current = { s0: morphAt(now), s1: sTarget, t0: now };
+  }
+  // The morph as last drawn, for hit tests and drags between frames.
+  const sNow = useRef(sTarget);
+
+  /** Plane units per schematic slot: the diagram fitted to the stage at zoom 1. */
+  const schScale = () => {
+    const sch = propsRef.current.schematic;
+    if (!sch) return 1;
+    const { w, h } = size.current;
+    const { padX, padY } = pads();
+    const F = fitScale();
+    // Height keeps room for the top disc's name above it.
+    return Math.min((w - 2 * padX) / F / sch.extent[0], Math.max(40, h - 2 * padY - 36) / F / sch.extent[1]);
+  };
+  /** Schematic slots → plane coordinates, centered on the frame. */
+  const schToPlane = (q: Vec2, g = schScale()): Vec2 => [frame.mx + q[0] * g, frame.my + q[1] * g];
+  /** A node's plane position at morph `s`: its true `pos2d`, its schematic slot, or between. */
+  const placeAt = (n: { key: NodeKey; pos2d: Vec2 }, s: number, g?: number): Vec2 => {
+    const raw = s > 0 ? propsRef.current.schematic?.pos.get(n.key) : undefined;
+    if (!raw) return n.pos2d;
+    const q = schToPlane(raw, g);
+    return s >= 1 ? q : [n.pos2d[0] + (q[0] - n.pos2d[0]) * s, n.pos2d[1] + (q[1] - n.pos2d[1]) * s];
+  };
+  /** The Add-artist ghost: in the schematic, just above its anchors' mean. */
+  const ghostAt = (gh: SceneGhost, s: number): Vec2 => {
+    const sch = propsRef.current.schematic;
+    const qs = s > 0 && sch ? gh.anchors.map((k) => sch.pos.get(k)).filter((q): q is Vec2 => !!q) : [];
+    if (!qs.length) return gh.pos2d;
+    const q = schToPlane([qs.reduce((t, a) => t + a[0], 0) / qs.length, qs.reduce((t, a) => t + a[1], 0) / qs.length + 0.8]);
+    return [gh.pos2d[0] + (q[0] - gh.pos2d[0]) * s, gh.pos2d[1] + (q[1] - gh.pos2d[1]) * s];
+  };
 
   // Fixed world frame: bounds over every node (not just visible ones) so group
   // toggles never move the map. Keyed on the node array, which keeps its
@@ -349,20 +406,29 @@ export default function Map2D(props: SceneProps) {
 
   const compass = useMemo(() => {
     if (!payload.palette?.length) return [];
+    // On the view being shown: in the schematic, the directions sounds lie in
+    // around you. Raw slots are fine: the fit is a uniform scale, which the
+    // gradients (direction, strength per sd, r²) don't see.
     const pts = payload.nodes
       .filter((n) => visible.has(n.key))
-      .map((n) => ({ x: n.pos2d[0], y: n.pos2d[1], w: Math.max(n.mass, 0.3), mix: n.mix }));
+      .map((n) => {
+        const [x, y] = (sTarget && schematic?.pos.get(n.key)) || n.pos2d;
+        return { x, y, w: Math.max(n.mass, 0.3), mix: n.mix };
+      });
     return tagGradients(pts, payload.palette)
       .filter((g) => g.r2 >= 0.08)
       .slice(0, 4);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payload.palette, payload.nodes, visible, settled]);
+  }, [payload.palette, payload.nodes, visible, settled, sTarget, schematic]);
 
   // ── Geometry helpers (read refs, so they're stable) ──
+  const pads = () => {
+    const { w, h } = size.current;
+    return { padX: Math.min(90, w * 0.14), padY: Math.min(60, h * 0.1) };
+  };
   const fitScale = () => {
     const { w, h } = size.current;
-    const padX = Math.min(90, w * 0.14);
-    const padY = Math.min(60, h * 0.1);
+    const { padX, padY } = pads();
     return Math.max(1, Math.min((w - 2 * padX) / frame.spanX, (h - 2 * padY) / frame.spanY));
   };
   const toScreen = (x: number, y: number, v: View, F: number): [number, number] => {
@@ -408,6 +474,11 @@ export default function Map2D(props: SceneProps) {
     if (lensT < 1) animating = true;
     // 0…1: how far the distortion lens is faded in (its halos and link styles).
     const distA = la.to === 'distortion' ? lensT : la.from === 'distortion' ? 1 - lensT : 0;
+    const s = morphAt(now);
+    sNow.current = s;
+    if (morph.current.s0 !== morph.current.s1 && now - morph.current.t0 < MORPH_MS) animating = true;
+    // How much of the true plane's density layers shows.
+    const tTrue = 1 - s;
     const honestOf = (key: NodeKey) => p.honesty.byKey.get(key);
     const colorOf = (key: NodeKey): Rgb => {
       const c = colors.get(key);
@@ -422,13 +493,13 @@ export default function Map2D(props: SceneProps) {
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
-    // Graticule.
+    // Graticule (a scale, so only to scale).
     const unit = F * v.k;
     const step = niceStep(90 / unit);
     const [wx0, wy1] = toPlaneXY(0, 0, v, F);
     const [wx1, wy0] = toPlaneXY(w, h, v, F);
     ctx.lineWidth = 1;
-    ctx.strokeStyle = `${SKY.line}0.05)`;
+    ctx.strokeStyle = `${SKY.line}${(0.05 * tTrue).toFixed(3)})`;
     ctx.beginPath();
     for (let x = Math.ceil(wx0 / step) * step; x <= wx1; x += step) {
       const sx = Math.round(toScreen(x, 0, v, F)[0]) + 0.5;
@@ -448,19 +519,20 @@ export default function Map2D(props: SceneProps) {
     const cy = h / 2 + v.ty - (frame.gy0 - frame.my) * F * v.k;
     ctx.save();
     ctx.setTransform(dpr * a, 0, 0, -dpr * a, dpr * cx, dpr * cy);
-    if (fields) {
+    if (fields && tTrue > 0) {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       // Thinner as you zoom in, where the stars should carry the detail.
       const fieldA = 1 / (1 + 0.35 * Math.max(0, v.k - 1));
       if (lensT < 1) {
-        ctx.globalAlpha = (1 - lensT) * fieldA;
+        ctx.globalAlpha = (1 - lensT) * fieldA * tTrue;
         ctx.drawImage(fields[la.from], 0, 0, GRID, GRID);
       }
-      ctx.globalAlpha = lensT * fieldA;
+      ctx.globalAlpha = lensT * fieldA * tTrue;
       ctx.drawImage(fields[la.to], 0, 0, GRID, GRID);
-      ctx.globalAlpha = 1;
     }
+    // Contours, territories and group outlines fade with the true plane.
+    ctx.globalAlpha = tTrue;
     ctx.lineWidth = 1 / a;
     contours.all.forEach((path, i) => {
       ctx.strokeStyle = `${SKY.line}${(0.05 + 0.012 * i).toFixed(3)})`;
@@ -485,6 +557,65 @@ export default function Map2D(props: SceneProps) {
     ctx.restore();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+    // Schematic: bonds from the nucleus, then each country's disc and orbital shells.
+    const sch = p.schematic;
+    const px = F * v.k;
+    const g = schScale();
+    // Schematic geometry in screen space: slots → plane → screen.
+    const schScreen = (q: Vec2) => {
+      const [x, y] = schToPlane(q, g);
+      return toScreen(x, y, v, F);
+    };
+    const gpx = g * px;
+    if (sch && s > 0) {
+      ctx.save();
+      ctx.globalAlpha = s;
+      if (sch.nucleus) {
+        const [nx, ny] = schScreen(sch.nucleus);
+        ctx.setLineDash([2, 5]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = `${SKY.line}0.18)`;
+        ctx.beginPath();
+        for (const c of sch.countries) {
+          const [x, y] = schScreen(c.center);
+          const d = Math.hypot(x - nx, y - ny);
+          const r = c.radius * gpx;
+          if (d <= r + 8) continue;
+          ctx.moveTo(nx + ((x - nx) / d) * 8, ny + ((y - ny) / d) * 8);
+          ctx.lineTo(x - ((x - nx) / d) * r, y - ((y - ny) / d) * r);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(nx, ny, 5, 0, TAU);
+        ctx.strokeStyle = `${SKY.line}0.5)`;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(nx, ny, 1.8, 0, TAU);
+        ctx.fillStyle = SKY.ink;
+        ctx.fill();
+      }
+      for (const c of sch.countries) {
+        const tint = tintOf(atlas.countries[c.id]?.hue ?? null, 0.72, 0.12);
+        const [x, y] = schScreen(c.center);
+        ctx.beginPath();
+        ctx.arc(x, y, c.radius * gpx, 0, TAU);
+        ctx.fillStyle = rgbCss(tint, 0.06);
+        ctx.fill();
+        ctx.lineWidth = 1.1;
+        ctx.strokeStyle = rgbCss(tint, 0.34);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = rgbCss(tint, 0.14);
+        for (const r of c.shells) {
+          ctx.beginPath();
+          ctx.arc(x, y, r * gpx, 0, TAU);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
     // letterSpacing is newer canvas API; skip where it's missing.
     const setSpacing = (s: string) => {
       if ('letterSpacing' in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = s;
@@ -492,7 +623,11 @@ export default function Map2D(props: SceneProps) {
 
     const nodes = p.payload.nodes;
     const pos = new Map<NodeKey, [number, number]>();
-    for (const n of nodes) if (p.visible.has(n.key)) pos.set(n.key, toScreen(n.pos2d[0], n.pos2d[1], v, F));
+    for (const n of nodes)
+      if (p.visible.has(n.key)) {
+        const q = placeAt(n, s, g);
+        pos.set(n.key, toScreen(q[0], q[1], v, F));
+      }
 
     const sel = p.selectedKey;
     const related = new Set<NodeKey>();
@@ -504,34 +639,99 @@ export default function Map2D(props: SceneProps) {
     const dimOthers = sel != null;
     const focusKey = p.hoveredKey ?? sel;
 
-    // Country names: the map's background lettering, under every star.
+    // Country names: the map's background lettering, under every star. To
+    // scale, along each territory's long axis; in the schematic, level above
+    // its disc (a country of one is named by its star's own label).
     const nameA = Math.max(0.3, Math.min(0.62, (3.2 - v.k) / 2.5));
-    for (const r of regions) {
-      const [x, y] = toScreen(r.x, r.y, v, F);
-      const side = Math.sqrt(r.area) * F * v.k;
-      const px = Math.max(11, Math.min(24, side * 0.085));
+    const regionOf = new Map(regions.map((r) => [r.id, r]));
+    const schemOf = new Map((sch?.countries ?? []).map((c) => [c.id, c]));
+    const nameBoxes: Box[] = [];
+    let names = 0;
+    for (const country of atlas.countries) {
+      const r = regionOf.get(country.id);
+      const sc = schemOf.get(country.id);
+      const named = sc && sc.shells.length > 0 ? sc : undefined;
+      // Each view's share of this name: both → slide between them, one → fade it.
+      const wt = r ? tTrue : 0;
+      const ws = named ? s : 0;
+      if (wt + ws < 0.02) continue;
+      if ((r ? 1 : 0) * tTrue + (named ? 1 : 0) * s >= 0.5) names++;
+      const trueAt = r ? toScreen(r.x, r.y, v, F) : null;
+      const trueSize = r ? Math.max(11, Math.min(24, Math.sqrt(r.area) * px * 0.085)) : 0;
+      const schemSize = named ? Math.max(11, Math.min(20, named.radius * gpx * 0.2)) : 0;
+      const schemAt = named ? schScreen([named.center[0], named.center[1] + named.radius]) : null;
+      if (schemAt) schemAt[1] -= schemSize * 0.6 + 6;
+      let x: number;
+      let y: number;
+      let rot: number;
+      let size: number;
+      let fade: number;
+      if (r && trueAt && schemAt) {
+        x = trueAt[0] + (schemAt[0] - trueAt[0]) * s;
+        y = trueAt[1] + (schemAt[1] - trueAt[1]) * s;
+        rot = -r.axis * tTrue;
+        size = trueSize + (schemSize - trueSize) * s;
+        fade = 1;
+      } else if (r && trueAt) {
+        [x, y] = trueAt;
+        rot = -r.axis;
+        size = trueSize;
+        fade = wt;
+      } else {
+        [x, y] = schemAt!;
+        rot = 0;
+        size = schemSize;
+        fade = ws;
+      }
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(-r.axis);
-      ctx.font = `italic 600 ${px.toFixed(1)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
-      setSpacing(`${(px * 0.32).toFixed(1)}px`);
+      ctx.rotate(rot);
+      ctx.font = `italic 600 ${size.toFixed(1)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
+      setSpacing(`${(size * 0.32).toFixed(1)}px`);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.globalAlpha = nameA * (dimOthers ? 0.6 : 1);
-      ctx.fillStyle = r.hue == null ? SKY.ink : rgbCss(oklabToRgb(0.86, 0.07 * Math.cos((r.hue * Math.PI) / 180), 0.07 * Math.sin((r.hue * Math.PI) / 180)));
-      ctx.fillText(r.name.toUpperCase(), 0, 0);
+      const text = country.name.toUpperCase();
+      // Level schematic names are kept clear of star labels.
+      if (named && s > 0.5) {
+        const tw = ctx.measureText(text).width;
+        nameBoxes.push({ x: x - tw / 2 - 3, y: y - size * 0.6, w: tw + 6, h: size * 1.2, key: null });
+      }
+      ctx.globalAlpha = nameA * (dimOthers ? 0.6 : 1) * fade;
+      ctx.fillStyle = country.hue == null ? SKY.ink : rgbCss(tintOf(country.hue, 0.86, 0.07));
+      ctx.fillText(text, 0, 0);
       setSpacing('0px');
       ctx.restore();
     }
 
     // Bundled links between countries, bent through the bridge between them.
-    if (regions.length > 1) {
-      const at = new Map(regions.map((r) => [r.id, toScreen(r.x, r.y, v, F)]));
+    // Anchors slide from the territory centroid to the disc center; in the
+    // schematic each end stops at its disc's rim.
+    const at = new Map<number, { q: [number, number]; trim: number }>();
+    for (const country of atlas.countries) {
+      const r = regionOf.get(country.id);
+      const sc = schemOf.get(country.id);
+      if (!r && (s <= 0 || !sc)) continue;
+      if (s >= 1 && !sc) continue;
+      const sq: Vec2 | null = sc ? schToPlane(sc.center, g) : null;
+      const t: Vec2 = r ? [r.x, r.y] : sq!;
+      const e = sq ?? t;
+      at.set(country.id, {
+        q: toScreen(t[0] + (e[0] - t[0]) * s, t[1] + (e[1] - t[1]) * s, v, F),
+        trim: sc ? sc.radius * gpx * s : 0,
+      });
+    }
+    if (at.size > 1) {
       const maxW = Math.max(...atlas.links.map((l) => l.w));
       for (const l of atlas.links) {
-        const qa = at.get(l.a);
-        const qb = at.get(l.b);
-        if (!qa || !qb) continue;
+        const ea = at.get(l.a);
+        const eb = at.get(l.b);
+        if (!ea || !eb) continue;
+        const d = Math.hypot(eb.q[0] - ea.q[0], eb.q[1] - ea.q[1]);
+        if (d <= ea.trim + eb.trim + 2) continue;
+        const ux = (eb.q[0] - ea.q[0]) / d;
+        const uy = (eb.q[1] - ea.q[1]) / d;
+        const qa: [number, number] = [ea.q[0] + ux * ea.trim, ea.q[1] + uy * ea.trim];
+        const qb: [number, number] = [eb.q[0] - ux * eb.trim, eb.q[1] - uy * eb.trim];
         const via = [...atlas.bridges.values()]
           .filter((b) => b.countries.includes(l.a) && b.countries.includes(l.b) && pos.has(b.key))
           .sort((x, y) => y.score - x.score)[0];
@@ -697,10 +897,11 @@ export default function Map2D(props: SceneProps) {
 
     // Add-artist ghost: dashed lines to its anchors, then a translucent dashed circle.
     const gh = p.ghost;
-    const ghostAt = gh ? toScreen(gh.pos2d[0], gh.pos2d[1], v, F) : null;
+    const ghostWorld = gh ? ghostAt(gh, s) : null;
+    const ghostXY = ghostWorld ? toScreen(ghostWorld[0], ghostWorld[1], v, F) : null;
     const ghostR = nodeRadius(2, v.k) + 2;
-    if (gh && ghostAt) {
-      const [gx, gy] = ghostAt;
+    if (gh && ghostXY) {
+      const [gx, gy] = ghostXY;
       ctx.setLineDash([3, 3]);
       ctx.lineWidth = 1.2;
       ctx.strokeStyle = SKY.ink;
@@ -730,7 +931,8 @@ export default function Map2D(props: SceneProps) {
     // controls (fullscreen top left, lens switch top right, legend bottom right,
     // compass bottom left).
     const boxes: Box[] = [
-      { x: 0, y: 0, w: 150, h: 46, key: null },
+      { x: 0, y: 0, w: 340, h: 46, key: null },
+      ...nameBoxes,
       { x: w - 250, y: 0, w: 250, h: 46, key: null },
       { x: w - 345, y: h - 64, w: 345, h: 64, key: null },
       ...(compass.length && w >= 320 ? [{ x: 0, y: h - 116, w: 230, h: 116, key: null }] : []),
@@ -789,16 +991,20 @@ export default function Map2D(props: SceneProps) {
       .filter((n) => pos.has(n.key))
       .sort((x, y) => prio(x) - prio(y) || (rank.get(x.key) ?? 0) - (rank.get(y.key) ?? 0));
 
-    if (gh && ghostAt) {
-      placeText(gh.label, ghostAt[0], ghostAt[1] - ghostR - 4, 13, 800, SKY.ink, 1, null, true);
-      placeText(gh.tag.toUpperCase(), ghostAt[0], ghostAt[1] + ghostR + 12, 9.5, 800, SKY.muted, 1, null, true);
+    if (gh && ghostXY) {
+      placeText(gh.label, ghostXY[0], ghostXY[1] - ghostR - 4, 13, 800, SKY.ink, 1, null, true);
+      placeText(gh.tag.toUpperCase(), ghostXY[0], ghostXY[1] + ghostR + 12, 9.5, 800, SKY.muted, 1, null, true);
+    }
+    if (sch?.nucleus && s > 0.3) {
+      const [nx, ny] = schScreen(sch.nucleus);
+      placeText(p.nucleusLabel, nx, ny - 10, 9.5, 800, SKY.muted, s, null, true, '2px');
     }
 
     let groupLabelsDone = false;
     const drawGroupLabels = () => {
       groupLabelsDone = true;
       // Countries name the map once there are two; group names would repeat them.
-      if (regions.length >= 2) return;
+      if (names >= 2) return;
       // Far zoom: one constellation name per group, at its members' weighted center.
       const ga = Math.max(0, Math.min(1, (1.9 - v.k) / 0.8));
       if (ga <= 0.02) return;
@@ -914,15 +1120,33 @@ export default function Map2D(props: SceneProps) {
   useEffect(() => {
     if (!focus) return;
     const gh = propsRef.current.ghost;
-    const n = propsRef.current.payload.nodes.find((m) => m.key === focus.key) ?? (gh?.key === focus.key ? gh : null);
-    if (!n || size.current.w === 0) return;
+    const n = propsRef.current.payload.nodes.find((m) => m.key === focus.key);
+    const q = n ? placeAt(n, sTarget) : gh?.key === focus.key ? ghostAt(gh, sTarget) : null;
+    if (!q || size.current.w === 0) return;
     const F = fitScale();
     const k = Math.max(view.current.k, 1.8);
-    goal.current = { k, tx: -(n.pos2d[0] - frame.mx) * F * k, ty: (n.pos2d[1] - frame.my) * F * k };
+    goal.current = { k, tx: -(q[0] - frame.mx) * F * k, ty: (q[1] - frame.my) * F * k };
     requestDrawRef.current();
     // fitScale reads refs; frame is the only real dependency besides the nonce.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusNonce, frame]);
+
+  // Switching scales re-frames while the stars morph: on the selection, else the whole map.
+  const shownScale = useRef(sTarget);
+  useEffect(() => {
+    if (shownScale.current === sTarget) return;
+    shownScale.current = sTarget;
+    const sel = propsRef.current.payload.nodes.find((m) => m.key === propsRef.current.selectedKey);
+    if (sel && size.current.w > 0) {
+      const F = fitScale();
+      const k = Math.max(view.current.k, 1.8);
+      const q = placeAt(sel, sTarget);
+      goal.current = { k, tx: -(q[0] - frame.mx) * F * k, ty: (q[1] - frame.my) * F * k };
+    } else goal.current = { k: 1, tx: 0, ty: 0 };
+    requestDrawRef.current();
+    // fitScale / placeAt read refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sTarget, frame]);
 
   // Size + DPR tracking.
   useEffect(() => {
@@ -935,6 +1159,11 @@ export default function Map2D(props: SceneProps) {
       const w = wrap.clientWidth;
       const h = wrap.clientHeight;
       size.current = { w, h, dpr };
+      // The schematic stretches to the box it is fitted into (see schScale).
+      if (w > 0 && h > 0) {
+        const { padX, padY } = pads();
+        propsRef.current.onStageAspect(Math.round(((w - 2 * padX) / Math.max(1, h - 2 * padY)) * 10) / 10);
+      }
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
       canvas.style.width = `${w}px`;
@@ -947,7 +1176,8 @@ export default function Map2D(props: SceneProps) {
         if (sel) {
           const F = fitScale();
           const k = 1.8;
-          view.current = { k, tx: -(sel.pos2d[0] - frame.mx) * F * k, ty: (sel.pos2d[1] - frame.my) * F * k };
+          const q = placeAt(sel, sTarget);
+          view.current = { k, tx: -(q[0] - frame.mx) * F * k, ty: (q[1] - frame.my) * F * k };
         }
       }
       requestDrawRef.current();
@@ -1007,7 +1237,8 @@ export default function Map2D(props: SceneProps) {
       let bestD = Infinity;
       for (const n of p.payload.nodes) {
         if (!p.visible.has(n.key)) continue;
-        const [sx, sy] = toScreen(n.pos2d[0], n.pos2d[1], view.current, F);
+        const q = placeAt(n, sNow.current);
+        const [sx, sy] = toScreen(q[0], q[1], view.current, F);
         const d = Math.hypot(sx - x, sy - y);
         if (d <= nodeRadius(n.mass, view.current.k) + 6 && d < bestD) {
           bestD = d;
@@ -1026,7 +1257,7 @@ export default function Map2D(props: SceneProps) {
         down = q;
         moved = false;
         const p = propsRef.current;
-        const hit = p.editable ? hitTest(q.x, q.y) : null;
+        const hit = p.editable && sNow.current === 0 ? hitTest(q.x, q.y) : null;
         const n = hit ? p.payload.nodes.find((m) => m.key === hit) : null;
         if (n) {
           const [wx, wy] = toPlaneXY(q.x, q.y, view.current, fitScale());
