@@ -172,15 +172,20 @@
     "taxonomy:vocab": "tsx scripts/dump-genre-vocab.ts",
     "taxonomy:mb": "tsx scripts/dump-mb-genre-tree.ts",
     "taxonomy:backfill": "tsx --env-file=.env.local scripts/backfill-release-genres.ts",
-    "taxonomy:backfill:dry": "tsx --env-file=.env.local scripts/backfill-release-genres.ts --dry-run"
+    "taxonomy:backfill:dry": "tsx --env-file=.env.local scripts/backfill-release-genres.ts --dry-run",
+    "backfill:artist-similar": "tsx --env-file=.env.local scripts/backfill-artist-similar.ts"
   },
   "dependencies": {
+    "@react-three/drei": "9.122.0",
+    "@react-three/fiber": "8.18.0",
     "@sentry/nextjs": "^8.55.0",
     "@supabase/supabase-js": "2.103.2",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
     "apn": "^2.2.0",
     "autoprefixer": "10.5.0",
+    "d3-contour": "4.0.2",
+    "d3-force-3d": "3.0.5",
     "jimp": "^1.6.1",
     "lucide-react": "^1.14.0",
     "next": "14.2.35",
@@ -190,12 +195,16 @@
     "posthog-js": "^1.373.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "tailwindcss": "3.4.19"
+    "tailwindcss": "3.4.19",
+    "three": "0.170.0",
+    "umap-js": "1.4.0"
   },
   "devDependencies": {
+    "@types/d3-contour": "3.0.6",
     "@types/node": "20.14.0",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
+    "@types/three": "0.170.0",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.35",
     "playwright": "^1.63.0",

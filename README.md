@@ -52,6 +52,88 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-11-04 (Windows) — Taste Map live (unlinked) at `sillajuku.com/taste/map`.**
+> - ✅ Migration `20261104000000_taste_map_pin_soft_z.sql` applied via `scripts/db-exec.ts` (`taste_map_pins.soft_z boolean not null default false`).
+> - ✅ Manual route tests 1–10 below run against prod on zero's account (session minted with the service role; never printed): pins (incl. `softZ` read-back and the 400s), layout save + stable re-read, Coldplay split before Mylo Xyloto → two Coldplay nodes + 1 trail (and undo), adopt → idMap / second adopt 409, group create/patch/bad color/cap/delete, metric (<3 pins keeps the defaults; 5 pins → learned, 1% better), place (Keane/Muse → 200, Coldplay → 409, no writes), import round-trip + bad-color 400. zero's taste-map state was empty before the tests and was **restored to empty** (all 5 tables, 0 rows).
+> - ✅ Committed and pushed; Vercel deploys the page at `/taste/map`. Nothing in the app links to it yet (the "Open map" entry on TasteGraph waits for Jun's sign-off). It works for any signed-in user with enough ratings; `?fixture` / `?api` stay dev-only.
+> - **Next:** use the map on the live site (drag, Re-arrange, groups, eras in the UI); decide on the "Open map" entry point. Still unbuilt: glow by predicted affinity, automatic metric re-fit after Re-arrange, the iOS view (Mac).
+
+> **2026-11-03 (Windows, night) — Taste Map Phases 3–4 built (autonomous session, Jun AFK), committed + tested against prod 2026-11-04 (see above).**
+> Done: 3D group-label overlap fix, Phase 3 (drag/pin/Re-arrange/save/export-import), Phase 4 (groups, era split/merge, metric fit, Add artist). API contract: `lib/tasteMap/apiTypes.ts`. Checks: `npx vitest run lib/tasteMap` 212 passing + 1 expected fail (Coldplay auto-split), `tsc` 0 errors, eslint clean on all taste-map files. Screenshots/verify scripts: `C:\Users\redx1\AppData\Local\Temp\claude\c--Users-redx1-Documents-music-rating-music-rating\51d0783a-7429-4b20-8853-1417817f2338\scratchpad\{labels,phase3ui,phase4ui}`.
+>
+> **Next (exact):** 1) apply `20261104000000_taste_map_pin_soft_z.sql`; 2) run the manual tests below, **export a backup first**; 3) open `/taste/map` signed in → Coldplay → Eras → split before Mylo Xyloto → Save; 4) pin 3+ nodes, Re-arrange, Map weights → Learn from my map; 5) then commit. Still unbuilt from Phase 4: "glow by predicted affinity" and automatic re-fit after each Re-arrange (re-fit is a button for now). Phase 3 iOS view still needs the Mac.
+> - ✅ **3D group-label overlap fixed** (`components/sj/tasteMap/labelLayout.ts` + `GroupLabels`/`Labels` in `Scene3D.tsx`). Screen-space layout each frame: group names, heaviest first, step up to free space with a thin leader line back to their group. Ordinary node labels yield to group names. Selected, hovered and neighbour labels always show. Holds its spot while orbiting. 12 tests in `lib/tasteMap/labelLayout.test.ts`. Still open: a group's anchor can sit over another group's spheres when groups overlap in space; with 9 groups bunched together the lightest one can fade at some angles (fades rather than overlaps).
+> - `pipeline:status` (11-03 night): every lane heartbeat is still ~21 days old, so the pipeline is **still stopped**. Restart it on the pipeline PC (reminder below stands).
+>
+> - ✅ **Phase 3 UI:**
+>   - **Drag to pin:** in 2D a dropped node is pinned in the D5 plane with its depth left free; in 3D it's pinned in full. Pin markers show in both views; the inspector has Pin/Unpin.
+>   - **Re-arrange:** runs `forceLayout` in the browser with animated ticks and a Stop button. A 2D pin keeps its plane position during a 3D Re-arrange: the simulation runs in the plane's (u, v, n) frame, built by the new `lib/tasteMap/plane.ts`.
+>   - **Autosave:** 1.5s debounce, with a status label. It is off in `?fixture=` / `?mock=1`, which show "Local only (fixture)".
+>   - **Export / Import:** Import asks for confirmation in the page, not a browser dialog.
+>   - **Files:** the typed client is `lib/tasteMap/client.ts`, the 3D drag is `useDrag3D.ts`.
+>   - **Verified:** 34 headless checks on zero's fixture.
+>   - **Not yet tried against real routes:** autosave and server export/import. See manual test 6 below.
+> - ✅ **Phase 4 UI** (verified headless with every `/api/taste/map/**` call intercepted, so nothing reached the server):
+>   - **Group editing:** "Edit groups" (create, rename, recolor from 12 hues, delete with an in-page confirm), plus per-node membership sliders in the inspector.
+>   - **Seed groups:** on the first group edit, the seeded world groups are adopted as stored groups automatically.
+>   - **Eras panel:** the album timeline with "split here" toggles, Merge into one, and Back to automatic. Saving reloads the map.
+>   - **Map weights panel:** "Learn from my map", the pin-test comparison (default vs learned error), block and tag weights, and a plain reason when the default weights are kept.
+>   - **Add artist:** search, then a ghost preview in 2D and 3D with a "Placed between …" explanation. Picking an artist already on the map selects that node.
+>   - **Files:** `components/sj/tasteMap/{useGroupEdits,GroupEditor,MembershipEditor,EraEditor,MetricPanel,AddArtist,ui}.tsx`.
+>   - **Dev-only:** `/taste/map?fixture=…&api=1` sends API calls with a stand-in token, so tests can intercept them; the real routes answer it with 401.
+> - ✅ **Phase 3 routes** (unit-tested with a mocked Supabase client, never run against prod): `PUT /api/taste/map/pins` (replaces the whole pin set), `PUT /api/taste/map/layout` (saves a user-arranged layout), `GET /api/taste/map/export`, `POST /api/taste/map/import` (validates everything before any write; writes add first, delete last, so a failure part-way loses nothing). Helpers: `lib/tasteMap/{validate,store,exportImport}.ts`. `payload.ts`: a user-arranged layout is kept as-is (no UMAP re-solve); new nodes are placed by kNN barycentre; layout version + solved_at are in the cache hash.
+> - ✅ **Phase 4 routes** (mocked-client tests only): groups `POST /groups`, `PATCH|DELETE /groups/[id]`, `PUT /groups/[id]/members` (fuzzy weights, ≤ 1 per node across groups), `POST /groups/adopt` (turns seeded world groups into stored ones before the first edit); eras `GET|PUT /eras/[artistId]` (`null` = automatic, `[]` = merge, ids = split before); metric `GET|POST /metric` (fit + leave-one-pin-out vs the **default** weights; learned weights are kept only if they win on ≥ 3 pins, otherwise the default stays and the reason says so); `GET /place?artistId=` (read-only kNN-barycentre ghost with a "Placed near X, Y and Z" sentence). Logic: `lib/tasteMap/{groupsLogic,eraEdit,metricStore,place,storedState,validatePhase4}.ts`; `load.ts` gained `loadArtistInputs`. A test confirms that splitting Coldplay before Mylo Xyloto gives two Coldplay era nodes.
+>
+> **Needs Jun: apply**
+> - Migration `20261104000000_taste_map_pin_soft_z.sql` (adds `taste_map_pins.soft_z`). Code works without it; until then pins dropped in 2D are saved as full 3D pins.
+>
+> **Needs Jun: manual tests** (your own account, on `npm run dev`; it writes to prod, so **back up first**)
+> 0. Token: in the devtools console on the logged-in site, `JSON.parse(localStorage[Object.keys(localStorage).find(k=>k.startsWith('sb-')&&k.endsWith('-auth-token'))]).access_token`. Then `T=<token> B=http://localhost:3000`.
+> 1. **Back up:** `curl -H "Authorization: Bearer $T" $B/api/taste/map/export -o backup.json` → 200, `"kind":"sillajuku.tasteMap"`. Keep the file. Without the header → 401.
+> 2. **Pins:** `PUT $B/api/taste/map/pins` with `{"pins":[{"key":"<k1>","pos":[0.5,0.5,0.5]},{"key":"<k2>","pos":[-0.5,0,0],"softZ":true}]}` → `{"ok":true,"count":2}`. `GET /api/taste/map` shows both `pinned:true` (k2 `softZ:true` only after the migration). A bad key, duplicate key or a 1000 coordinate → 400.
+> 3. **Layout:** `PUT $B/api/taste/map/layout` with `{"positions":{...}}` → `{ok:true}`. GET twice → identical positions (no reshuffle). Rate a new album → it appears near similar nodes, others stay put.
+> 4. **Import:** `curl -X POST ... --data-binary @backup.json $B/api/taste/map/import` → counts; a fresh export matches apart from group ids and `exportedAt`. A group `"color":"blue"` → 400, nothing changes.
+> 5. **Undo:** re-import `backup.json`. Clear pins: `PUT /pins {"pins":[]}`. Back to an automatic layout: `delete from taste_map_layouts where user_id='<id>' and lens='sound';` (a version-2 layout is never re-solved on its own).
+> 6. **In the UI:** open `/taste/map` signed in, drag a node, wait ~2s for "Saved", reload. The node stays where you dropped it.
+> 7. **Coldplay split** (artist `82a535a6-e9f0-4f07-ae42-45daf91ba557`): `GET /api/taste/map/eras/<id>` → ~24 albums, `override:null`. `PUT` `{"splitAlbumIds":["93705d4c-99d6-4bb2-9d1b-b6337185f2d1"]}` (Mylo Xyloto) → ok; `GET /api/taste/map?refresh=1` → two Coldplay nodes and a trail. The Safety EP id (`3ec29a4b-…`, the first album) or an Oasis album id → 400. Undo: `PUT {"splitAlbumIds":null}`.
+> 8. **Groups:** adopt (from the UI's first group edit, or by hand) → `idMap`; a second adopt → 409. Create, rename, recolor; members that push a node over 1 → 400; delete.
+> 9. **Metric:** POST with < 3 pins → keeps the defaults and says why. Pin 3+ nodes, Re-arrange, POST again → read `kept` / `reason`. On an un-dragged layout the defaults win (expected: the layout was made with them).
+> 10. **Place:** `GET /api/taste/map/place?artistId=<an artist you haven't rated>` → pos + "Placed near …"; with Coldplay's id → 409. Nothing is written (export unchanged).
+> 11. **Restore** everything by importing `backup.json`. There is no route that deletes the metric row; use SQL if needed.
+>
+> **Decisions to review**
+> - **Re-arrange behaviour:**
+>   - Anchor strength decays with pins: `0.03 + 0.07·exp(-pins/8)`.
+>   - It anchors to the *current* layout, not the original UMAP one, so repeated runs can drift.
+>   - Pinning from the inspector makes a 2D pin in 2D and a full pin in 3D.
+>   - The 2D view keeps its zoom framing from mount, so a re-arranged node can end up off-frame.
+> - `taste_map_layouts.version = 2` means "user-arranged" (no new column). A version-2 layout is never overwritten by UMAP; delete the row to get an automatic layout back.
+> - Export includes the stored layout even if it's only a UMAP solve; importing it freezes it as user-arranged. An import with `layout: null` leaves the current layout alone.
+> - Import requires `lens: 'sound'`, skips era overrides for artists no longer in the catalog, and stores an imported metric with no eval.
+> - A legacy index-array `taste_map_metric.dim_w` is ignored (weights are now keyed by tag id).
+> - Metric: learned weights need ≥ 3 pins and a strictly lower leave-one-pin-out error than the default weights; otherwise the default is stored (a POST always overwrites the row). The fit's regularizer now pulls toward its starting weights (the defaults, era 0.5), not toward 1.
+> - Group members sent without `manual` are stored as `manual: true` (a PUT is the user's edit). Adopt and members PUT aren't transactional (two adopts at the same instant could both succeed); fixing that needs an RPC.
+> - Era overrides are allowed for any catalog artist. Node keys change when eras change (`e:<artist>:<first album>`), so pins/memberships on the old keys go stale; re-pin after a split.
+> - Membership sliders cap at what the node's other groups leave (they never rebalance the others). Saving a group's members marks only nodes edited this session as hand-set (`manual`), so hand-set flags from earlier sessions are lost on the next edit of that group. A failed group save keeps the local edit and shows "Not saved".
+> - "Learn from my map" flushes pending autosaves, then sends the working positions; pinned nodes always come from stored pins.
+> - "Add artist" is a **preview only** (ghost node, nothing stored): an unrated artist isn't on the map. Rating one of its albums puts it on the map, near the same spot (missing nodes are placed by the same kNN barycentre).
+
+> **2026-11-03 (Windows) — Taste Map 3D: phases 0–2 built, not committed.** Plan and status are in [`TASTE_MAP_PLAN.md`](TASTE_MAP_PLAN.md).
+> - **Engine:** `lib/tasteMap/*` (artist-era nodes from albums; tags, text, similar-artist and era features; UMAP layout plus force re-arrange; triplet metric learning), 51 tests + 1 expected fail.
+> - **Data:** migration `20261103000000_taste_map.sql` ✅ applied. `npm run backfill:artist-similar` ✅ ran for the 116 rated artists.
+> - **Route and page:** `GET /api/taste/map` plus an **unlinked** dev page `/taste/map`. `?mock=1` shows a mock map; `?refresh=1` forces a re-solve.
+> - **Debug:** `scripts/dump-taste-map-layout.ts <username>` prints each artist's neighbours and the reasons for them.
+> - **How to inspect without signing in:** `dump-taste-map-layout.ts --user=zero [--weights=era:0.5] --out=<file>`, then open `/taste/map?fixture=<url>` (dev only).
+>
+> **Decided (11-03, later):**
+> - ✅ **Era weight is 0.5** (`DEFAULT_BLOCK_WEIGHTS.era`). Jun may revisit the other options later. Halving scene alone (`ERA_SCENE_SHARE` 0.3) didn't merge the islands.
+> - **East Asian / Western islands are accepted for now, but stay open.** They come from language-qualified tags and the listener graph, not scene. Jun's preferred direction is a hybrid that models how genres and subgenres evolve across scenes (J-Rock partly sharing Rock) without losing the language axis. See TASTE_MAP_PLAN Status.
+> - ⚠ **Coldplay doesn't split into eras, and the data can't support it yet.** Its album tags barely change from Parachutes to Moon Music. The jina vectors embed "title by artist. tags (year)", so they add title noise, not sound. Lowering the thresholds enough to split Coldplay would split ~21 consistent artists first, and still cut at 2019, so `eras.ts` thresholds are unchanged. Real fixture `__fixtures__/map-input-zero-eras.json` plus tests (Oasis/Owl City/Bastille stay whole). The Coldplay 2008|2011 split is an `it.fails` test that will turn red once the data supports it. Ways to get the split: the manual era override (Phase 4 UI), better per-album tags, or a real per-album sound signal.
+>
+> **Next:** fix the 3D group-label overlap in `Scene3D.tsx`, then Phase 3 (drag, pin and save in the UI).
+>
+> ⚠ `pipeline:status` on 11-03 showed every lane heartbeat about 20.8 days old (around 10-13), so the pipeline looks **stopped**. Restart it on the pipeline PC, then run the checks.
+
 > **2026-10-17 (Windows, evening) — Add tab.** Web recs API (deploys from `main`): 맞춤/For You and the "Because you love…" rows now rank on the Taste map's language-aware worlds (`lib/taste/recommendations.ts`, `recs:v5`); check any user with `scripts/dump-recommendations.ts --user=<name>`. iOS: Add tab pull-to-refresh fixed + a bottom Refresh button; albums open from a profile reached via Followers/Following. The same album-tap fix covers the comment, likers and Mix share sheets. **To do:** build iOS on the Mac and try both refreshes, and profile → album from Followers/Following, comments and likers. Details in SESSIONS.md.
 
 > **2026-10-17 (Windows, later) — bug pass.** iOS: own avatar in the comment compose bar, no profile jump on an empty Rated tab/filter, Taste pager no longer snaps back (scroll-position binding removed), nested Taste lists no longer fight the pager, distinct row covers on the Taste map. Web taste API (deploys from `main`): "Other" no longer swallows K-Pop/J-Pop/Korean R&B (≤9 worlds, small worlds rehome to their runner-up), thumbnails capped per album (`taste:profile:v19`). **To do:** build iOS on the Mac and test the Taste pager swipes (first launch especially) and the map/standings lists by hand. Details in SESSIONS.md.
