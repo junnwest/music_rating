@@ -4,6 +4,17 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-11-04 (Windows, late night) — Taste map: missing genre data scraped from the web (stopgap).**
+
+- Jun: "fill in those missing data with scraping data from web for now and flag as todo… asking the user to place it themselves or asking them some questions for ambiguous ones."
+- zero's thin nodes: 이상순 had empty MB / Last.fm / Wikidata evidence and no iTunes fetch; 짙은 (0/9 tagged albums), 데이먼스 이어 (0/5) and Jazzyfact (0/2) had artist evidence but blank albums. Across all users' rated artists: 118 artists, 5,646 albums, 1,204 untagged.
+- Artist level: the existing `backfill-artist-genres.ts --only-thin --rated-only` found exactly one due artist (이상순) and stored iTunes K-Pop ×4 / R&B-Soul.
+- Album level: new `backfill-album-genres-web.ts`. Per untagged album it takes the stored iTunes store genre (`genre_evidence.itunes.albums`, via `itunesTag`), else Deezer (exact artist name → exact title or unique exact date → album genre, the guards from `backfill-native-titles-deezer.ts`). A genre is written only when its family agrees with the artist's MB/Last.fm/Wikidata families (family-less tags such as singer-songwriter always pass). This stops iTunes' generic "K-Pop" from relabeling E SENS's and 창모's rap albums. Artists with no such evidence get the store genre anyway and are listed as AMBIGUOUS. Written as `release_genres` source `itunes` (0.55 trust) / `deezer` (0.6), so MB and manual tags outrank them later. Applied: 483 + 21 albums, 0 unmapped; 700 still blank. Deezer's genres are coarse (a Pink Floyd remix comes back as "Pop").
+- Effect on zero (fresh payload): 이상순 mix k-pop 0.99, sims 0.54–0.67 (were ~1.0), in 17/30 kNN lists (was 29). Still a bridge (Korean Rock ↔ Korean Hip-Hop), which is now plausible. 짙은 / 데이먼스 이어 0.94 Korean Rock. Honest map 0.72 (2D) / 0.74 (3D).
+- TODO filed at the top of README Known issues: user placement (ghost + drag), ambiguity questions → `manual`, keep re-running the scrape meanwhile, features.ts single-block down-weight.
+
+---
+
 **2026-11-04 (Windows, night) — Taste Map: electronic rollup hue, countries, bridges; committed + pushed.**
 
 - **Electronic hue, solved with data rather than a rule** (Jun: "try to solve with llm/data for now and flag for next"). `palette.ts` step 3b: after the greedy pick, energy on candidate tags that the fold leaves unassigned is summed per plain family they descend from (same language). If the biggest orphan family beats the weakest pick (or a slot is free), it takes the slot as a rollup hue with a virtual column, owning its descendants; a real ancestor still wins the fold over a rollup. At most 2 rollups. zero: orphan Electronic 1.96 > Synth-Pop 1.40, so Electronic replaces Synth-Pop. Avicii 0→99%, Fred again.. 5→64%, and Owl City / Bastille move to Electronic through synth-pop. The second round (R&B 1.65) loses to Pop Rock 1.88. A rock+pop map gets no "Rock" hue, because its rock tags are already explained. Redis `tastemap:v4`. Flagged: the rule question stays with Jun; plain-pop artists stay pale.
