@@ -231,5 +231,7 @@ Palette addendum (2026-11-04 night): **family rollups** (palette.ts step 3b). A 
 ### Slice 3 — schematic 2D (built 2026-11-04 afternoon)
 **Schematic / To scale** toggle on the 2D stage. Schematic is the default. `schematic.ts` treats countries as VSEPR domains around a "YOU" nucleus: they repel, bigger ones take wider angles, and linked ones sit side by side. Members fill orbital shells (capital, then 6k) around each country's center, spaced evenly and turned toward the countries they link to. Stars morph between the views. The density layers belong to the true plane and fade out. Drag is off in the schematic. zero: honest map 0.69 schematic vs 0.75 true. Open: octilinear bonds, drag in the schematic, what to do with many one-member countries.
 
+**Revised 2026-11-04 evening: hyperbole, not a diagram.** No countries go into the layout. Stars get VSEPR seats (bearings around YOU evened out, radius rank evened into a disc), then relax under Coulomb repulsion, kNN bonds and a loose seat pull. Every density layer (field, contours, territories, group outlines) is recomputed on the schematic positions, so overlaps and crossovers emerge, and the two sets crossfade. To scale: `closeGaps` slides UMAP's disconnected islands in, on the in-island similarity ruler, with a strait kept.
+
 ### Later
 More lenses (Era, Frontier, predicted affinity once the Phase 5 model exists), a minimap, keyboard hops between neighbors, the iOS view decoding `palette`/`mix`, and a time-lapse of the map by year.

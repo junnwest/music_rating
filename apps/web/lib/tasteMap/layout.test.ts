@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRearrange } from './forceLayout';
-import { alignTo, mulberry32, placeNew, projectPlane, solveLayout, weightedSimilarity } from './layout';
+import { alignTo, closeGaps, ISLAND_CUT, MIN_STRAIT, mulberry32, placeNew, projectPlane, solveLayout, weightedSimilarity } from './layout';
 import type { FeatureSpace, MapNode, Vec3 } from './types';
 
 const DIMS = { tags: 12, text: 8, graph: 6, era: 2 };
@@ -168,6 +168,45 @@ describe('solveLayout', () => {
     const { intra, inter } = intraInter(r.positions);
     expect(intra).toBeLessThan(inter);
   }, 30000);
+});
+
+describe('closeGaps', () => {
+  // Two 3×3 grids of points (spacing 0.1) whose centers sit `gap` apart along x.
+  const islands = (gap: number): Vec3[] => {
+    const out: Vec3[] = [];
+    for (const cx of [-gap / 2, gap / 2]) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) out.push([cx + 0.1 * i, 0.1 * j, 0]);
+    return out;
+  };
+  // Similarity: neighbors in a grid ~0.8, across islands 0.1.
+  const simOf = (pts: Vec3[]) => {
+    const n = pts.length;
+    const S = new Float64Array(n * n);
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < n; j++) S[i * n + j] = i === j ? 1 : (i < 9) === (j < 9) ? 1 - 2 * d3(pts[i], pts[j]) : 0.1;
+    return S;
+  };
+
+  it('slides islands in rigidly, keeping a strait', () => {
+    const pts = islands(10);
+    const out = closeGaps(pts, simOf(pts));
+    expect(d3(out[0], out[9])).toBeLessThan(d3(pts[0], pts[9]));
+    // Each island keeps its shape.
+    for (let i = 1; i < 9; i++) {
+      expect(d3(out[0], out[i])).toBeCloseTo(d3(pts[0], pts[i]), 9);
+      expect(d3(out[9], out[9 + i])).toBeCloseTo(d3(pts[9], pts[9 + i]), 9);
+    }
+    let strait = Infinity;
+    for (let i = 0; i < 9; i++) for (let j = 9; j < 18; j++) strait = Math.min(strait, d3(out[i], out[j]));
+    expect(strait).toBeGreaterThanOrEqual(MIN_STRAIT * 0.1 - 1e-9);
+  });
+
+  it('leaves one island, and islands already close, alone', () => {
+    const one = islands(10).slice(0, 9);
+    expect(closeGaps(one, simOf(one))).toBe(one);
+    // Gap under ISLAND_CUT median edges: not islands at all.
+    const near = islands(0.2 + 0.1 * ISLAND_CUT * 0.9);
+    expect(closeGaps(near, simOf(near))).toBe(near);
+  });
 });
 
 describe('alignTo', () => {

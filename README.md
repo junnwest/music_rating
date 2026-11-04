@@ -53,6 +53,21 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-11-04 (Windows, Nov 4 evening) — Taste map 2D: schematic is now an exaggeration of the true map (no discs), and the to-scale islands sit closer (committed).**
+> - ✅ Jun: the schematic should still show genre overlaps and connections, without treating genres as discrete ("think of it as hyperbole"). To scale, the Korean/Japanese world sat too far from the rest.
+> - ✅ `lib/tasteMap/schematic.ts` rewritten (6 tests). No countries go in, only `pos2d` and kNN neighbors.
+>   - **VSEPR seats:** bearings around YOU are evened out by mass (70% of the way) so sounds fan out. Distance from YOU keeps its order and is evened into a disc.
+>   - **Relax:** Coulomb repulsion for even spacing, kNN bonds (rest length shrinks with similarity) pulling crossovers between sounds, and a loose pull to the seat so the true shape survives.
+>   - Fitted into the true `pos2d` box. `Map2D` computes the color field, contours, territories and group outlines again on the schematic positions, so overlaps emerge. The two sets crossfade during the morph. Names and bundled links slide between territories. Discs, shells, bonds and the stage-aspect plumbing are gone.
+> - ✅ `layout.ts closeGaps` (2 tests), run after every UMAP solve. UMAP had parked the two language islands about 4.7× the mean in-island distance apart, while the similarity ruler says about 2×.
+>   - Islands are the layout MST cut at 3× its median edge. They slide in rigidly by one shared factor toward the center, along the axes that separated them, so the 2D plane keeps them side by side.
+>   - The factor minimizes cross-pair stress against the in-island ruler (layout distance ≈ β·(1 − sim)) and keeps a strait of ≥ 3 median edges. Gaps are never widened.
+>   - Translating islands freely closed the gap more but let them overlap in 2D (honesty 0.59), so that approach was dropped.
+>   - zero, fresh solve: cross/within ratio 4.7 → 3.4; honesty true 0.70 → **0.72**, schematic **0.71**.
+> - ✅ zero's saved layout reset from arranged (2) to solved (1) and re-solved warm from its positions (Jun OK'd): 3D cross/within 11.3 → 3.5, honesty 0.71. The other user's layout is still arranged (old gap). Screenshots used a fresh unsaved solve: `C:\Users\redx1\AppData\Local\Temp\claude\c--Users-redx1-Documents-music-rating-music-rating\03a09a15-5c2d-4369-9e52-5fda39b3469f\scratchpad\d-*.png`.
+> - Checks: vitest `lib/tasteMap` 243 + 1 expected fail, tsc 0, eslint clean.
+> - **Next:** tune ANGLE_SPREAD / bond lengths after a look, and MIN_STRAIT if the islands should sit even closer.
+
 > **2026-11-04 (Windows, Nov 4 afternoon) — Taste map 2D: Schematic / To scale toggle, schematic is the default (committed).**
 > - ✅ New `lib/tasteMap/schematic.ts` (8 tests) lays the map out as a subway-map diagram, not to scale. **VSEPR between countries:** countries are domains around a nucleus ("YOU") that spread as far apart as they can (2 sit opposite, 3 make a triangle). A bigger country takes a wider angle, like a lone pair. Linked countries attract into adjacent seats (exact circular order up to 8 countries). The ring is turned and mirrored to match the true map and stretched to the stage aspect. **Orbitals inside a country:** the capital (most central member) sits in the middle, then shells of 6k members, each spaced evenly and turned toward its members' pulls. So bridges face the country they link to.
 > - ✅ `Map2D.tsx`: stars morph between the two views (0.9s). In the schematic, the graticule, color field, contours, territories and group outlines fade out; discs, shell rings, dashed bonds from YOU and level country names fade in. The view re-frames on toggle. `TasteMapView.tsx` has the toggle on the stage (2D only), a legend line ("direction = sound world · center = core · not to scale"), en/ko copy, and the stage aspect fed back into the layout. **Dragging is off in the schematic** (no true position to drop onto). The Distortion lens scores whichever view is on.

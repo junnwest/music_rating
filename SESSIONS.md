@@ -4,6 +4,27 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-11-04 (Windows, Nov 4 evening) — Taste map 2D: schematic as hyperbole (emergent overlaps); to-scale island gaps closed.**
+
+- Jun: the schematic should keep genre overlaps and connections, not treat genres as discrete ("just hyperbole"). To scale, the Korean/Japanese world sat too far from the rest.
+- `schematic.ts` rewrite (pure, no atlas input):
+  - **Seats.** Mass-weighted even bearings around YOU, blended 70% into the true bearings (turned to fit them). Radius rank evened into a disc of 0.55√n slots.
+  - **Relaxation.** 300 steps: REPEL/d² between all pairs, bonds on the symmetrized kNN (k = 0.5·sim, rest 3 → 1 slot as sim → 1), seat pull 0.06, steps capped and cooling.
+  - **Fit.** Into the visible nodes' `pos2d` box, stretched along its long side up to 1.8. Output in plane units, so Map2D's grid and frame work unchanged.
+- `Map2D.tsx`:
+  - Field, contour, region and group-outline builders take a position getter. `geoTrue` and `geoSch` memos are drawn at alphas 1 − s and s.
+  - Names lerp between the two territory sets (position, axis, size), and link anchors do the same.
+  - `homeView` frames the schematic's own box. The YOU mark is kept. Discs, shells, nucleus bonds, `schScale` and `onStageAspect` are removed.
+- `layout.ts closeGaps` after `runUmap`:
+  - Measured on zero: cross-island similarity averages 0.06 (max 0.26, 이상순 ↔ Western pop). In-island pairs at 1 − sim ≈ 0.95 sit about 0.4–0.6 apart, while the islands sat 1.46 apart.
+  - First try: majorization over free island translations. It closed the gap to 2.0× but overlapped the islands in the PCA plane (2D honesty 0.70 → 0.59), so it was replaced.
+  - Final: one contraction factor λ for all island offsets from the center, chosen by stress with a strait floor (MIN_STRAIT = 3 median MST edges).
+  - zero fresh solve: 2D cross/within 4.7 → 3.4; honesty 0.70 → 0.72 (3D 0.73).
+- zero's saved layout reset to version 1 and re-solved warm (Jun OK'd): 3D cross/within 11.3 → 3.5. The other user's stays arranged.
+- Checks: vitest `lib/tasteMap` 243 + 1 expected fail, tsc 0, eslint clean.
+
+---
+
 **2026-11-04 (Windows, Nov 4 afternoon) — Taste map 2D: schematic (subway-map) view, default; true-to-scale behind a toggle.**
 
 - Jun: the 2D map is better but vector directions are hard to read. Wanted a distance/accuracy toggle with a deformed, easy-to-read default "like subway maps", positions decided by atomic orbitals and VSEPR (repel/attract).

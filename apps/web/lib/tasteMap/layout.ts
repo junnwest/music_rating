@@ -533,6 +533,112 @@ function runUmap(
   return umap.getEmbedding().map((r) => [r[0], r[1], r[2]] as Vec3);
 }
 
+/** An MST edge longer than this × the median MST edge splits the layout into islands. */
+export const ISLAND_CUT = 3;
+/** Islands never come closer than this × the median MST edge (nearest cross pair). */
+export const MIN_STRAIT = 3;
+
+/**
+ * UMAP keeps local structure and throws global distances away: once the kNN
+ * graph barely links two groups (zero's Korean / Japanese and Western artists
+ * share almost no language-qualified tags or listeners), it parks them as far
+ * apart as its repulsion likes. This puts the gaps back on the same ruler as
+ * the rest of the map. Islands (components of the layout's MST cut at
+ * ISLAND_CUT × its median edge) keep their shape and only move rigidly; the
+ * ruler is fit on pairs inside islands (layout distance ≈ β·(1 − sim)), and the
+ * islands slide toward the center until cross pairs sit as close to
+ * β·(1 − sim) as they can. Gaps are only ever closed, never widened.
+ */
+export function closeGaps(pts: Vec3[], S: Float64Array): Vec3[] {
+  const n = pts.length;
+  if (n < 4) return pts;
+  const D = (i: number, j: number) => Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1], pts[i][2] - pts[j][2]);
+  const d = (i: number, j: number) => Math.min(2, Math.max(0.02, 1 - S[i * n + j]));
+
+  // Euclidean MST (Prim, O(n²)).
+  const inTree = new Array<boolean>(n).fill(false);
+  const best = new Array<number>(n).fill(Infinity);
+  const from = new Array<number>(n).fill(-1);
+  const edges: { a: number; b: number; len: number }[] = [];
+  best[0] = 0;
+  for (let it = 0; it < n; it++) {
+    let u = -1;
+    for (let i = 0; i < n; i++) if (!inTree[i] && (u < 0 || best[i] < best[u])) u = i;
+    inTree[u] = true;
+    if (from[u] >= 0) edges.push({ a: from[u], b: u, len: best[u] });
+    for (let v = 0; v < n; v++) {
+      if (inTree[v]) continue;
+      const l = D(u, v);
+      if (l < best[v]) {
+        best[v] = l;
+        from[v] = u;
+      }
+    }
+  }
+  const lens = edges.map((e) => e.len).sort((a, b) => a - b);
+  const median = lens[Math.floor(lens.length / 2)];
+  if (!(median > 0)) return pts;
+
+  // Islands.
+  const parent = pts.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (const e of edges) if (e.len <= ISLAND_CUT * median) parent[find(e.a)] = find(e.b);
+  const roots = [...new Set(pts.map((_, i) => find(i)))];
+  if (roots.length < 2) return pts;
+  const isle = pts.map((_, i) => roots.indexOf(find(i)));
+
+  // The ruler, from pairs inside islands.
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++) {
+      if (isle[i] !== isle[j]) continue;
+      num += D(i, j) * d(i, j);
+      den += d(i, j) ** 2;
+    }
+  if (!(den > 0)) return pts;
+  const beta = num / den;
+
+  // Contract every island's offset from the map's center by one factor λ ≤ 1:
+  // islands slide straight in, so the axes that separated them stay the
+  // map's main axes (the 2D plane keeps showing them side by side). λ
+  // minimizes the cross-pair stress, nearer pairs weighted more (Kamada–Kawai),
+  // keeping a strait of MIN_STRAIT median edges between every two islands.
+  const C = roots.length;
+  const size = roots.map((_, c) => isle.filter((x) => x === c).length);
+  const G = mean3(pts);
+  const off: Vec3[] = roots.map(() => [0, 0, 0]);
+  pts.forEach((p, i) => {
+    for (let k = 0; k < 3; k++) off[isle[i]][k] += p[k] / size[isle[i]];
+  });
+  for (const o of off) for (let k = 0; k < 3; k++) o[k] -= G[k];
+  const floor = MIN_STRAIT * median;
+  const placed = (lambda: number) => pts.map((p, i) => [0, 1, 2].map((k) => p[k] + (lambda - 1) * off[isle[i]][k]) as Vec3);
+  let bestLambda = 1;
+  let bestStress = Infinity;
+  for (let step = 100; step >= 5; step--) {
+    const lambda = step / 100;
+    const q = placed(lambda);
+    let stress = 0;
+    const strait = new Map<number, number>();
+    for (let i = 0; i < n; i++)
+      for (let j = i + 1; j < n; j++) {
+        if (isle[i] === isle[j]) continue;
+        const l = Math.hypot(q[i][0] - q[j][0], q[i][1] - q[j][1], q[i][2] - q[j][2]);
+        const target = beta * d(i, j);
+        stress += (l - target) ** 2 / (target * target);
+        const pair = Math.min(isle[i], isle[j]) * C + Math.max(isle[i], isle[j]);
+        strait.set(pair, Math.min(strait.get(pair) ?? Infinity, l));
+      }
+    if ([...strait.values()].some((l) => l < floor)) break;
+    if (stress < bestStress - 1e-12) {
+      bestStress = stress;
+      bestLambda = lambda;
+    }
+  }
+  return bestLambda < 1 ? placed(bestLambda) : pts;
+}
+
 /**
  * D3: personal 3D layout. Weighted metric → UMAP (seeded, deterministic) →
  * positions roughly in [-1, 1]^3, plus the D5 plane and explained neighbors.
@@ -557,7 +663,7 @@ export function solveLayout(space: FeatureSpace, opts: SolveOptions = {}): Layou
   } else {
     const initEmb = opts.init ? buildInit(nodes, S, opts.init, opts.initScale ?? 10) : null;
     const lr = opts.learningRate ?? (initEmb ? 0.25 : 1);
-    const raw = runUmap(nodes, S, seed, initEmb, opts.nEpochs, opts.minDist ?? 0.1, lr, opts.initPull ?? 0.01);
+    const raw = closeGaps(runUmap(nodes, S, seed, initEmb, opts.nEpochs, opts.minDist ?? 0.1, lr, opts.initPull ?? 0.01), S);
     if (initEmb) {
       // Align back onto init's own frame, fit on the keys that had an init position.
       const src: Record<NodeKey, Vec3> = {};

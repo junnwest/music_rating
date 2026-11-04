@@ -70,7 +70,7 @@ const Scene3D = dynamic(() => import('./Scene3D'), {
 });
 
 export type MapMode = '3d' | '2d';
-/** 2D only: a tidy diagram (lib/tasteMap/schematic.ts) or the true plane, to scale. */
+/** 2D only: an exaggerated, readable diagram (lib/tasteMap/schematic.ts) or the true plane, to scale. */
 export type MapScale = 'schematic' | 'true';
 
 /** Canvas-side theme colors, read from the app's CSS variables. */
@@ -134,14 +134,12 @@ export interface SceneProps {
   honesty: HonestySummary;
   /** Countries, bridges and their links over the visible nodes (lib/tasteMap/regions.ts). */
   atlas: Atlas;
-  /** 2D: schematic (subway-map) or true-to-scale positions. 3D ignores it. */
+  /** 2D: schematic (exaggerated) or true-to-scale positions. 3D ignores it. */
   scale: MapScale;
   /** The schematic layout of the visible nodes; null in 3D. */
   schematic: Schematic | null;
   /** The schematic's center mark ("you"). */
   nucleusLabel: string;
-  /** 2D reports the width / height of the box it fits the schematic into (rounded to 0.1). */
-  onStageAspect: (aspect: number) => void;
 }
 
 function cssVar(name: string): string {
@@ -250,9 +248,9 @@ const COPY = {
     exitFullscreen: 'Exit fullscreen',
     scaleSchematic: 'Schematic',
     scaleTrue: 'To scale',
-    scaleSchematicTip: 'A tidy diagram: sound worlds spread around you, core artists in the middle of each. Not to scale.',
+    scaleSchematicTip: 'The same map, exaggerated to read: sounds fan out around you, stars spread evenly, and sounds blend where your artists cross over. Not to scale.',
     scaleTrueTip: 'True distances: the similarity space, flattened.',
-    legendSchematic: 'direction = sound world · center = core · not to scale',
+    legendSchematic: 'direction = sound · overlap = crossover · not to scale',
     you: 'YOU',
   },
   ko: {
@@ -318,9 +316,9 @@ const COPY = {
     exitFullscreen: '전체 화면 종료',
     scaleSchematic: '도식',
     scaleTrue: '실제 거리',
-    scaleSchematicTip: '정리된 도식: 사운드 세계가 나를 중심으로 퍼져 있고, 각 세계의 핵심 아티스트가 가운데에 있어요. 실제 거리는 아니에요.',
+    scaleSchematicTip: '같은 지도를 읽기 쉽게 과장했어요: 사운드가 나를 중심으로 퍼지고, 별들이 고르게 놓이고, 아티스트가 넘나드는 곳에서 사운드가 겹쳐요. 실제 거리는 아니에요.',
     scaleTrueTip: '실제 거리: 유사도 공간을 평면에 펼친 모습이에요.',
-    legendSchematic: '방향 = 사운드 세계 · 가운데 = 핵심 · 실제 거리 아님',
+    legendSchematic: '방향 = 사운드 · 겹침 = 넘나듦 · 실제 거리 아님',
     you: '나',
   },
 } as const;
@@ -379,7 +377,6 @@ export default function TasteMapView({
 
   const [mode, setMode] = useState<MapMode>('2d');
   const [scale, setScale] = useState<MapScale>('schematic');
-  const [stageAspect, setStageAspect] = useState(1.3);
   const genreOk = hasGenreLens(payload.palette);
   const [lensPick, setLens] = useState<MapLens>('genre');
   // Older cached payloads and fixtures have no palette: score is all they can show.
@@ -572,12 +569,12 @@ export default function TasteMapView({
     [work, payload.neighbors, visible, payload.palette, edits.groups],
   );
 
-  // 2D schematic: from the atlas, oriented by the true plane, so it follows the layout.
+  // 2D schematic: an exaggeration of the true plane over what's visible, so it follows the layout.
   const schematic = useMemo(
-    () => (mode === '2d' ? schematicLayout(work, atlas, payload.neighbors, stageAspect) : null),
+    () => (mode === '2d' ? schematicLayout(work.filter((n) => visible.has(n.key)), payload.neighbors) : null),
     // layoutVersion stands in for the in-place position changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [work, atlas, payload.neighbors, mode, layoutVersion, stageAspect],
+    [work, visible, payload.neighbors, mode, layoutVersion],
   );
   const schematicOn = mode === '2d' && scale === 'schematic';
 
@@ -912,7 +909,7 @@ export default function TasteMapView({
         payload: live,
         layoutVersion,
         pins,
-        // The schematic is a diagram of the graph: there is no true position to drop a node at.
+        // The schematic is an exaggeration: there is no true position to drop a node at.
         editable: !running && !importing && !schematicOn,
         busy: running || dragging,
         onDragNode,
@@ -932,7 +929,6 @@ export default function TasteMapView({
         scale,
         schematic,
         nucleusLabel: c.you,
-        onStageAspect: setStageAspect,
       }
     : null;
 
