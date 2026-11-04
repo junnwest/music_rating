@@ -66,6 +66,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 >   - zero, fresh solve: cross/within ratio 4.7 → 3.4; honesty true 0.70 → **0.72**, schematic **0.71**.
 > - ✅ zero's saved layout reset from arranged (2) to solved (1) and re-solved warm from its positions (Jun OK'd): 3D cross/within 11.3 → 3.5, honesty 0.71. The other user's layout is still arranged (old gap). Screenshots used a fresh unsaved solve: `C:\Users\redx1\AppData\Local\Temp\claude\c--Users-redx1-Documents-music-rating-music-rating\03a09a15-5c2d-4369-9e52-5fda39b3469f\scratchpad\d-*.png`.
 > - Checks: vitest `lib/tasteMap` 243 + 1 expected fail, tsc 0, eslint clean.
+> - ✅ Checked junnwest (no saved layout, so it always solves fresh with the gap fix; no language island, since the map is almost all Korean). The schematic kept fewer neighbors there (0.45 vs 0.57 to scale): the 18-artist Korean Hip-Hop cluster scrambles when spread evenly. A sweep over spread / seat / bond / repel on both maps put ANGLE_SPREAD 0.7 → **0.4** best on both: zero 0.71 → 0.74 (above to scale), junnwest 0.45 → 0.49. Not committed. Screenshots `...\scratchpad\e-*.png` (zero), `k-*.png` (junnwest).
 > - **Next:** tune ANGLE_SPREAD / bond lengths after a look, and MIN_STRAIT if the islands should sit even closer.
 
 > **2026-11-04 (Windows, Nov 4 afternoon) — Taste map 2D: Schematic / To scale toggle, schematic is the default (committed).**

@@ -11,7 +11,7 @@
  * - VSEPR around you. Every star is a domain around the nucleus (you, the
  *   map's mass center). Directions are spread out like electron pairs that
  *   repel: each star keeps its bearing's order, but bearings are evened out by
- *   mass (ANGLE_SPREAD of the way), so sounds that sat in one narrow wedge, or
+ *   mass (ANGLE_SPREAD of the way; 0.4 kept more true neighbors than 0.7 on both real maps), so sounds that sat in one narrow wedge, or
  *   two islands on either side, fan out around you. Distance from you keeps
  *   its order and is evened out to fill a disc (center = between sounds,
  *   rim = one sound's far edge).
@@ -29,7 +29,7 @@
 import type { Neighbor, NodeKey, Vec2 } from './types';
 
 /** How far bearings move toward evenly spread (0 = true bearings, 1 = fully even). */
-export const ANGLE_SPREAD = 0.7;
+export const ANGLE_SPREAD = 0.4;
 /** Relaxation steps. */
 export const STEPS = 300;
 /** Pull toward the VSEPR seat, per slot of offset. */

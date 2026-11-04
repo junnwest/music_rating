@@ -20,6 +20,7 @@ Historical record of shipped features and session notes. Not needed at conversat
   - First try: majorization over free island translations. It closed the gap to 2.0× but overlapped the islands in the PCA plane (2D honesty 0.70 → 0.59), so it was replaced.
   - Final: one contraction factor λ for all island offsets from the center, chosen by stress with a strait floor (MIN_STRAIT = 3 median MST edges).
   - zero fresh solve: 2D cross/within 4.7 → 3.4; honesty 0.70 → 0.72 (3D 0.73).
+- junnwest check: no saved layout (fresh solves), no language island. Schematic honesty 0.45 vs 0.57 to scale; a 16-combination sweep on zero + junnwest set ANGLE_SPREAD 0.4 (zero 0.74, junnwest 0.49).
 - zero's saved layout reset to version 1 and re-solved warm (Jun OK'd): 3D cross/within 11.3 → 3.5. The other user's stays arranged.
 - Checks: vitest `lib/tasteMap` 243 + 1 expected fail, tsc 0, eslint clean.
 
