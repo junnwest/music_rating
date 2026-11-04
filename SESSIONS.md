@@ -4,6 +4,37 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-11-04 (Windows, night) — Taste Map: electronic rollup hue, countries, bridges; committed + pushed.**
+
+- **Electronic hue, solved with data rather than a rule** (Jun: "try to solve with llm/data for now and flag for next"). `palette.ts` step 3b: after the greedy pick, energy on candidate tags that the fold leaves unassigned is summed per plain family they descend from (same language). If the biggest orphan family beats the weakest pick (or a slot is free), it takes the slot as a rollup hue with a virtual column, owning its descendants; a real ancestor still wins the fold over a rollup. At most 2 rollups. zero: orphan Electronic 1.96 > Synth-Pop 1.40, so Electronic replaces Synth-Pop. Avicii 0→99%, Fred again.. 5→64%, and Owl City / Bastille move to Electronic through synth-pop. The second round (R&B 1.65) loses to Pop Rock 1.88. A rock+pop map gets no "Rock" hue, because its rock tags are already explained. Redis `tastemap:v4`. Flagged: the rule question stays with Jun; plain-pop artists stay pale.
+- **Countries (slice 2.3)** in `regions.ts`: Louvain (local moves + aggregation, deterministic key order), then each community split into its connected components (the Leiden guarantee), then singletons merged into their strongest neighbor. Resolution: γ=1 gave 3 continents on zero, γ=2 gave 5 scenes, so it's 2. Pruning weak edges (keep ≥0.5–0.7 × top sim) splits the graph into islands with no bridges, so it was rejected. Territories: per country, f_c = min(K_c − max other K, D − 0.22) on a 120² grid, contoured at 0 with d3 `contours` (a smooth density-clipped Voronoi). Names come from the mass-weighted palette mix, else the dominant group, else the heaviest artist; a duplicate name gets its second tag appended. Drawn as background lettering under the stars, rotated along the members' principal axis (clamped to ±26°) and sized by area.
+- **Bridges (slice 2.4):** Brandes on the same graph with d = 1 − w, normalized by the pair count. A bridge needs ≥0.12 and a neighbor in another country; at most 5. Diamonds in 2D; inspector line "Country · Bridge to …". Bundled arcs: one quadratic per country pair, width ∝ summed cross weight, passing through the strongest bridge at t=½.
+- **Hubness:** zero's fresh payload has 이상순 (no tags, no groups, so only the era block counts), which `similarity()` scores ~1.0 against the whole era. It appeared in all 29 kNN lists and had betweenness 0.85. `knnGraph` now keeps only mutual edges for a node in ≥ max(3k, 60%) of the lists, which leaves zero's bridges as amazarashi, 혁오, 이상순 (K-hip-hop ↔ K-rock, mutual), Avicii, and Shawn Mendes. Root cause flagged (features.ts single-block similarity); the MST constellation lines still fan into it.
+- **Lens toggle overlap:** Map2D seeds the label collision boxes with the overlay controls (fullscreen, lens switch, legend, compass). Group names on the canvas are hidden once 2+ countries exist (the countries name the map).
+- Checks: vitest `lib/tasteMap` 235 + 1 expected fail, tsc 0, eslint clean. Screenshots of mock and zero's real payload (fixture served through Playwright route interception, nothing written to the repo) on the dev server at :3100.
+
+---
+
+**2026-11-04 (Windows, evening) — Taste Map: palette fix on zero's real map, slice 2.1 honest map (not committed).**
+
+- **Real-map review** (`dump-taste-map-layout.ts --user=zero`, 29 nodes): the 8 picked hues read well (Korean Hip-Hop, K-Pop, Korean Rock, Alt Rock, Pop Rock, Synth-Pop, J-Pop, J-Rock). But tags that only one artist carries fell through the cosine fold and went gray. E SENS (pure Korean hip-hop) was only 27% colored, because `boom-bap@ko` / `conscious-hip-hop@ko` had no column overlap with k-rap. **Fix:** `palette.ts` folds a tag into a picked taxonomy ancestor in the same language first (falling back to cosine): E SENS 27→100%, 혁오 88→98%. Redis key → `tastemap:v3`.
+- Still gray, by design for now: Avicii and Fred again.. (electronic is a plain family, so it never gets a hue and is below the 8-tag cut), and Shawn Mendes / Ed Sheeran (mostly plain `pop`). Open question for Jun.
+- **Slice 2.1 honest map:** `lib/tasteMap/honesty.ts` computes per-node kNN recall (the payload's top-5 feature neighbors vs. the 5 nearest on screen; 2D uses pos2d, 3D uses pos), live under drags. A new **Distortion** lens (teal kept → gray → ember torn, `distortionRgb`) is available in 2D and 3D. In 2D, halos widen as a node's neighborhood tears; on select, torn links are dashed ember and intruders get dotted rings. The inspector shows "3/5 nearest kept" plus the torn and intruder names, and the legend shows the map-wide mean. zero's map keeps 72% in 2D and 76% in 3D; the tears sit in the Western pop-rock cluster (Radiohead 1.0 in 3D → 0.6 in 2D).
+- **Slice 2.2 (2D-native refine) evaluated and shelved:** turning on the kNN spring links in a 2D pass never raised recall above 0.72 and usually lowered it. A 2-component UMAP warm-started from the plane gave at most 0.74, about one neighbor over 29 nodes. The ceiling is 3D UMAP's own 0.76, so flattening costs only ~0.04 here. D5 (pos2d = pos projected onto the plane) also stays intact.
+- Checks: vitest `lib/tasteMap` 226 + 1 expected fail, tsc 0, eslint clean. Screenshot-verified on a fresh `next dev -p 3100` with `?mock=1` (the :3000 server was serving older code).
+
+---
+
+**2026-11-04 (Windows, later) — Taste Map visualization pass, slice 1.**
+
+- Brainstormed visualization ideas with Jun (color as meaning, map/network-theory tools), then built slice 1. Direction: a 3Blue1Brown-style stage that explores like a star chart, inside the normal sillajuku shell.
+- **Color model:** a fixed hue per family would paint most maps the same color (they're mostly rock + pop), so the palette adapts to each map. `palette.ts` drops plain families and scene roots, picks tags greedily by mass-weighted energy, merges near-synonyms (column cosine > 0.75), orders the picks around the hue wheel by classical MDS, and folds every other tag into its nearest pick (cos ≥ 0.5). `color.ts`: a node's OKLab (a, b) is the mix-weighted sum of hue vectors, so purity falls out of the vector sum. Lightness carries depth in 2D.
+- **2D renderer** (`Map2D.tsx` rewritten; interaction code unchanged): sky, graticule, Nadaraya–Watson color field (`fields.ts colorField`, a 160² grid, recomputed only once the layout settles), isodensity contours plus group outlines, Kruskal MST constellation lines, additive glow stars, link draw-on with 3b1b's smooth easing, a lens crossfade, and a compass built from per-tag weighted least-squares gradients.
+- **Shell:** the 2D view and Sound lens are the defaults; fullscreen (`F`) and a Sound mix bar in the inspector. The mock fixture carries a palette.
+- The running dev server's watcher stopped picking up edits partway through (its chunk was older than the source, and touching the files didn't help), so the last layout tweaks aren't screenshot-verified.
+
+---
+
 **2026-11-04 (Windows) — Taste Map: migration applied, prod route tests, shipped unlinked.**
 
 - Applied `20261104000000_taste_map_pin_soft_z.sql` with `scripts/db-exec.ts` (SUPABASE_ACCESS_TOKEN). The network here drops connections intermittently (connect timeouts to api.supabase.com); a retry works.

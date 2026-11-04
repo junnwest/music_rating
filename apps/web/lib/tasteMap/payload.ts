@@ -37,6 +37,7 @@ import { loadMapUserInput } from './load';
 import { buildFeatureSpace, explain, DEFAULT_METRIC } from './features';
 import { finishLayout, placeNew, similarityMatrix, solveLayout, type ExplainFn } from './layout';
 import { metricFromRow } from './metricStore';
+import { buildPalette } from './palette';
 import { selectPins, type StoredPin } from './store';
 import type {
   EraOverride,
@@ -174,6 +175,7 @@ export async function buildTasteMapPayload(db: SupabaseClient, userId: string, o
     trails.set(node.artistId, [...(trails.get(node.artistId) ?? []), node.key]);
   }
 
+  const palette = buildPalette(space);
   const payload: TasteMapPayload = {
     version: 1,
     nodes: space.nodes.map((n) => ({
@@ -192,8 +194,10 @@ export async function buildTasteMapPayload(db: SupabaseClient, userId: string, o
       pos2d: layout.plane2d[n.key],
       pinned: pins.has(n.key),
       ...(pins.get(n.key)?.softZ ? { softZ: true } : {}),
+      mix: palette.mix[n.key] ?? {},
     })),
     groups,
+    palette: palette.hues,
     // space.nodes keeps each artist's eras in chronological order.
     trails: [...trails.entries()].filter(([, keys]) => keys.length > 1).map(([artistId, keys]) => ({ artistId, keys })),
     neighbors: layout.neighbors,

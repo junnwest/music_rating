@@ -177,12 +177,28 @@ export interface TasteMapPayloadNode {
    * so older payloads, fixtures and iOS still parse.
    */
   softZ?: boolean;
+  /**
+   * Genre lens (palette.ts): palette tag id → share of this node's tag energy,
+   * summing to ≤ 1 (the rest fits no palette tag and mixes toward gray).
+   * Optional: older cached payloads and fixtures don't carry it.
+   */
+  mix?: Record<string, number>;
+}
+
+/** One palette color of the genre lens: a defining tag of this map and its OKLCh hue. */
+export interface PaletteHue {
+  id: string;
+  label: string;
+  /** Degrees. Neighbors on the wheel are tags that co-occur. */
+  hue: number;
 }
 
 export interface TasteMapPayload {
   version: 1;
   nodes: TasteMapPayloadNode[];
   groups: TasteMapGroup[];
+  /** Genre lens palette (palette.ts), wheel order. Optional, like `mix`. */
+  palette?: PaletteHue[];
   /** One per artist with ≥2 eras, keys in chronological order. */
   trails: { artistId: string; keys: NodeKey[] }[];
   neighbors: Record<NodeKey, Neighbor[]>;

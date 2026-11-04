@@ -5,7 +5,7 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { Billboard, Line, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import { spectrumColor } from '../../../lib/sj/display';
+import { hueMap, nodeRgb, rgbCss } from '../../../lib/tasteMap/color';
 import type { NodeKey, TasteMapPayloadNode, Vec3 } from '../../../lib/tasteMap/types';
 import type { SceneProps } from './TasteMapView';
 import { useDrag3D } from './useDrag3D';
@@ -15,8 +15,9 @@ import { createGroupLayoutScratch, ensureBoxes, hitsAny, labelBoard, layoutGroup
  * 3D taste map (react-three-fiber). Loaded only through `next/dynamic` from
  * TasteMapView, so three.js ships on /taste/map alone.
  *
- * - Nodes: one instanced sphere mesh, radius by mass, colored by avg score on
- *   the app's ramp (spectrumColor). Raycast hover/select via instanceId.
+ * - Nodes: one instanced sphere mesh, radius by mass, colored by the current
+ *   lens (lib/tasteMap/color.ts: genre mix or the score ramp). Raycast
+ *   hover/select via instanceId.
  * - Labels: camera-facing sprites with canvas-drawn text in the app font (see
  *   makeLabel for why not drei <Text>), sized by mass. Semantic zoom: each
  *   label has a reach distance by its mass rank and fades with camera
@@ -199,7 +200,7 @@ function useRelated({ payload, selectedKey, hoveredKey }: SceneProps): Set<NodeK
 }
 
 function Nodes(props: SceneProps & { onPick: (k: NodeKey) => void }) {
-  const { payload, visible, selectedKey, hoveredKey, theme, onHover, onPick, layoutVersion, editable, onDragNode } = props;
+  const { payload, visible, selectedKey, hoveredKey, theme, onHover, onPick, layoutVersion, editable, onDragNode, lens, honesty } = props;
   const nodes = payload.nodes;
   const mesh = useRef<THREE.InstancedMesh | null>(null);
   const related = useRelated(props);
@@ -212,6 +213,7 @@ function Nodes(props: SceneProps & { onPick: (k: NodeKey) => void }) {
     const color = new THREE.Color();
     const bg = new THREE.Color(theme.bg);
     const L = theme.dark ? 0.72 : 0.62;
+    const hues = hueMap(payload.palette);
     nodes.forEach((n, i) => {
       const shown = visible.has(n.key);
       const r = radiusOf(n.mass) * (n.key === selectedKey ? 1.45 : n.key === hoveredKey ? 1.25 : 1);
@@ -219,7 +221,9 @@ function Nodes(props: SceneProps & { onPick: (k: NodeKey) => void }) {
       obj.scale.setScalar(shown ? r : 0);
       obj.updateMatrix();
       m.setMatrixAt(i, obj.matrix);
-      color.set(n.avgScore != null ? spectrumColor(n.avgScore, L, 1) : theme.muted);
+      color.set(
+        lens === 'score' && n.avgScore == null ? theme.muted : rgbCss(nodeRgb(n, lens, hues, L, honesty.byKey.get(n.key)?.recall)),
+      );
       if (selectedKey && !related.has(n.key)) color.lerp(bg, 0.6);
       m.setColorAt(i, color);
     });
@@ -227,7 +231,7 @@ function Nodes(props: SceneProps & { onPick: (k: NodeKey) => void }) {
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
     m.computeBoundingSphere();
     // layoutVersion: node positions change in place (drag, re-arrange).
-  }, [nodes, visible, selectedKey, hoveredKey, related, theme, layoutVersion]);
+  }, [nodes, visible, selectedKey, hoveredKey, related, theme, layoutVersion, lens, payload.palette, honesty]);
 
   const keyAt = (e: ThreeEvent<PointerEvent | MouseEvent>) =>
     e.instanceId != null ? nodes[e.instanceId]?.key ?? null : null;

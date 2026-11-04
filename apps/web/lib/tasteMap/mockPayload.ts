@@ -16,6 +16,7 @@ import type {
   Contribution,
   Neighbor,
   NodeKey,
+  PaletteHue,
   TasteMapGroup,
   TasteMapPayload,
   TasteMapPayloadNode,
@@ -45,6 +46,24 @@ const GROUP_TAGS: Record<string, string[]> = {
   'g-khiphop': ['Korean Hip-Hop', 'K-R&B', 'Boom Bap'],
 };
 const BLOCK_LABELS = ['described alike', 'listeners overlap', 'same era'];
+
+/** Genre-lens palette (palette.ts shape), in wheel order, and each group's typical mix over it. */
+const PALETTE: PaletteHue[] = [
+  { id: 'j-rock', label: 'J-Rock', hue: 20 },
+  { id: 'j-pop', label: 'J-Pop', hue: 65 },
+  { id: 'pop-rock', label: 'Pop Rock', hue: 110 },
+  { id: 'indie-pop', label: 'Indie Pop', hue: 155 },
+  { id: 'britpop', label: 'Britpop', hue: 200 },
+  { id: 'alternative-rock', label: 'Alternative Rock', hue: 245 },
+  { id: 'k-rap', label: 'Korean Hip-Hop', hue: 290 },
+  { id: 'k-rnb', label: 'K-R&B', hue: 335 },
+];
+const GROUP_MIX: Record<string, Record<string, number>> = {
+  'g-jrock': { 'j-rock': 0.55, 'j-pop': 0.3, 'alternative-rock': 0.05 },
+  'g-britpop': { britpop: 0.5, 'alternative-rock': 0.35, 'indie-pop': 0.05 },
+  'g-poprock': { 'pop-rock': 0.5, 'indie-pop': 0.3, britpop: 0.05 },
+  'g-khiphop': { 'k-rap': 0.65, 'k-rnb': 0.25 },
+};
 
 interface Seed {
   slug: string;
@@ -151,6 +170,8 @@ function round(n: number, d = 3): number {
 function build(): TasteMapPayload {
   const rand = rng(20261103);
   const jitter = (s: number) => (rand() * 2 - 1) * s;
+  // Its own stream, so adding the mix didn't move any fixture position.
+  const mixRand = rng(4242);
 
   const nodes: TasteMapPayloadNode[] = SEEDS.map((s) => {
     let pos: Vec3;
@@ -176,6 +197,12 @@ function build(): TasteMapPayload {
     const artistId = `mock-${s.artist ?? s.slug}`;
     const albumIds = s.albums.map((_, i) => `mock-rg-${s.slug}-${i}`);
     const key: NodeKey = s.artist ? `e:${artistId}:${albumIds[0]}` : `a:${artistId}`;
+    // Membership-weighted blend of the groups' mixes, each share jittered ±20%.
+    const mix: Record<string, number> = {};
+    for (const [g, w] of Object.entries(s.groups))
+      for (const [t, x] of Object.entries(GROUP_MIX[g] ?? {})) mix[t] = (mix[t] ?? 0) + w * x;
+    const mixTotal = Object.values(mix).reduce((a, b) => a + b, 0);
+    for (const t of Object.keys(mix)) mix[t] = round((mix[t] * (0.8 + 0.4 * mixRand())) / Math.max(1, mixTotal * 1.05));
     return {
       key,
       artistId,
@@ -188,6 +215,7 @@ function build(): TasteMapPayload {
       pos,
       pos2d,
       pinned: false,
+      mix,
     };
   });
 
@@ -230,7 +258,7 @@ function build(): TasteMapPayload {
     .filter(([, list]) => list.length >= 2)
     .map(([artistId, list]) => ({ artistId, keys: list.map((n) => n.key) }));
 
-  return { version: 1, nodes, groups: GROUPS, trails, neighbors };
+  return { version: 1, nodes, groups: GROUPS, trails, neighbors, palette: PALETTE };
 }
 
 export const MOCK_TASTE_MAP: TasteMapPayload = build();

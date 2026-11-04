@@ -207,3 +207,26 @@ Order by expected value per effort. Each item is **kept only if it beats the fro
 
 ## 7. Next action
 Phase 0, step 1: `scripts/dump-taste-map-nodes.ts --user=junnwest`, then the throwaway 3D look.
+
+## 8. Visualization pass (2026-11-04)
+
+Goal: make the space legible and *felt*. Color should encode the vector space itself (not the average score), the map should borrow from cartography and network theory, and distance doesn't have to be to scale. Look: the stage is a 3Blue1Brown-style dark canvas that explores like a star chart; everything around it stays sillajuku.
+
+### Slice 1 — built (uncommitted)
+- **Sound lens, the default** (`lib/tasteMap/palette.ts` server-side, `color.ts` client-side). Each map gets its own palette of up to 8 defining tags. Plain families and scene roots are excluded, near-synonyms are merged, and hues are ordered around the wheel by classical MDS so that tags that co-occur get neighboring hues. Node color = OKLab Σ share·(cos h, sin h): hue = which sounds, chroma = purity (opposing tags cancel to gray). Lightness = depth along the plane normal in 2D. The Score lens is still available as a toggle, with a crossfade between lenses.
+- **Star-chart 2D** (`Map2D.tsx`, `fields.ts`): a graticule; a kernel-regression color field with opacity = density; isodensity contours; dashed group outlines; MST constellation lines; glowing stars; neighbor links drawn outward on select; and a compass of per-tag least-squares gradients (a fitted biplot).
+- **Fullscreen** (`F`), the **Sound mix** bar in the inspector, and the 3D view on the same lens colors. Payload: optional `palette` + node `mix`, Redis key `tastemap:v2`.
+
+Palette addendum (2026-11-04 night): **family rollups** (palette.ts step 3b). A plain family whose descendants are otherwise unassigned takes the weakest pick's slot when its orphan energy is larger (Electronic on zero). This is the data-driven stopgap; whether broad families should get hues as a rule is still open.
+
+### Slice 2 — next
+1. ✅ **Honest map** (built 2026-11-04, `honesty.ts`): per-node kNN recall@5 on the current view, the Distortion lens, fuzzy halos, torn/intruder marks on select, inspector + legend. zero: 0.72 (2D) / 0.76 (3D).
+2. ⏸ **2D-native layout** (shelved 2026-11-04): measured with (1) on zero. 2D spring links: ≤ 0.72 (no gain). A 2-component UMAP warm-started from the plane: 0.74 at best (≈1 neighbor over 29 nodes). The ceiling is 3D UMAP's 0.76. Revisit only if a bigger map shows a real 2D-vs-3D gap. Any refine must keep D5 (move in-plane, lift via `fromPlane`).
+3. ✅ **Countries** (built 2026-11-04, `regions.ts`): Louvain (γ=2) + connected-piece split (the Leiden guarantee) on the symmetrized kNN graph → density-clipped territories (min(K_c − max other, D − τ) contoured at 0), named by the dominant palette tag along each country's long axis, sized by area. Names are straight and rotated, not yet curved. Seeding groups from countries is not done yet.
+4. ✅ **Bridges** (built 2026-11-04): Brandes betweenness ≥ 0.12 with a neighbor in another country → diamonds + an inspector line; one bundled arc per country pair, bent through the bridge. Hubness guard: a node in ≥60% of all kNN lists keeps only mutual edges.
+5. **True-distance rings** on select: recolor by real similarity, with 0.8 / 0.6 / 0.4 isolines.
+6. **Semantic zoom** to album covers; fisheye / overlap removal at each zoom level.
+7. **"What's here?"** on empty space: the smoothed tag mix at that point plus unrated catalog albums nearby (fog of war / blind spots).
+
+### Later
+More lenses (Era, Frontier, predicted affinity once the Phase 5 model exists), a minimap, keyboard hops between neighbors, the iOS view decoding `palette`/`mix`, and a time-lapse of the map by year.

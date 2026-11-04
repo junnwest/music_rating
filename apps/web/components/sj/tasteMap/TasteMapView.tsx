@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Box, Download, Map as MapIcon, Pencil, Pin, PinOff, Scissors, Shuffle, SlidersHorizontal, Square, Upload, UserPlus, X } from 'lucide-react';
+import { Box, Download, Map as MapIcon, Maximize2, Minimize2, Pencil, Pin, PinOff, Scissors, Shuffle, SlidersHorizontal, Square, Upload, UserPlus, X } from 'lucide-react';
 import Cover from '../Cover';
 import { FlowerSpinner } from '../Loading';
 import { useLanguage } from '../../../lib/i18n';
@@ -10,7 +10,10 @@ import { formatScore, spectrumColor, spectrumFill, spectrumNumber } from '../../
 import type { PlaceResponse, TasteMapExport } from '../../../lib/tasteMap/apiTypes';
 import { downloadJson, exportMap, importMap, parseExportFile, saveLayout, savePins } from '../../../lib/tasteMap/client';
 import { createRearrange, type Rearrange } from '../../../lib/tasteMap/forceLayout';
-import { fromPlane, planeBasis, toPlane } from '../../../lib/tasteMap/plane';
+import { distortionRgb, hasGenreLens, hueMap, nodeRgb, oklabToRgb, rgbCss, type MapLens } from '../../../lib/tasteMap/color';
+import { HONEST_K, neighborHonesty, type Honesty, type HonestySummary } from '../../../lib/tasteMap/honesty';
+import { buildAtlas, type Atlas } from '../../../lib/tasteMap/regions';
+import { fromPlane, planeBasis, toPlane, type PlaneBasis } from '../../../lib/tasteMap/plane';
 import type { NodeKey, TasteMapPayload, TasteMapPayloadNode, Vec2, Vec3 } from '../../../lib/tasteMap/types';
 import AddArtist from './AddArtist';
 import EraEditor from './EraEditor';
@@ -120,6 +123,14 @@ export interface SceneProps {
   onSelect: (key: NodeKey | null) => void;
   theme: MapTheme;
   ghost: SceneGhost | null;
+  /** What node color means (lib/tasteMap/color.ts). */
+  lens: MapLens;
+  /** The session's fixed D5 frame: the 2D view reads depth (`toPlane(pos)[2]`) from it. */
+  basis: PlaneBasis;
+  /** How much of each node's real neighborhood the current view keeps (lib/tasteMap/honesty.ts). */
+  honesty: HonestySummary;
+  /** Countries, bridges and their links over the visible nodes (lib/tasteMap/regions.ts). */
+  atlas: Atlas;
 }
 
 function cssVar(name: string): string {
@@ -209,6 +220,23 @@ const COPY = {
     eras: 'Eras',
     erasEdit: 'Split or merge eras',
     preview: 'preview',
+    lensGenre: 'Sound',
+    lensScore: 'Score',
+    lensDistortion: 'Distortion',
+    legendGenre: 'vivid = one sound · gray = mixed',
+    legendKept: 'kept',
+    legendTorn: 'torn',
+    legendDistortion: 'of real neighborhoods kept here',
+    honestKept: 'nearest kept on this view',
+    honestTorn: 'Close in the data, far on this view',
+    honestIntruders: 'Drawn close, but not that similar',
+    country: 'Country',
+    bridgeTo: 'Bridge to',
+    legendDepth: 'brighter = nearer (depth)',
+    soundMix: 'Sound mix',
+    other: 'other',
+    fullscreen: 'Fullscreen',
+    exitFullscreen: 'Exit fullscreen',
   },
   ko: {
     title: '취향 지도',
@@ -254,6 +282,23 @@ const COPY = {
     eras: '시기',
     erasEdit: '시기 나누기 · 합치기',
     preview: '미리보기',
+    lensGenre: '사운드',
+    lensScore: '점수',
+    lensDistortion: '왜곡',
+    legendGenre: '선명함 = 한 가지 사운드 · 회색 = 섞임',
+    legendKept: '유지',
+    legendTorn: '찢어짐',
+    legendDistortion: '의 실제 이웃 관계가 이 화면에서 유지됨',
+    honestKept: '가까운 이웃이 이 화면에서도 가까움',
+    honestTorn: '데이터상 가깝지만 이 화면에선 멂',
+    honestIntruders: '가깝게 그려졌지만 실제론 덜 비슷함',
+    country: '나라',
+    bridgeTo: '다리 →',
+    legendDepth: '밝을수록 가까움 (깊이)',
+    soundMix: '사운드 구성',
+    other: '기타',
+    fullscreen: '전체 화면',
+    exitFullscreen: '전체 화면 종료',
   },
 } as const;
 type Copy = { [K in keyof (typeof COPY)['en']]: string };
@@ -309,7 +354,11 @@ export default function TasteMapView({
   const c: Copy = COPY[lang === 'ko' ? 'ko' : 'en'];
   const theme = useMapTheme();
 
-  const [mode, setMode] = useState<MapMode>('3d');
+  const [mode, setMode] = useState<MapMode>('2d');
+  const genreOk = hasGenreLens(payload.palette);
+  const [lensPick, setLens] = useState<MapLens>('genre');
+  // Older cached payloads and fixtures have no palette: score is all they can show.
+  const lens: MapLens = genreOk || lensPick !== 'genre' ? lensPick : 'score';
   const [selectedKey, setSelectedKey] = useState<NodeKey | null>(null);
   const [hoveredKey, setHoveredKey] = useState<NodeKey | null>(null);
   const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(() => new Set());
@@ -491,6 +540,20 @@ export default function TasteMapView({
     // edits.version: memberships on `work` were replaced.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [work, hiddenGroups, edits.version]);
+
+  // Honest map: neighborhoods kept by the view on screen (2D plane or 3D), live under drags.
+  const honesty = useMemo(
+    () => neighborHonesty(new Map(work.map((n) => [n.key, mode === '2d' ? n.pos2d : n.pos])), payload.neighbors),
+    // layoutVersion stands in for the in-place position changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [work, payload.neighbors, mode, layoutVersion],
+  );
+
+  // Countries and bridges over what's visible (the graph, not positions: no layoutVersion).
+  const atlas = useMemo(
+    () => buildAtlas(work, payload.neighbors, visible, payload.palette, Object.fromEntries(edits.groups.map((g) => [g.id, g.name]))),
+    [work, payload.neighbors, visible, payload.palette, edits.groups],
+  );
 
   // Hiding a group drops a selection that just became invisible.
   useEffect(() => {
@@ -752,13 +815,48 @@ export default function TasteMapView({
     onReload?.();
   };
 
+  // ── Fullscreen: the browser's Fullscreen API on the stage block where it
+  // exists, else (iPhone Safari) a fixed full-viewport layer. Same layout either way.
+  const stageBlock = useRef<HTMLDivElement>(null);
+  const [full, setFull] = useState(false);
+  const fullRef = useRef(full);
+  fullRef.current = full;
+  const toggleFull = useCallback(() => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+      setFull(false);
+      return;
+    }
+    if (fullRef.current) {
+      setFull(false);
+      return;
+    }
+    const el = stageBlock.current;
+    if (el?.requestFullscreen) void el.requestFullscreen().catch(() => {});
+    setFull(true);
+  }, []);
+  useEffect(() => {
+    // Esc in native fullscreen exits without a key event reaching us.
+    const onChange = () => {
+      if (!document.fullscreenElement) setFull(false);
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelectedKey(null);
+      if (e.key === 'Escape') {
+        setSelectedKey(null);
+        if (!document.fullscreenElement) setFull(false);
+      }
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === 'f' || e.key === 'F')) toggleFull();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [toggleFull]);
 
   const toggleGroup = (id: string) =>
     setHiddenGroups((prev) => {
@@ -788,6 +886,10 @@ export default function TasteMapView({
         onSelect: select,
         theme,
         ghost: sceneGhost,
+        lens,
+        basis,
+        honesty,
+        atlas,
       }
     : null;
 
@@ -860,6 +962,8 @@ export default function TasteMapView({
     c,
     onPick: selectAndFocus,
     onTogglePin: togglePin,
+    honesty,
+    atlas,
   };
 
   return (
@@ -1025,21 +1129,50 @@ export default function TasteMapView({
       {editingGroups && <GroupEditor edits={edits} onClose={() => setEditingGroups(false)} />}
 
       {/* ── Stage + inspector ── */}
-      <div className="mt-3 flex flex-col gap-3 md:flex-row">
-        <div className="relative h-[68vh] max-h-[720px] min-h-[380px] min-w-0 flex-1 overflow-hidden rounded-2xl border border-divider bg-surface">
+      <div
+        ref={stageBlock}
+        className={
+          full
+            ? 'fixed inset-0 z-[70] flex flex-col gap-2 bg-page p-2 md:flex-row'
+            : 'mt-3 flex flex-col gap-3 md:flex-row'
+        }
+      >
+        <div
+          className={`relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-divider bg-surface ${
+            full ? 'h-full' : 'h-[68vh] max-h-[720px] min-h-[380px]'
+          }`}
+        >
           {sceneProps && (mode === '3d' ? <Scene3D {...sceneProps} /> : <Map2D {...sceneProps} />)}
 
-          <div className="pointer-events-none absolute right-2.5 top-2.5 flex items-center gap-1.5 rounded-full bg-surface/80 px-2 py-1 backdrop-blur">
-            <span className="text-[10px] tabular-nums text-muted">1</span>
-            <span
-              className="h-[6px] w-14 rounded-full"
-              style={{
-                background: `linear-gradient(to right, ${[1, 2, 3, 4, 5].map((s) => spectrumColor(s, 0.62, 1)).join(', ')})`,
-              }}
-            />
-            <span className="text-[10px] tabular-nums text-muted">5</span>
-            <span className="text-[10px] text-muted">{c.score}</span>
+          <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={toggleFull}
+              aria-label={full ? c.exitFullscreen : c.fullscreen}
+              title={`${full ? c.exitFullscreen : c.fullscreen} (F)`}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider bg-surface/85 text-ink backdrop-blur transition hover:bg-surface"
+            >
+              {full ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+            {full && (
+              <div role="group" className="inline-flex rounded-full border border-divider bg-surface/85 p-0.5 text-[11.5px] font-semibold backdrop-blur">
+                {(['3d', '2d'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    aria-pressed={mode === m}
+                    onClick={() => switchMode(m)}
+                    className={`rounded-full px-2.5 py-1 transition ${mode === m ? 'bg-ink text-page' : 'text-muted hover:text-ink'}`}
+                  >
+                    {m.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+
+          <Legend c={c} lens={lens} genreOk={genreOk} onLens={setLens} palette={payload.palette} depth={mode === '2d'} honesty={honesty} />
+
 
           {/* Phone: the inspector (or an open panel) is a bottom sheet over the stage. */}
           {((isPhone && panelBody) || selectedNode) && (
@@ -1064,7 +1197,11 @@ export default function TasteMapView({
           )}
         </div>
 
-        <aside className="hidden h-[68vh] max-h-[720px] min-h-[380px] w-[300px] shrink-0 overflow-y-auto rounded-2xl border border-divider/60 bg-page px-4 py-4 md:block">
+        <aside
+          className={`hidden w-[300px] shrink-0 overflow-y-auto rounded-2xl border border-divider/60 bg-page px-4 py-4 md:block ${
+            full ? 'h-full' : 'h-[68vh] max-h-[720px] min-h-[380px]'
+          }`}
+        >
           {(!isPhone && panelBody) || (inspected ? (
             <Inspector {...inspectorProps} node={inspected} pin={pins.get(inspected.key) ?? null} />
           ) : (
@@ -1078,7 +1215,7 @@ export default function TasteMapView({
                   .sort((a, b) => b.mass - a.mass)
                   .slice(0, 8)
                   .map((n) => (
-                    <NodeRow key={n.key} node={n} onPick={selectAndFocus} c={c} />
+                    <NodeRow key={n.key} node={n} onPick={selectAndFocus} c={c} dot={dotColor(n, lens, payload.palette, honesty.byKey.get(n.key)?.recall)} />
                   ))}
               </div>
             </div>
@@ -1103,23 +1240,236 @@ function ScoreChip({ score, c }: { score: number | null; c: Copy }) {
   );
 }
 
-function NodeRow({ node, onPick, c }: { node: TasteMapPayloadNode; onPick: (k: NodeKey) => void; c: Copy }) {
+/** A palette tag's swatch: its hue at full purity. */
+function swatch(hue: number, L = 0.7): string {
+  const rad = (hue * Math.PI) / 180;
+  return rgbCss(oklabToRgb(L, 0.15 * Math.cos(rad), 0.15 * Math.sin(rad)));
+}
+
+/** A node's dot in lists: the same color the map gives it (no depth shading). */
+function dotColor(n: TasteMapPayloadNode, lens: MapLens, palette: TasteMapPayload['palette'], recall?: number): string {
+  if (lens === 'score' && n.avgScore == null) return 'rgb(var(--color-muted))';
+  return rgbCss(nodeRgb(n, lens, hueMap(palette), 0.66, recall));
+}
+
+/**
+ * Lens switch (top right of the stage) + legend (bottom right, clear of the
+ * compass at bottom left). Sound: the palette tags as
+ * swatches in wheel order (neighbors co-occur) and how to read vivid / gray /
+ * bright. Score: the app's score ramp. Distortion: the kept → torn ramp and
+ * the share of neighborhoods the current view keeps.
+ */
+function Legend({
+  c,
+  lens,
+  genreOk,
+  onLens,
+  palette,
+  depth,
+  honesty,
+}: {
+  c: Copy;
+  lens: MapLens;
+  genreOk: boolean;
+  onLens: (l: MapLens) => void;
+  palette: TasteMapPayload['palette'];
+  depth: boolean;
+  honesty: HonestySummary;
+}) {
+  return (
+    <>
+      <div role="group" className="absolute right-2.5 top-2.5 inline-flex rounded-full border border-divider bg-surface/85 p-0.5 text-[11.5px] font-semibold backdrop-blur">
+        {(
+          [
+            ['genre', c.lensGenre],
+            ['score', c.lensScore],
+            ['distortion', c.lensDistortion],
+          ] as const
+        )
+          .filter(([l]) => genreOk || l !== 'genre')
+          .map(([l, label]) => (
+            <button
+              key={l}
+              type="button"
+              aria-pressed={lens === l}
+              onClick={() => onLens(l)}
+              className={`rounded-full px-2.5 py-1 transition ${lens === l ? 'bg-ink text-page' : 'text-muted hover:text-ink'}`}
+            >
+              {label}
+            </button>
+          ))}
+      </div>
+      <div className="pointer-events-none absolute bottom-2.5 right-2.5 max-w-[min(330px,calc(100%-14rem))] rounded-xl border border-divider/60 bg-surface/85 px-2.5 py-1.5 backdrop-blur">
+        {lens === 'genre' && palette?.length ? (
+          <>
+            <div className="flex flex-wrap justify-end gap-x-2 gap-y-0.5">
+              {palette.map((p) => (
+                <span key={p.id} className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-ink">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: swatch(p.hue) }} />
+                  {p.label}
+                </span>
+              ))}
+            </div>
+            <p className="mt-1 text-right text-[10px] leading-snug text-muted">
+              {c.legendGenre}
+              {depth && <> · {c.legendDepth}</>}
+            </p>
+          </>
+        ) : lens === 'distortion' ? (
+          <>
+            <div className="flex items-center justify-end gap-1.5">
+              <span className="text-[10px] text-muted">{c.legendTorn}</span>
+              <span
+                className="h-[6px] w-14 rounded-full"
+                style={{ background: `linear-gradient(to right, ${[0, 0.25, 0.5, 0.75, 1].map((t) => rgbCss(distortionRgb(t, 0.7))).join(', ')})` }}
+              />
+              <span className="text-[10px] text-muted">{c.legendKept}</span>
+            </div>
+            <p className="mt-1 text-right text-[10px] leading-snug text-muted">
+              <span className="font-semibold tabular-nums text-ink">{Math.round(honesty.mean * 100)}%</span> {c.legendDistortion} (k={HONEST_K})
+            </p>
+          </>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] tabular-nums text-muted">1</span>
+            <span
+              className="h-[6px] w-14 rounded-full"
+              style={{
+                background: `linear-gradient(to right, ${[1, 2, 3, 4, 5].map((s) => spectrumColor(s, 0.62, 1)).join(', ')})`,
+              }}
+            />
+            <span className="text-[10px] tabular-nums text-muted">5</span>
+            <span className="text-[10px] text-muted">{c.score}</span>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** The node's palette mix as a stacked bar in the palette's colors, so the map color reads back as words. */
+function SoundMix({ node, palette, c }: { node: TasteMapPayloadNode; palette: TasteMapPayload['palette']; c: Copy }) {
+  if (!palette?.length || !node.mix) return null;
+  const parts = palette
+    .map((p) => ({ ...p, w: node.mix?.[p.id] ?? 0 }))
+    .filter((p) => p.w > 0)
+    .sort((a, b) => b.w - a.w);
+  if (!parts.length) return null;
+  const rest = Math.max(0, 1 - parts.reduce((s, p) => s + p.w, 0));
+  return (
+    <div className="mt-3.5">
+      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted/60">{c.soundMix}</p>
+      <div className="mt-1.5 flex h-[7px] overflow-hidden rounded-full bg-divider/60">
+        {parts.map((p) => (
+          <span key={p.id} className="h-full" style={{ width: `${p.w * 100}%`, background: swatch(p.hue, 0.66) }} />
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] leading-snug text-muted">
+        {parts.slice(0, 4).map((p, i) => (
+          <span key={p.id}>
+            {i > 0 && ' · '}
+            <span className="text-mid">{p.label}</span> {Math.round(p.w * 100)}%
+          </span>
+        ))}
+        {rest >= 0.05 && (
+          <>
+            {' · '}
+            {c.other} {Math.round(rest * 100)}%
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+function NodeRow({ node, onPick, c, dot }: { node: TasteMapPayloadNode; onPick: (k: NodeKey) => void; c: Copy; dot: string }) {
   return (
     <button
       type="button"
       onClick={() => onPick(node.key)}
       className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition hover:bg-ink/[0.04]"
     >
-      <span
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
-        style={{ background: node.avgScore != null ? spectrumColor(node.avgScore, 0.62, 1) : 'rgb(var(--color-muted))' }}
-      />
+      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: dot }} />
       <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-ink">
         {node.label}
         {node.eraLabel && <span className="ml-1 font-normal text-muted">{node.eraLabel}</span>}
       </span>
       <ScoreChip score={node.avgScore} c={c} />
     </button>
+  );
+}
+
+/** Honest map, per node: how many true neighbors this view keeps nearby, and which ones it tears off or invents. */
+function Honest({ h, byKey, c, onPick }: { h: Honesty; byKey: Map<NodeKey, TasteMapPayloadNode>; c: Copy; onPick: (k: NodeKey) => void }) {
+  const names = (keys: NodeKey[]) =>
+    keys.map((k, i) => {
+      const n = byKey.get(k);
+      if (!n) return null;
+      return (
+        <span key={k}>
+          {i > 0 && ', '}
+          <button type="button" onClick={() => onPick(k)} className="text-mid hover:underline">
+            {n.label}
+            {n.eraLabel ? ` ${n.eraLabel}` : ''}
+          </button>
+        </span>
+      );
+    });
+  return (
+    <div className="mt-3.5">
+      <p className="flex items-center gap-1.5 text-[11.5px] text-muted">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: rgbCss(distortionRgb(h.recall, 0.66)) }} />
+        <span className="font-semibold tabular-nums text-ink">
+          {h.k - h.torn.length}/{h.k}
+        </span>
+        {c.honestKept}
+      </p>
+      {h.torn.length > 0 && (
+        <p className="mt-1 text-[11px] leading-snug text-muted">
+          {c.honestTorn}: {names(h.torn)}
+        </p>
+      )}
+      {h.intruders.length > 0 && (
+        <p className="mt-0.5 text-[11px] leading-snug text-muted">
+          {c.honestIntruders}: {names(h.intruders)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The node's country on the 2D map, and the countries it bridges to (lib/tasteMap/regions.ts). */
+function Citizenship({ nodeKey, atlas, c }: { nodeKey: NodeKey; atlas: Atlas; c: Copy }) {
+  const home = atlas.countries[atlas.countryOf.get(nodeKey) ?? -1];
+  if (!home || home.members.length < 2) return null;
+  const bridge = atlas.bridges.get(nodeKey);
+  const dot = (hue: number | null) => (
+    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: hue == null ? 'rgb(var(--color-muted))' : swatch(hue) }} />
+  );
+  return (
+    <div className="mt-3.5 space-y-1 text-[11.5px] text-muted">
+      <p className="flex items-center gap-1.5">
+        {dot(home.hue)}
+        <span>
+          {c.country} <span className="font-semibold text-ink">{home.name}</span>
+        </span>
+      </p>
+      {bridge && (
+        <p className="flex items-center gap-1.5">
+          <span aria-hidden className="inline-block h-2 w-2 shrink-0 rotate-45 border border-ink" />
+          <span>
+            {c.bridgeTo}{' '}
+            <span className="font-semibold text-ink">
+              {bridge.countries
+                .slice(1, 3)
+                .map((id) => atlas.countries[id]?.name)
+                .filter(Boolean)
+                .join(', ')}
+            </span>
+          </span>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -1137,6 +1487,8 @@ function Inspector({
   onPick,
   pin,
   onTogglePin,
+  honesty,
+  atlas,
 }: {
   node: TasteMapPayloadNode;
   payload: TasteMapPayload;
@@ -1148,8 +1500,11 @@ function Inspector({
   onPick: (k: NodeKey) => void;
   pin: PinState | null;
   onTogglePin: (k: NodeKey) => void;
+  honesty: HonestySummary;
+  atlas: Atlas;
 }) {
   const neighbors = (payload.neighbors[node.key] ?? []).slice(0, 4);
+  const honest = honesty.byKey.get(node.key) ?? null;
   const trail = payload.trails.find((t) => t.artistId === node.artistId);
   const otherEras = trail ? trail.keys.filter((k) => k !== node.key) : [];
 
@@ -1198,6 +1553,9 @@ function Inspector({
         </div>
       )}
 
+      <SoundMix node={node} palette={payload.palette} c={c} />
+      <Citizenship nodeKey={node.key} atlas={atlas} c={c} />
+
       <MembershipEditor node={node} groups={groups} onSetWeight={onSetWeight} />
 
       <div className="mt-3.5">
@@ -1233,6 +1591,8 @@ function Inspector({
           </div>
         </div>
       )}
+
+      {honest && <Honest h={honest} byKey={byKey} c={c} onPick={onPick} />}
 
       {neighbors.length > 0 && (
         <div className="mt-4">
