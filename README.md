@@ -53,7 +53,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-> **2026-11-05 (Windows, morning) — Taste map 2D: cursor focus, drag HUD, undo/reset for moves, (i) tips. Not committed yet; Jun to try it.** Details in SESSIONS.
+> **2026-11-05 (Windows, morning) — Taste map 2D: cursor focus, drag HUD, undo/reset for moves, (i) tips. Pushed (`15644a5`); Jun to try it.** Details in SESSIONS.
 > - **To try:** in 2D, rest the cursor on a star (it should hold still and glow while the sky turns around it). Switch to To scale and drag a star (watch the HUD), then Ctrl+Z, Ctrl+Shift+Z and Reset.
 > - **Open:** the drag HUD is 2D only (undo covers 3D). Dragging in Schematic is still off; you get a hint instead.
 

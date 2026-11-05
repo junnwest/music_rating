@@ -4,7 +4,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
-**2026-11-05 (Windows, morning) — Taste map 2D: cursor focus, drag HUD, move undo/reset, (i) tips (not committed).** Jun's feedback on the overnight 2D run.
+**2026-11-05 (Windows, morning) — Taste map 2D: cursor focus, drag HUD, move undo/reset, (i) tips (pushed, `15644a5`).** Jun's feedback on the overnight 2D run.
 - **Cursor focus** (`lens2d.ts` `pickFocus`, `Map2D.tsx`): the star nearest the cursor (edge distance ≤ 64px, held to 96px, a rival must be < 0.6× as far) is focused. The parallax pivots on its depth (eased, τ 220ms), the fisheye centers on it, and it draws a bloom + ring instead of growing. Measured in Playwright: the focused star moves 0.06px while the cursor moves around it. In empty sky the pivot keeps the last focus's depth, so the sky doesn't slide.
 - **Drag HUD** (`lib/tasteMap/dragImpact.ts`, 3 tests): moved % of the map, sound-mix shift around the star (`whatsHere` at start vs now), neighbors joined and left, true-neighbor recall@5 and mean true similarity, start vs now. Recomputed once per frame. 2D only.
 - **Undo / redo / reset** (`TasteMapView.tsx`): snapshot stacks of pos/pos2d/pin per drag (2D and 3D). Reset restores every star's place from when this visit first moved it, as one undoable step. Ctrl/Cmd+Z, Ctrl+Shift+Z / Ctrl+Y, plus toolbar buttons and a toast.
