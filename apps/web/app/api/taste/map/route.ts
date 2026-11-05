@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
     persist: true,
     cached: refresh ? undefined : (hash) => cacheGet<TasteMapPayload>(cacheKey(userId, hash)),
   });
+  if (result.kind === 'no-access') return NextResponse.json({ error: 'not available' }, { status: 403 });
   if (result.kind === 'too-few') {
     return NextResponse.json({ error: 'not enough ratings', needed: result.needed, have: result.have }, { status: 422 });
   }

@@ -774,6 +774,7 @@ const ko: Translations = {
       refreshing: '다시 계산 중…',
       mapHeader: '취향 지도',
       mapSub: '각 타일은 하나의 장르 세계로, 내가 평가한 앨범 커버로 채워집니다. 클수록 내 기록에서 비중이 크고, 숫자는 내가 매긴 평균 점수예요. 타일을 열면 하위 장르가 보입니다.',
+      openMap: '취향 지도 열기',
       mapHint: '지도에서 세계를 하나 골라 그 안의 앨범과 추천을 살펴보세요.',
       mapBack: '뒤로',
       mapAllWorlds: '전체 세계',

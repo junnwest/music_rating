@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Lock, Star, BarChart3, Drama, AudioWaveform, RotateCw, X } from 'lucide-react';
+import { Lock, Star, BarChart3, Drama, AudioWaveform, RotateCw, X, Orbit } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
 import { useSession } from '../../../components/sj/SessionContext';
 import { SkeletonBlock, SkeletonLine, FlowerSpinner } from '../../../components/sj/Loading';
@@ -29,6 +29,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { formatScore, spectrumColor, spectrumFill, spectrumNumber } from '../../../lib/sj/display';
 import { LANGUAGES } from '../../../lib/genres/language';
+import { canSeeTasteMap } from '../../../lib/tasteMap/access';
 
 const UNLOCK_THRESHOLD = 25;
 
@@ -218,7 +219,7 @@ function ReportView({
   refreshing: boolean;
 }) {
   const { t, lang } = useLanguage();
-  const { userId } = useSession();
+  const { userId, profile } = useSession();
   const { stats, clusters, charts } = report;
 
   // ── drill-down: click a bar in the year / score / country charts to list the
@@ -380,6 +381,15 @@ function ReportView({
       {graph && (
         <Section no={nextNo()} title={t('sj.taste.mapHeader')} lead={t('sj.taste.mapSub')}>
           <TasteGraph data={graph} />
+          {canSeeTasteMap(profile?.username) && (
+            <Link
+              href="/taste/map"
+              className="mt-4 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent-soft/50 px-4 py-2 text-[13px] font-bold text-accent hover:bg-accent-soft transition-colors"
+            >
+              <Orbit size={15} aria-hidden />
+              {t('sj.taste.openMap')}
+            </Link>
+          )}
         </Section>
       )}
 

@@ -772,6 +772,7 @@ const en = {
       refreshing: 'Recomputing…',
       mapHeader: 'Your taste map',
       mapSub: 'Each tile is a genre world, tiled with the covers you rated in it — bigger means more of your library, the number is how highly you rate it. Open one to explore its sub-genres.',
+      openMap: 'Open the taste map',
       mapHint: 'Pick a world on the map to explore the albums and recommendations inside it.',
       mapBack: 'Back',
       mapAllWorlds: 'All worlds',

@@ -10,11 +10,10 @@ import { MOCK_TASTE_MAP } from '../../../../lib/tasteMap/mockPayload';
 import type { TasteMapPayload } from '../../../../lib/tasteMap/types';
 
 /**
- * /taste/map — DEV-ONLY preview of the Taste Map (TASTE_MAP_PLAN.md Phase 2),
- * fed by `GET /api/taste/map`; `?mock=1` renders the fixed mock payload instead
- * (no login needed). Intentionally unlinked: nothing in the app points here yet
- * (the "Open map" entry on TasteGraph comes once Jun has signed off on the real
- * layout). The viewer is loaded with `ssr: false`, so three.js and the canvas
+ * /taste/map — the Taste Map (TASTE_MAP_PLAN.md), fed by `GET /api/taste/map`;
+ * `?mock=1` renders the fixed mock payload instead (no login needed). Only the
+ * allowlisted accounts in lib/tasteMap/access.ts can open it for now; the
+ * "Open map" link on the Taste tab shows only for them. The viewer is loaded with `ssr: false`, so three.js and the canvas
  * code only ship on this route.
  *
  * Writes (autosave of pins / layout, export, import) only run with a real
@@ -81,6 +80,7 @@ function TasteMapLoader() {
       const res = await fetch(`/api/taste/map${wantRefresh ? '?refresh=1' : ''}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 403) throw new Error('The taste map isn’t open yet.');
       if (res.status === 422) {
         const body = await res.json();
         throw new Error(`Rate at least ${body.needed} albums to build your map (you have ${body.have}).`);

@@ -157,7 +157,7 @@ function responder(rows: Rows): Responder {
 
 async function build(rows: Rows, persist = true) {
   const f = fakeDb(responder(rows));
-  const r = await buildTasteMapPayload(f.db, USER, { persist });
+  const r = await buildTasteMapPayload(f.db, USER, { persist, ignoreAccess: true });
   if (r.kind !== 'ok') throw new Error('too few');
   return { ...r, calls: f.calls };
 }

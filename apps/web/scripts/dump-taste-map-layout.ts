@@ -33,11 +33,12 @@ if (!USER) {
   const { data: profile, error } = await db.from('profiles').select('id').eq('username', USER).maybeSingle();
   if (error || !profile) throw new Error(`no profile for ${USER}: ${error?.message ?? 'not found'}`);
   const t0 = Date.now();
-  const result = await buildTasteMapPayload(db, profile.id, { blockWeights: WEIGHTS });
+  const result = await buildTasteMapPayload(db, profile.id, { blockWeights: WEIGHTS, ignoreAccess: true });
   if (result.kind === 'too-few') {
     console.log(`${USER}: ${result.have} rated albums, needs ${result.needed}`);
     return;
   }
+  if (result.kind !== 'ok') return;
   const { payload } = result;
   console.log(`${USER}: ${payload.nodes.length} nodes · ${payload.groups.length} groups · ${payload.trails.length} era trails · ${Date.now() - t0}ms`);
   for (const g of payload.groups) {

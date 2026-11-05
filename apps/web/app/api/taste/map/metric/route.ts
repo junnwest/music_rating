@@ -8,6 +8,7 @@ import { decideMetric, decisionToResponse, decisionToRow, responseFromRow } from
 import { LENS, loadStoredState, mapPositions } from '../../../../../lib/tasteMap/storedState';
 import { isPlainObject, readJson, validatePositions } from '../../../../../lib/tasteMap/validatePhase4';
 import type { NodeKey, Vec3 } from '../../../../../lib/tasteMap/types';
+import { canSeeTasteMap, requiredRatedAlbums } from '../../../../../lib/tasteMap/access';
 
 // POST /api/taste/map/metric (MetricFitBody) → MetricFitResponse.
 // Fits the personal metric (TASTE_MAP_PLAN.md D6) on `positions` if sent, else on
@@ -19,8 +20,6 @@ import type { NodeKey, Vec3 } from '../../../../../lib/tasteMap/types';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-/** Ratings floor, same as the map route (payload.ts MIN_RATED_ALBUMS). */
-const MIN_RATED_ALBUMS = 5;
 
 export async function GET(req: NextRequest) {
   const limited = await rateLimit(req, 'taste-map-metric-get', 30, 60);
@@ -61,9 +60,11 @@ export async function POST(req: NextRequest) {
   }
 
   const [input, state] = await Promise.all([loadMapUserInput(db, userId), loadStoredState(db, userId)]);
+  if (!canSeeTasteMap(input.username)) return NextResponse.json({ error: 'not available' }, { status: 403 });
+  // Same gate as the map route (access.ts).
+  const needed = requiredRatedAlbums(input.username);
   const rated = input.artists.reduce((s, a) => s + a.albums.filter((al) => al.rated).length, 0);
-  if (rated < MIN_RATED_ALBUMS)
-    return NextResponse.json({ error: 'not enough ratings', needed: MIN_RATED_ALBUMS, have: rated }, { status: 422 });
+  if (rated < needed) return NextResponse.json({ error: 'not enough ratings', needed, have: rated }, { status: 422 });
 
   const positions = sent ?? mapPositions(state);
   if (!positions || !Object.keys(positions).length)

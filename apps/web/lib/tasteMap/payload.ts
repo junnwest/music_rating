@@ -38,6 +38,7 @@ import { buildFeatureSpace, explain, DEFAULT_METRIC } from './features';
 import { finishLayout, placeNew, similarityMatrix, solveLayout, type ExplainFn } from './layout';
 import { metricFromRow } from './metricStore';
 import { buildPalette } from './palette';
+import { canSeeTasteMap, requiredRatedAlbums } from './access';
 import { selectPins, type StoredPin } from './store';
 import type {
   EraOverride,
@@ -57,9 +58,9 @@ export const LAYOUT_SOLVED = 1;
 export const LAYOUT_ARRANGED = 2;
 /** Same 9-world ceiling as the Taste map; distinct hues readable on light and dark. */
 const GROUP_COLORS = ['#E4572E', '#4C9F70', '#3E7CB1', '#F2A541', '#9B5DE5', '#00A6A6', '#D7263D', '#7A9E3B', '#C17C74'];
-export const MIN_RATED_ALBUMS = 5;
 
 export type BuildResult =
+  | { kind: 'no-access' }
   | { kind: 'too-few'; needed: number; have: number }
   | { kind: 'ok'; payload: TasteMapPayload; inputHash: string; cached: boolean };
 
@@ -70,6 +71,8 @@ export interface BuildOptions {
   cached?: (inputHash: string) => Promise<TasteMapPayload | null>;
   /** Block-weight overrides on top of the stored/default metric (tuning experiments). */
   blockWeights?: Partial<MetricWeights['block']>;
+  /** Skip the access check (access.ts); dump scripts inspect any user's map. */
+  ignoreAccess?: boolean;
 }
 
 interface StoredLayoutRow {
@@ -89,8 +92,10 @@ export async function buildTasteMapPayload(db: SupabaseClient, userId: string, o
     db.from('taste_map_layouts').select('positions, input_hash, version, solved_at').eq('user_id', userId).eq('lens', LENS).maybeSingle(),
   ]);
 
+  if (!opts.ignoreAccess && !canSeeTasteMap(input.username)) return { kind: 'no-access' };
   const ratedAlbums = input.artists.flatMap((a) => a.albums.filter((al) => al.rated));
-  if (ratedAlbums.length < MIN_RATED_ALBUMS) return { kind: 'too-few', needed: MIN_RATED_ALBUMS, have: ratedAlbums.length };
+  const needed = opts.ignoreAccess ? 1 : requiredRatedAlbums(input.username);
+  if (ratedAlbums.length < needed) return { kind: 'too-few', needed, have: ratedAlbums.length };
 
   const overrides: EraOverride[] = (erasRes.data ?? []).map((r) => ({ artistId: r.artist_id, splitAlbumIds: r.split_rg_ids ?? [] }));
   if (pinsRes.error) console.error('[taste-map] pins read failed:', pinsRes.error.message);
