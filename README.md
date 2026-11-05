@@ -53,6 +53,10 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-11-05 (Windows, morning) — Taste map 2D: cursor focus, drag HUD, undo/reset for moves, (i) tips. Not committed yet; Jun to try it.** Details in SESSIONS.
+> - **To try:** in 2D, rest the cursor on a star (it should hold still and glow while the sky turns around it). Switch to To scale and drag a star (watch the HUD), then Ctrl+Z, Ctrl+Shift+Z and Reset.
+> - **Open:** the drag HUD is 2D only (undo covers 3D). Dragging in Schematic is still off; you get a hint instead.
+
 > **2026-11-05 (Windows, overnight, autonomous while Jun slept) — Taste map: access gate, ghost nodes, interactive 2D, 3D rebuild (all committed + pushed).** Details in SESSIONS.
 > - ✅ **Access:** `lib/tasteMap/access.ts`. Only `junnwest` / `zero` / `one` can open the map, and they skip the rating gate. Everyone else needs **50** rated albums once `TASTE_MAP_OPEN` flips. The Taste tab shows "Open the taste map" (under the treemap) to the allowlist only.
 > - ✅ **Ghost nodes** (README TODO items 1, 2 and 4): thin/misfit artists aren't forced in. They show hollow, and a "Not placed yet" tray offers Place it / Answer / Leave out / Include anyway. Migration `20261105000000_taste_map_node_state.sql` ✅ applied. A genre answer is stored per user; for allowlisted users it is also written as `release_genres` source `manual`, only on albums with no trusted tags. Ghosts on 2026-11-05: zero 이상순 (thin), junnwest CAMO (thin), one ヨルシカ (misfit).

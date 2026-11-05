@@ -108,6 +108,46 @@ export function separate(
   return off;
 }
 
+/** Cursor focus: a star within FOCUS_R px (edge-inclusive) takes the focus; it keeps it out to FOCUS_RELEASE px. */
+export const FOCUS_R = 64;
+export const FOCUS_RELEASE = 96;
+/** A rival must be this much closer than the focused star to take the focus over. */
+export const FOCUS_SWITCH = 0.6;
+
+/**
+ * Which star the cursor is focused on (Map2D: that star holds still and glows,
+ * the sky's parallax pivots on its depth, the fisheye centers on it). Distances
+ * are to each star's edge (center distance − radius, ≥ 0), from what was drawn
+ * last frame. Hysteresis keeps the focus from flickering between close stars:
+ * the current focus holds until the cursor is FOCUS_RELEASE px away or a rival
+ * is under FOCUS_SWITCH × its distance.
+ */
+export function pickFocus(
+  stars: Iterable<[string, { x: number; y: number; r: number }]>,
+  cx: number,
+  cy: number,
+  current: string | null,
+  radius = FOCUS_R,
+  release = FOCUS_RELEASE,
+): { key: string | null; d: number } {
+  let best: string | null = null;
+  let bestD = Infinity;
+  let curD = Infinity;
+  for (const [key, q] of stars) {
+    const d = Math.max(0, Math.hypot(q.x - cx, q.y - cy) - q.r);
+    if (key === current) curD = d;
+    if (d < bestD) {
+      bestD = d;
+      best = key;
+    }
+  }
+  if (current != null && curD <= release) {
+    if (best !== current && bestD < curD * FOCUS_SWITCH && bestD <= radius) return { key: best, d: bestD };
+    return { key: current, d: curD };
+  }
+  return bestD <= radius ? { key: best, d: bestD } : { key: null, d: Infinity };
+}
+
 /** Move `from` toward `to` with time constant `tauMs` over `dtMs` (frame-rate independent). */
 export function approach(from: number, to: number, dtMs: number, tauMs: number): number {
   if (tauMs <= 0) return to;

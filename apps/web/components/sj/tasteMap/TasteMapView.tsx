@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Atom, Box, ChevronUp, Download, Map as MapIcon, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, PinOff, Scissors, Shuffle, Ruler, SlidersHorizontal, Square, Upload, UserPlus, X } from 'lucide-react';
+import { Atom, Box, ChevronUp, Download, Map as MapIcon, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, PinOff, Redo2, RotateCcw, Scissors, Shuffle, Ruler, SlidersHorizontal, Square, Undo2, Upload, UserPlus, X } from 'lucide-react';
 import Cover from '../Cover';
 import { FlowerSpinner } from '../Loading';
 import { useLanguage } from '../../../lib/i18n';
@@ -13,6 +13,7 @@ import { createRearrange, type Rearrange } from '../../../lib/tasteMap/forceLayo
 import { distortionRgb, hasGenreLens, hueMap, nodeRgb, oklabToRgb, rgbCss, type MapLens } from '../../../lib/tasteMap/color';
 import { HONEST_K, neighborHonesty, type Honesty, type HonestySummary } from '../../../lib/tasteMap/honesty';
 import { buildAtlas, type Atlas } from '../../../lib/tasteMap/regions';
+import { InfoTip } from './ui';
 import { fromPlane, planeBasis, toPlane, type PlaneBasis } from '../../../lib/tasteMap/plane';
 import { schematicLayout, type Schematic } from '../../../lib/tasteMap/schematic';
 import type { NodeKey, TasteMapPayload, TasteMapPayloadNode, Vec2, Vec3 } from '../../../lib/tasteMap/types';
@@ -87,6 +88,24 @@ export interface MapTheme {
 }
 
 /** Pin state per node. `softZ`: pinned from the 2D view (plane position fixed, depth free, D5). */
+/** One star's place and pin, as the move history keeps it. */
+interface MoveSnap {
+  key: NodeKey;
+  pos: Vec3;
+  pos2d: Vec2;
+  pin: PinState | null;
+}
+interface MoveEntry {
+  label: string;
+  items: MoveSnap[];
+}
+const snapOf = (n: TasteMapPayloadNode, pins: Map<NodeKey, PinState>): MoveSnap => {
+  const pin = pins.get(n.key);
+  return { key: n.key, pos: [...n.pos], pos2d: [...n.pos2d], pin: pin ? { ...pin } : null };
+};
+const sameSnap = (a: MoveSnap, b: MoveSnap) =>
+  a.pos.every((x, i) => Math.abs(x - b.pos[i]) < 1e-9) && !a.pin === !b.pin && (a.pin?.softZ ?? false) === (b.pin?.softZ ?? false);
+
 export interface PinState {
   softZ: boolean;
 }
@@ -263,6 +282,19 @@ const COPY = {
     scaleTrue: 'To scale',
     scaleSchematicTip: 'The same map, exaggerated to read: sounds fan out around you, stars spread evenly, and sounds blend where your artists cross over. Not to scale.',
     scaleTrueTip: 'True distances: the similarity space, flattened.',
+    scaleInfo:
+      'Schematic exaggerates the map so it reads: sounds fan out around you and stars spread evenly. To scale shows true distances. Stars can only be moved in To scale, because schematic places aren’t real.',
+    info: 'About this',
+    undoMove: 'Undo move (Ctrl+Z)',
+    redoMove: 'Redo (Ctrl+Shift+Z)',
+    resetMoves: 'Reset moved stars',
+    resetMovesTip: 'Put every star you moved this visit back where it started (undoable)',
+    movedToast: 'Moved {name} and pinned it',
+    undoneToast: 'Undid: {name}',
+    redoneToast: 'Redid: {name}',
+    resetToast: 'Reset {n} moved stars',
+    undo: 'Undo',
+    redo: 'Redo',
     legendSchematic: 'direction = sound · overlap = crossover · not to scale',
     you: 'YOU',
   },
@@ -335,6 +367,19 @@ const COPY = {
     scaleTrue: '실제 거리',
     scaleSchematicTip: '같은 지도를 읽기 쉽게 과장했어요: 사운드가 나를 중심으로 퍼지고, 별들이 고르게 놓이고, 아티스트가 넘나드는 곳에서 사운드가 겹쳐요. 실제 거리는 아니에요.',
     scaleTrueTip: '실제 거리: 유사도 공간을 평면에 펼친 모습이에요.',
+    scaleInfo:
+      '도식은 읽기 쉽게 지도를 과장해요: 사운드가 나를 중심으로 퍼지고 별들이 고르게 놓여요. 실제 거리는 진짜 거리를 보여줘요. 도식의 위치는 실제가 아니라서, 별은 실제 거리에서만 옮길 수 있어요.',
+    info: '설명',
+    undoMove: '이동 되돌리기 (Ctrl+Z)',
+    redoMove: '다시 하기 (Ctrl+Shift+Z)',
+    resetMoves: '옮긴 별 초기화',
+    resetMovesTip: '이번에 옮긴 별을 모두 처음 자리로 돌려요 (되돌릴 수 있어요)',
+    movedToast: '{name}을(를) 옮기고 고정했어요',
+    undoneToast: '되돌림: {name}',
+    redoneToast: '다시 함: {name}',
+    resetToast: '옮긴 별 {n}개를 초기화했어요',
+    undo: '되돌리기',
+    redo: '다시 하기',
     legendSchematic: '방향 = 사운드 · 겹침 = 넘나듦 · 실제 거리 아님',
     you: '나',
   },
@@ -420,6 +465,15 @@ export default function TasteMapView({
   );
   const pinsRef = useRef(pins);
   const [dragging, setDragging] = useState(false);
+  // Move history (drags, and Reset): undo / redo stacks of position + pin snapshots,
+  // and each moved star's place when this visit first moved it (what Reset restores).
+  const undoStack = useRef<MoveEntry[]>([]);
+  const redoStack = useRef<MoveEntry[]>([]);
+  const origin = useRef(new Map<NodeKey, MoveSnap>());
+  const dragSnap = useRef<MoveSnap | null>(null);
+  const [hist, setHist] = useState({ undo: 0, redo: 0 });
+  const [moveToast, setMoveToast] = useState<{ text: string; action: 'undo' | 'redo' } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [running, setRunning] = useState(false);
 
   const byKey = useMemo(() => new Map(work.map((n) => [n.key, n])), [work]);
@@ -628,6 +682,7 @@ export default function TasteMapView({
       const n = byKey.get(key);
       if (!n) return;
       if (phase === 'start') {
+        dragSnap.current = snapOf(n, pinsRef.current);
         setDragging(true);
         setSelectedKey(key);
         return;
@@ -640,10 +695,119 @@ export default function TasteMapView({
         // D5: a 2D drop fixes the plane position only; a 3D drop fixes all three.
         updatePins((prev) => new Map(prev).set(key, { softZ: !!at.pos2d }));
         markDirty({ pins: true, layout: true });
+        const before = dragSnap.current;
+        dragSnap.current = null;
+        if (before && before.key === key) {
+          if (!origin.current.has(key)) origin.current.set(key, before);
+          pushHistory({ label: n.label, items: [before] });
+          showToast(c.movedToast.replace('{name}', n.label), 'undo');
+        }
       }
     },
-    [byKey, setNode2D, setNode3D, bump, updatePins, markDirty],
+    // pushHistory / showToast only touch refs and state setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [byKey, setNode2D, setNode3D, bump, updatePins, markDirty, c],
   );
+
+  function showToast(text: string, action: 'undo' | 'redo') {
+    setMoveToast({ text, action });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setMoveToast(null), 6000);
+  }
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    },
+    [],
+  );
+  // A scale or mode switch moves on from the last move's toast.
+  useEffect(() => setMoveToast(null), [scale, mode]);
+  function pushHistory(entry: MoveEntry) {
+    undoStack.current.push(entry);
+    if (undoStack.current.length > 100) undoStack.current.shift();
+    redoStack.current = [];
+    setHist({ undo: undoStack.current.length, redo: 0 });
+  }
+  /** Puts snapshots back (positions and pins) and returns what they replaced, for the other stack. */
+  const applySnaps = (items: MoveSnap[]): MoveSnap[] => {
+    const replaced: MoveSnap[] = [];
+    for (const it of items) {
+      const n = byKey.get(it.key);
+      if (!n) continue;
+      replaced.push(snapOf(n, pinsRef.current));
+      n.pos = [...it.pos];
+      n.pos2d = [...it.pos2d];
+    }
+    updatePins((prev) => {
+      const next = new Map(prev);
+      for (const it of items) {
+        if (it.pin) next.set(it.key, it.pin);
+        else next.delete(it.key);
+      }
+      return next;
+    });
+    setLayoutVersion((v) => v + 1);
+    markDirty({ pins: true, layout: true });
+    return replaced;
+  };
+  const undoMove = () => {
+    if (running || dragging) return;
+    const e = undoStack.current.pop();
+    if (!e) return;
+    redoStack.current.push({ label: e.label, items: applySnaps(e.items) });
+    setHist({ undo: undoStack.current.length, redo: redoStack.current.length });
+    showToast(c.undoneToast.replace('{name}', e.label), 'redo');
+  };
+  const redoMove = () => {
+    if (running || dragging) return;
+    const e = redoStack.current.pop();
+    if (!e) return;
+    undoStack.current.push({ label: e.label, items: applySnaps(e.items) });
+    setHist({ undo: undoStack.current.length, redo: redoStack.current.length });
+    showToast(c.redoneToast.replace('{name}', e.label), 'undo');
+  };
+  /** Every star moved this visit back to where it was first picked up (one undoable step). */
+  const resetMoves = () => {
+    if (running || dragging) return;
+    const items = [...origin.current.values()].filter((o) => {
+      const n = byKey.get(o.key);
+      return n && !sameSnap(o, snapOf(n, pinsRef.current));
+    });
+    if (!items.length) return;
+    const label = c.resetToast.replace('{n}', String(items.length));
+    const replaced = applySnaps(items);
+    undoStack.current.push({ label, items: replaced });
+    redoStack.current = [];
+    setHist({ undo: undoStack.current.length, redo: 0 });
+    showToast(label, 'undo');
+  };
+  const histKeys = useRef({ undoMove, redoMove });
+  histKeys.current = { undoMove, redoMove };
+  // Ctrl/Cmd+Z undoes a move; Ctrl/Cmd+Shift+Z or Ctrl+Y redoes (not while typing).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      const k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) {
+        if (!undoStack.current.length) return;
+        e.preventDefault();
+        histKeys.current.undoMove();
+      } else if ((k === 'z' && e.shiftKey) || k === 'y') {
+        if (!redoStack.current.length) return;
+        e.preventDefault();
+        histKeys.current.redoMove();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  // hist / layoutVersion re-render this when the answer can change.
+  const canReset = [...origin.current.values()].some((o) => {
+    const n = byKey.get(o.key);
+    return n && !sameSnap(o, snapOf(n, pins));
+  });
 
   const togglePin = useCallback(
     (key: NodeKey) => {
@@ -1362,7 +1526,69 @@ export default function TasteMapView({
                 ))}
               </div>
             )}
+            {mode === '2d' && (
+              <span className="hidden rounded-full border border-divider bg-surface/85 backdrop-blur md:inline-flex">
+                <InfoTip label={c.info} text={c.scaleInfo} />
+              </span>
+            )}
+            {(hist.undo > 0 || hist.redo > 0) && (
+              <div role="group" className="inline-flex items-center rounded-full border border-divider bg-surface/85 p-0.5 backdrop-blur">
+                <button
+                  type="button"
+                  onClick={undoMove}
+                  disabled={!hist.undo || running || dragging}
+                  aria-label={c.undoMove}
+                  title={c.undoMove}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-ink transition hover:bg-ink/[0.06] disabled:text-muted/50"
+                >
+                  <Undo2 size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={redoMove}
+                  disabled={!hist.redo || running || dragging}
+                  aria-label={c.redoMove}
+                  title={c.redoMove}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-ink transition hover:bg-ink/[0.06] disabled:text-muted/50"
+                >
+                  <Redo2 size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={resetMoves}
+                  disabled={!canReset || running || dragging}
+                  aria-label={c.resetMoves}
+                  title={c.resetMovesTip}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-ink transition hover:bg-ink/[0.06] disabled:text-muted/50"
+                >
+                  <RotateCcw size={13} />
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* After a move, undo or reset: what just happened, with the way back. */}
+          {moveToast && !dragging && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="absolute right-2.5 top-[52px] z-[8] inline-flex max-w-[calc(100%-1.25rem)] items-center gap-2 rounded-full border border-divider bg-surface/95 py-1 pl-3 pr-1 text-[11.5px] text-ink shadow-[0_8px_24px_rgba(0,0,0,0.2)] backdrop-blur-md"
+            >
+              <span className="min-w-0 truncate">{moveToast.text}</span>
+              {(moveToast.action === 'undo' ? hist.undo : hist.redo) > 0 && (
+                <button
+                  type="button"
+                  onClick={moveToast.action === 'undo' ? undoMove : redoMove}
+                  className="shrink-0 rounded-full bg-ink px-2.5 py-0.5 font-semibold text-page"
+                >
+                  {moveToast.action === 'undo' ? c.undo : c.redo}
+                </button>
+              )}
+              <button type="button" aria-label={c.close} onClick={() => setMoveToast(null)} className="shrink-0 rounded-full p-1 text-muted hover:text-ink">
+                <X size={12} />
+              </button>
+            </div>
+          )}
 
           <Legend
             c={c}

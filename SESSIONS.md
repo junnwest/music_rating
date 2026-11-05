@@ -4,7 +4,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
-**2026-11-05 (Windows, overnight) — Taste map: access gate, ghost nodes, interactive 2D, 3D rebuild, resonance plan.** Jun was AFK. Work ran as parallel agents with file ownership; each piece was checked in a clean worktree (tsc, vitest, lint, and `next build` once), then committed and pushed separately.
+**2026-11-05 (Windows, morning) — Taste map 2D: cursor focus, drag HUD, move undo/reset, (i) tips (not committed).** Jun's feedback on the overnight 2D run.
+- **Cursor focus** (`lens2d.ts` `pickFocus`, `Map2D.tsx`): the star nearest the cursor (edge distance ≤ 64px, held to 96px, a rival must be < 0.6× as far) is focused. The parallax pivots on its depth (eased, τ 220ms), the fisheye centers on it, and it draws a bloom + ring instead of growing. Measured in Playwright: the focused star moves 0.06px while the cursor moves around it. In empty sky the pivot keeps the last focus's depth, so the sky doesn't slide.
+- **Drag HUD** (`lib/tasteMap/dragImpact.ts`, 3 tests): moved % of the map, sound-mix shift around the star (`whatsHere` at start vs now), neighbors joined and left, true-neighbor recall@5 and mean true similarity, start vs now. Recomputed once per frame. 2D only.
+- **Undo / redo / reset** (`TasteMapView.tsx`): snapshot stacks of pos/pos2d/pin per drag (2D and 3D). Reset restores every star's place from when this visit first moved it, as one undoable step. Ctrl/Cmd+Z, Ctrl+Shift+Z / Ctrl+Y, plus toolbar buttons and a toast.
+- **(i):** a shared `InfoTip` in `ui.tsx`, the first-visit "Reading the sky" card (`tasteMap.intro2d.v1` in localStorage), and a hint when a drag is blocked (Schematic / refocus).
+- **Bug fixed:** a drag selected the star, and the default Distance refocus then flew the map away mid-drag. Map2D now skips refocus for a selection made by grabbing (`grabbedSel`).
+- Checks: tsc clean, eslint clean, vitest lib/tasteMap 348 passed.
+
+ — Taste map: access gate, ghost nodes, interactive 2D, 3D rebuild, resonance plan.** Jun was AFK. Work ran as parallel agents with file ownership; each piece was checked in a clean worktree (tsc, vitest, lint, and `next build` once), then committed and pushed separately.
 
 - **Access** (`fca6c7e`). New `lib/tasteMap/access.ts`:
   - allowlist `junnwest` / `zero` / `one`, which skips the gate (Jun's call: junnwest has 40 rated albums, one has 27)

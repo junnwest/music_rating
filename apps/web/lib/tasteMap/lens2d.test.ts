@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approach, coverAmount, coverThumb, labelBudget, magnify, parallaxShift, separate } from './lens2d';
+import { approach, coverAmount, coverThumb, labelBudget, magnify, parallaxShift, pickFocus, separate } from './lens2d';
 
 describe('parallaxShift', () => {
   it('moves near stars against the cursor, far stars with it, mid-depth not at all', () => {
@@ -81,5 +81,26 @@ describe('approach / zoom helpers', () => {
     );
     expect(coverThumb('https://coverartarchive.org/release-group/83567f3b/front-500')).toBe('https://coverartarchive.org/release-group/83567f3b/front-250');
     expect(coverThumb('https://example.com/a.jpg')).toBe('https://example.com/a.jpg');
+  });
+});
+
+describe('pickFocus', () => {
+  const stars: [string, { x: number; y: number; r: number }][] = [
+    ['a', { x: 100, y: 100, r: 6 }],
+    ['b', { x: 140, y: 100, r: 6 }],
+    ['far', { x: 600, y: 600, r: 6 }],
+  ];
+  it('takes the nearest star within reach, none in empty sky', () => {
+    expect(pickFocus(stars, 104, 100, null).key).toBe('a');
+    expect(pickFocus(stars, 400, 400, null).key).toBeNull();
+  });
+  it('holds the focus past the midpoint until a rival is clearly closer', () => {
+    // Midpoint is 120; at 122 b is closer, but not by enough to switch.
+    expect(pickFocus(stars, 122, 100, 'a').key).toBe('a');
+    expect(pickFocus(stars, 134, 100, 'a').key).toBe('b');
+  });
+  it('releases once the cursor is far from the focused star', () => {
+    expect(pickFocus(stars, 100, 190, 'a').key).toBe('a');
+    expect(pickFocus(stars, 100, 230, 'a').key).toBeNull();
   });
 });

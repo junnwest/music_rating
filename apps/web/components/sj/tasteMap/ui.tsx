@@ -1,6 +1,7 @@
 'use client';
 
-import { X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Info, X } from 'lucide-react';
 import { useLanguage } from '../../../lib/i18n';
 
 /**
@@ -42,4 +43,64 @@ export function PanelHeader({ label, title, onClose, closeLabel }: { label: stri
 /** Shown in place of server-only controls in fixture / mock mode. */
 export function SignInNote({ text }: { text: string }) {
   return <p className="mt-2 rounded-lg bg-ink/[0.04] px-2.5 py-1.5 text-[11.5px] font-semibold text-muted">{text}</p>;
+}
+
+/**
+ * An (i) button that opens a short explanation (tap or click; outside click or
+ * Esc closes). For places where a hover title isn't enough: phones have no
+ * hover, and the stage's controls need a sentence, not a word.
+ */
+export function InfoTip({
+  text,
+  label,
+  align = 'left',
+  side = 'below',
+  className = '',
+}: {
+  text: React.ReactNode;
+  label: string;
+  align?: 'left' | 'right' | 'center';
+  side?: 'below' | 'above';
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  const x = align === 'right' ? 'right-0' : align === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-0';
+  const y = side === 'above' ? 'bottom-full mb-1.5' : 'top-full mt-1.5';
+  return (
+    <span ref={ref} className={`pointer-events-auto relative inline-flex ${className}`}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition ${open ? 'text-ink' : 'text-muted hover:text-ink'}`}
+      >
+        <Info size={13} />
+      </button>
+      {open && (
+        <span
+          role="note"
+          className={`absolute ${x} ${y} z-30 block w-[min(260px,80vw)] rounded-lg border border-divider bg-surface px-3 py-2 text-left text-[11.5px] font-normal normal-case leading-snug tracking-normal text-ink shadow-[0_8px_24px_rgba(0,0,0,0.25)]`}
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
 }

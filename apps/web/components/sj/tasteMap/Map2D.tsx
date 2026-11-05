@@ -14,14 +14,17 @@ import {
   labelBudget,
   magnify,
   parallaxShift,
+  pickFocus,
   separate,
 } from '../../../lib/tasteMap/lens2d';
+import { dragImpact, type DragImpact } from '../../../lib/tasteMap/dragImpact';
 import { toPlane } from '../../../lib/tasteMap/plane';
 import { regionFields } from '../../../lib/tasteMap/regions';
 import { similarityLookup } from '../../../lib/tasteMap/similarity';
 import type { NodeKey, TasteMapPayloadNode, Vec2 } from '../../../lib/tasteMap/types';
 import { useLanguage } from '../../../lib/i18n';
 import { X } from 'lucide-react';
+import { InfoTip } from './ui';
 import type { SceneGhost, SceneProps } from './TasteMapView';
 
 /**
@@ -114,7 +117,11 @@ const TAU_PARALLAX = 260;
 const TAU_FISHEYE = 70;
 const TAU_STRENGTH = 180;
 const TAU_SEPARATE = 140;
+/** Parallax pivot moving to a newly focused star's depth, and its glow fading in / out. */
+const TAU_PIVOT = 220;
+const TAU_GLOW = 120;
 const EGO_KEY = 'tasteMap.egoMode';
+const INTRO_KEY = 'tasteMap.intro2d.v1';
 
 type EgoPick = EgoMode | 'off';
 
@@ -149,6 +156,29 @@ const COPY2D = {
     hereNearest: 'Nearest',
     close: 'Close',
     viewModes: 'Refocus around the selection',
+    info: 'About this',
+    viewModesInfo:
+      'When you select a star, the others can re-arrange around it. In place keeps the map. Distance puts everyone at their true similarity (the rings). Vector lines them up from less to more alike. Depth shows the map from the side.',
+    hereInfo:
+      'A smoothed mix of the sounds of the stars around this spot, weighted by how close they are and how much you rated them. The albums below are unrated catalog albums that would land here.',
+    introTitle: 'Reading the sky',
+    introHover: 'Rest the cursor near a star: it holds still and glows, and the sky turns around it. Stars that slide the same way as the cursor sit behind it; ones that slide the other way sit in front.',
+    introClick: 'Click a star to select it. Click empty sky to see what sounds live there.',
+    introDrag: 'In To scale, drag a star to move it where you think it belongs. A panel shows what the move changes. Ctrl+Z undoes it.',
+    introTouch: 'Tap a star to select it, tap empty sky to see what lives there. Drag to pan, pinch to zoom.',
+    gotIt: 'Got it',
+    blockSchematic: 'Switch to To scale to move stars. The schematic is an exaggeration, so places there aren’t real.',
+    blockRefocus: 'Pick In place to move stars. A refocused view isn’t the map’s real layout.',
+    moving: 'Moving',
+    moved: (pct: string) => `Moved ${pct} of the map`,
+    soundAround: 'Sound around it',
+    noSoundChange: 'Same sound neighborhood so far',
+    nextTo: 'Now next to',
+    leaving: 'Leaving',
+    fitData: 'Fit with its most similar artists',
+    fitOf: (a: number, k: number) => `${a} of ${k} nearby`,
+    avgSim: 'Avg similarity to map neighbors',
+    dropNote: 'Drop to pin it here. Where it disagrees with the data, Learn from my map (Weights) picks it up. Ctrl+Z undoes.',
   },
   ko: {
     inPlace: '그대로',
@@ -180,6 +210,29 @@ const COPY2D = {
     hereNearest: '가장 가까운',
     close: '닫기',
     viewModes: '선택한 아티스트를 중심으로 다시 배치',
+    info: '설명',
+    viewModesInfo:
+      '별을 선택하면 나머지를 그 별 중심으로 다시 놓을 수 있어요. 그대로는 지도를 유지해요. 거리는 모두를 실제 유사도(고리)에 놓아요. 방향은 덜 비슷한 → 더 비슷한 순으로 줄 세워요. 깊이는 지도를 옆에서 보여줘요.',
+    hereInfo:
+      '이 지점 주변 별들의 사운드를 거리와 평가한 앨범 수로 가중해 부드럽게 섞은 비율이에요. 아래 앨범은 여기에 놓일 만한, 아직 평가하지 않은 카탈로그 앨범이에요.',
+    introTitle: '하늘 읽는 법',
+    introHover: '커서를 별 가까이에 두면 그 별은 멈춰서 빛나고, 하늘이 그 별을 중심으로 돌아요. 커서와 같은 쪽으로 움직이는 별은 뒤에, 반대쪽으로 움직이는 별은 앞에 있어요.',
+    introClick: '별을 클릭하면 선택돼요. 빈 하늘을 클릭하면 그곳의 사운드를 보여줘요.',
+    introDrag: '실제 거리 보기에서 별을 끌어 어울리는 곳으로 옮길 수 있어요. 무엇이 바뀌는지 패널로 보여주고, Ctrl+Z로 되돌려요.',
+    introTouch: '별을 탭하면 선택돼요. 빈 하늘을 탭하면 그곳에 뭐가 있는지 보여줘요. 끌어서 이동, 두 손가락으로 확대해요.',
+    gotIt: '알겠어요',
+    blockSchematic: '별을 옮기려면 실제 거리 보기로 바꿔주세요. 도식은 과장된 모습이라 위치가 실제가 아니에요.',
+    blockRefocus: '별을 옮기려면 그대로를 골라주세요. 다시 배치한 보기는 지도의 실제 배치가 아니에요.',
+    moving: '옮기는 중',
+    moved: (pct: string) => `지도의 ${pct} 이동`,
+    soundAround: '주변 사운드',
+    noSoundChange: '아직 같은 사운드 동네예요',
+    nextTo: '새 이웃',
+    leaving: '멀어지는 이웃',
+    fitData: '가장 비슷한 아티스트와의 일치',
+    fitOf: (a: number, k: number) => `${k}명 중 ${a}명이 가까이`,
+    avgSim: '지도 이웃과의 평균 유사도',
+    dropNote: '놓으면 여기에 고정돼요. 데이터와 다른 부분은 내 지도로 학습(가중치)이 반영해요. Ctrl+Z로 되돌려요.',
   },
 };
 
@@ -379,6 +432,10 @@ export default function Map2D(props: SceneProps) {
   /** Last frame's plane positions, refocus included: where a new refocus starts from. */
   const lastPlane = useRef(new Map<NodeKey, Vec2>());
   const sepOff = useRef(new Map<NodeKey, [number, number]>());
+  /** The star the cursor is focused on (lens2d pickFocus), its glow levels, and the parallax pivot depth (σ). */
+  const cursorFocus = useRef<NodeKey | null>(null);
+  const glowLvl = useRef(new Map<NodeKey, number>());
+  const pivot = useRef(0);
   const labelShown = useRef(new Set<NodeKey>());
   const [egoPick, setEgoPickState] = useState<EgoPick>(() => (typeof window === 'undefined' ? 'distance' : readEgoPick()));
   const setEgoPick = (m: EgoPick) => {
@@ -403,6 +460,34 @@ export default function Map2D(props: SceneProps) {
   const hereRef = useRef(here);
   hereRef.current = here;
   const hereCard = useRef<HTMLDivElement>(null);
+  /** Drag HUD: what the move in progress changes (lib/tasteMap/dragImpact.ts). */
+  const [dragHud, setDragHud] = useState<{ key: NodeKey; impact: DragImpact } | null>(null);
+  const dragStart = useRef<{ key: NodeKey; start: Vec2 } | null>(null);
+  /** A short hint when a star can't be moved in the current view (schematic or refocus). */
+  const [grabbedSel, setGrabbedSel] = useState<NodeKey | null>(null);
+  const [blockHint, setBlockHint] = useState<'schematic' | 'refocus' | null>(null);
+  const blockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [introOpen, setIntroOpen] = useState(false);
+  const [touchOnly, setTouchOnly] = useState(false);
+  useEffect(() => {
+    setTouchOnly(window.matchMedia('(hover: none)').matches);
+    try {
+      setIntroOpen(window.localStorage.getItem(INTRO_KEY) !== '1');
+    } catch {
+      setIntroOpen(true);
+    }
+    return () => {
+      if (blockTimer.current) clearTimeout(blockTimer.current);
+    };
+  }, []);
+  const closeIntro = () => {
+    setIntroOpen(false);
+    try {
+      window.localStorage.setItem(INTRO_KEY, '1');
+    } catch {
+      // Storage blocked: it shows again next visit.
+    }
+  };
 
   /** A node's plane position at morph `s`: its true `pos2d`, its schematic one, or between. */
   const placeAt = (n: { key: NodeKey; pos2d: Vec2 }, s: number): Vec2 => {
@@ -638,6 +723,8 @@ export default function Map2D(props: SceneProps) {
   const solid = useMemo(() => new Set(payload.nodes.filter((n) => visible.has(n.key) && !isGhost(n)).map((n) => n.key)), [payload.nodes, visible]);
   const tree = useMemo(() => spanningTree(payload.neighbors, solid), [payload.neighbors, solid]);
   const sims = useMemo(() => similarityLookup(payload), [payload]);
+  const simsRef = useRef(sims);
+  simsRef.current = sims;
 
   const compass = useMemo(() => {
     if (!payload.palette?.length) return [];
@@ -755,11 +842,6 @@ export default function Map2D(props: SceneProps) {
     const tuy = lensOn ? Math.max(-1, Math.min(1, (cur.y - h / 2) / (h / 2))) : 0;
     ls.ux = approach(ls.ux, tux, dt, TAU_PARALLAX);
     ls.uy = approach(ls.uy, tuy, dt, TAU_PARALLAX);
-    if (cur.inside) {
-      // Jump to the cursor when the lens was off, so it doesn't sweep in from afar.
-      ls.fx = ls.str < 0.02 ? cur.x : approach(ls.fx, cur.x, dt, TAU_FISHEYE);
-      ls.fy = ls.str < 0.02 ? cur.y : approach(ls.fy, cur.y, dt, TAU_FISHEYE);
-    }
     ls.str = approach(ls.str, lensOn ? 1 : 0, dt, TAU_STRENGTH);
     if (!lensOn && ls.str < 0.01) ls.str = 0;
     if (Math.abs(ls.ux - tux) > 0.002 || Math.abs(ls.uy - tuy) > 0.002) animating = true;
@@ -768,7 +850,12 @@ export default function Map2D(props: SceneProps) {
       ls.uy = tuy;
     }
     if ((lensOn && ls.str < 0.995) || (!lensOn && ls.str > 0)) animating = true;
-    if (cur.inside && (Math.abs(ls.fx - cur.x) > 0.4 || Math.abs(ls.fy - cur.y) > 0.4)) animating = true;
+    // Cursor focus (mouse only): the star the cursor rests near, picked on what
+    // was drawn last frame (it holds still, so the pick is stable).
+    const focusOn = cur.inside && !pressing.current && !draggingNode.current;
+    const fpick = focusOn ? pickFocus(drawn.current, cur.x, cur.y, cursorFocus.current) : { key: null, d: Infinity };
+    const fKey = fpick.key && p.visible.has(fpick.key) ? fpick.key : null;
+    cursorFocus.current = fKey;
 
     // Refocus: how far each layout is shown (from → to, or back to the map).
     const e = ego.current;
@@ -971,11 +1058,18 @@ export default function Map2D(props: SceneProps) {
       sepMap.set(q.n.key, [nx, ny]);
     });
     sepOff.current = sepMap;
-    // Parallax pivots on the map's middle depth, or on the selection's once refocused.
+    // Parallax pivots on a depth that holds still: the cursor-focused star's
+    // (so it stays put while the sky turns around it), else the selection's
+    // once refocused, else the map's middle. With the cursor in empty sky the
+    // pivot keeps the last focus's depth, so leaving a star doesn't slide the sky.
     const egoAmt = 1 - baseShare;
-    const zRef = sel ? (dz.norm.get(sel) ?? 0) * egoAmt : 0;
-    const pos = new Map<NodeKey, [number, number]>();
-    const grow = new Map<NodeKey, number>();
+    const egoZ = sel ? (dz.norm.get(sel) ?? 0) * egoAmt : 0;
+    const pivotGoal = fKey ? (dz.norm.get(fKey) ?? 0) : lensOn ? pivot.current : egoZ;
+    pivot.current = reduced.current ? pivotGoal : approach(pivot.current, pivotGoal, dt, TAU_PIVOT);
+    if (Math.abs(pivot.current - pivotGoal) > 0.003) animating = true;
+    else pivot.current = pivotGoal;
+    const zRef = pivot.current;
+    const pre = new Map<NodeKey, [number, number]>();
     for (const q of raw) {
       const o = sepMap.get(q.n.key) ?? [0, 0];
       let x = q.x + o[0];
@@ -985,26 +1079,51 @@ export default function Map2D(props: SceneProps) {
         x += px2;
         y += py2;
       }
+      pre.set(q.n.key, [x, y]);
+    }
+    // The fisheye centers on the focused star (the center is the one point a
+    // fisheye never moves), else follows the cursor.
+    const fAt = fKey ? pre.get(fKey) : undefined;
+    const fgx = fAt ? fAt[0] : cur.x;
+    const fgy = fAt ? fAt[1] : cur.y;
+    if (cur.inside) {
+      // Jump when the lens was off, so it doesn't sweep in from afar.
+      ls.fx = ls.str < 0.02 ? fgx : approach(ls.fx, fgx, dt, TAU_FISHEYE);
+      ls.fy = ls.str < 0.02 ? fgy : approach(ls.fy, fgy, dt, TAU_FISHEYE);
+      if (Math.abs(ls.fx - fgx) > 0.4 || Math.abs(ls.fy - fgy) > 0.4) animating = true;
+    }
+    // With a focus, the others grow less (the focus shows by glowing, not by swelling).
+    const growK = fKey ? 0.4 : 1;
+    const pos = new Map<NodeKey, [number, number]>();
+    const grow = new Map<NodeKey, number>();
+    for (const [key, [x, y]] of pre) {
       const m = magnify(x, y, ls.fx, ls.fy, ls.str);
-      pos.set(q.n.key, [m.x, m.y]);
-      grow.set(q.n.key, m.grow);
+      pos.set(key, [m.x, m.y]);
+      grow.set(key, key === fKey ? 1 : 1 + (m.grow - 1) * growK);
+    }
+    // Focus glow, eased per star (in on the focus, out on the one it left).
+    const glows = glowLvl.current;
+    if (fKey && !glows.has(fKey)) glows.set(fKey, 0);
+    for (const [key, g] of glows) {
+      const goalG = key === fKey ? 1 : 0;
+      const ng = reduced.current ? goalG : approach(g, goalG, dt, TAU_GLOW);
+      if (Math.abs(ng - goalG) > 0.01) animating = true;
+      if (goalG === 0 && ng < 0.01) glows.delete(key);
+      else glows.set(key, Math.abs(ng - goalG) <= 0.01 ? goalG : ng);
     }
 
-    // 3. Proximity: how close the cursor is to each star (mouse only).
-    const proxOn = cur.inside && !pressing.current && !draggingNode.current;
+    // 3. Proximity: how close the cursor is to each star (mouse only). The
+    // card goes to the focused star.
+    const proxOn = focusOn;
     const prox = new Map<NodeKey, number>();
-    let nearKey: NodeKey | null = null;
-    let nearD = Infinity;
+    const nearKey: NodeKey | null = fKey;
+    const nearD = fKey ? fpick.d : Infinity;
     if (proxOn) {
       for (const [k, [x, y]] of pos) {
         const d = Math.hypot(x - cur.x, y - cur.y);
         if (d < 3 * PROX_SIGMA) prox.set(k, Math.exp(-(d * d) / (2 * PROX_SIGMA * PROX_SIGMA)));
-        if (d < nearD) {
-          nearD = d;
-          nearKey = k;
-        }
       }
-      if (nearD > PROX_CARD) nearKey = null;
+      if (fKey) prox.set(fKey, 1);
     }
 
     const related = new Set<NodeKey>();
@@ -1349,8 +1468,11 @@ export default function Map2D(props: SceneProps) {
     for (const n of drawOrder) {
       const [x, y] = pos.get(n.key)!;
       const b = prox.get(n.key) ?? 0;
-      const r = nodeRadius(n.mass, v.k) * (grow.get(n.key) ?? 1) * (1 + 0.3 * b);
-      const ch = cf > 0 ? coverHalf(n.mass, v.k) * (grow.get(n.key) ?? 1) * (1 + 0.12 * b) : 0;
+      /** Cursor-focus glow 0…1: the focused star stays its size and lights up instead. */
+      const gl = glows.get(n.key) ?? 0;
+      const swell = n.key === fKey ? 1.06 : 1 + 0.3 * b * (fKey ? 0.5 : 1);
+      const r = nodeRadius(n.mass, v.k) * (grow.get(n.key) ?? 1) * swell;
+      const ch = cf > 0 ? coverHalf(n.mass, v.k) * (grow.get(n.key) ?? 1) * (n.key === fKey ? 1.03 : 1 + 0.12 * b) : 0;
       drawnNow.set(n.key, { x, y, r: Math.max(r, ch * cf) });
       if (x < -4 * r - ch || y < -4 * r - ch || x > w + 4 * r + ch || y > h + 4 * r + ch) continue;
       const c = colorOf(n.key);
@@ -1399,7 +1521,37 @@ export default function Map2D(props: SceneProps) {
       ctx.beginPath();
       ctx.arc(x, y, haloR, 0, Math.PI * 2);
       ctx.fill();
+      if (gl > 0.01) {
+        // Focus bloom: a wide soft wash plus a hot inner glow, both in the star's color.
+        const big = Math.max(r, ch * cf) * 7.5;
+        const wash = ctx.createRadialGradient(x, y, r * 0.5, x, y, big);
+        wash.addColorStop(0, rgbCss(lighten(c, 0.35), 0.5 * gl));
+        wash.addColorStop(0.35, rgbCss(c, 0.16 * gl));
+        wash.addColorStop(1, rgbCss(c, 0));
+        ctx.fillStyle = wash;
+        ctx.beginPath();
+        ctx.arc(x, y, big, 0, TAU);
+        ctx.fill();
+        const hot = ctx.createRadialGradient(x, y, 0, x, y, r * 2.4);
+        hot.addColorStop(0, rgbCss(lighten(c, 0.8), 0.85 * gl));
+        hot.addColorStop(1, rgbCss(lighten(c, 0.4), 0));
+        ctx.fillStyle = hot;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 2.4, 0, TAU);
+        ctx.fill();
+      }
       ctx.globalCompositeOperation = 'source-over';
+      if (gl > 0.01) {
+        // A fine ring: "this one holds still".
+        ctx.save();
+        ctx.globalAlpha = 0.55 * gl;
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(r, ch * cf) + 7, 0, TAU);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = rgbCss(lighten(c, 0.6));
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // Semantic zoom: the album cover as the star (lazy, cached thumbnails; a
       // pending or failed image leaves the star).
@@ -1906,7 +2058,16 @@ export default function Map2D(props: SceneProps) {
   }, [sTarget, frame]);
 
   // ── Refocus on select: animate the others into an ego view of the selection ──
-  const egoMode: EgoMode | null = props.selectedKey && egoPick !== 'off' && visible.has(props.selectedKey) ? egoPick : null;
+  // A star selected by grabbing it doesn't refocus: the map would fly into the
+  // ego view under the drag (and after the drop, hide where it landed). Picking
+  // a refocus mode or selecting another star brings refocus back.
+  useEffect(() => {
+    if (props.selectedKey !== grabbedSel) setGrabbedSel(null);
+    // Only a selection change clears it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.selectedKey]);
+  const egoMode: EgoMode | null =
+    props.selectedKey && egoPick !== 'off' && visible.has(props.selectedKey) && props.selectedKey !== grabbedSel ? egoPick : null;
   const egoSel = egoMode ? props.selectedKey : null;
   useEffect(() => {
     const p = propsRef.current;
@@ -2017,6 +2178,7 @@ export default function Map2D(props: SceneProps) {
         const n = propsRef.current.payload.nodes.find((m) => m.key === key);
         return { key, label: n?.label, mass: n?.mass, x: q.x, y: q.y, r: q.r };
       });
+    w.__map2dFocus = () => cursorFocus.current;
     w.__map2dStats = () => {
       const d = [...drawStats.current].sort((a, b) => a - b);
       return { draws: d.length, medianDrawMs: d[d.length >> 1], p95DrawMs: d[Math.floor(d.length * 0.95)], egoLayoutMs: egoMs.current };
@@ -2024,6 +2186,7 @@ export default function Map2D(props: SceneProps) {
     return () => {
       delete w.__map2d;
       delete w.__map2dStats;
+      delete w.__map2dFocus;
     };
   }, []);
 
@@ -2093,10 +2256,40 @@ export default function Map2D(props: SceneProps) {
     // Node drag: the node under the pointer at pointerdown, plus the plane
     // offset from the pointer to the node so it doesn't jump to the cursor.
     let drag: { key: NodeKey; dx: number; dy: number; started: boolean } | null = null;
+    // A star pressed where it can't be moved: why (hinted once the press turns into a drag).
+    let blocked: 'schematic' | 'refocus' | null = null;
+    // Drag HUD: recomputed at most once a frame from the latest drag position.
+    let hudAt: Vec2 | null = null;
+    let hudRaf: number | null = null;
+    const computeHud = () => {
+      hudRaf = null;
+      const ds = dragStart.current;
+      if (!ds || !hudAt) return;
+      const p = propsRef.current;
+      const pts = p.payload.nodes.flatMap((n) =>
+        n.key !== ds.key && !n.ghost && p.visible.has(n.key) ? [{ key: n.key, x: n.pos2d[0], y: n.pos2d[1], mass: n.mass, mix: n.mix }] : [],
+      );
+      const impact = dragImpact({
+        key: ds.key,
+        start: ds.start,
+        now: hudAt,
+        points: pts,
+        trueNeighbors: (p.payload.neighbors[ds.key] ?? []).map((nb) => nb.key),
+        simTo: (o) => simsRef.current.get(ds.key, o),
+        span: Math.max(frame.spanX, frame.spanY),
+        bandwidth: 40 * frame.gs,
+      });
+      setDragHud({ key: ds.key, impact });
+    };
     const endDrag = () => {
       const d = drag;
       drag = null;
       draggingNode.current = false;
+      dragStart.current = null;
+      hudAt = null;
+      if (hudRaf != null) cancelAnimationFrame(hudRaf);
+      hudRaf = null;
+      setDragHud(null);
       if (!d?.started) return;
       const n = propsRef.current.payload.nodes.find((m) => m.key === d.key);
       if (n) propsRef.current.onDragNode(d.key, 'end', { pos2d: [n.pos2d[0], n.pos2d[1]] });
@@ -2152,8 +2345,11 @@ export default function Map2D(props: SceneProps) {
         moved = false;
         const p = propsRef.current;
         // No dragging in a refocus: those positions aren't places on the map.
-        const hit = p.editable && sNow.current === 0 && !ego.current.to ? hitTest(q.x, q.y) : null;
+        const movable = p.editable && sNow.current === 0 && !ego.current.to;
+        const hit = movable ? hitTest(q.x, q.y) : null;
         const n = hit ? p.payload.nodes.find((m) => m.key === hit) : null;
+        blocked = null;
+        if (!movable && hitTest(q.x, q.y)) blocked = ego.current.to ? 'refocus' : sNow.current > 0 || p.scale === 'schematic' ? 'schematic' : null;
         if (n) {
           const [wx, wy] = toPlaneXY(q.x, q.y, view.current, fitScale());
           drag = { key: n.key, dx: n.pos2d[0] - wx, dy: n.pos2d[1] - wy, started: false };
@@ -2189,13 +2385,25 @@ export default function Map2D(props: SceneProps) {
           if (!drag.started) {
             drag.started = true;
             draggingNode.current = true;
+            const n0 = p.payload.nodes.find((m) => m.key === drag!.key);
+            if (n0) dragStart.current = { key: n0.key, start: [n0.pos2d[0], n0.pos2d[1]] };
+            setGrabbedSel(drag.key);
             p.onDragNode(drag.key, 'start', {});
           }
           const [wx, wy] = toPlaneXY(q.x, q.y, view.current, fitScale());
           p.onDragNode(drag.key, 'move', { pos2d: [wx + drag.dx, wy + drag.dy] });
+          hudAt = [wx + drag.dx, wy + drag.dy];
+          if (hudRaf == null) hudRaf = requestAnimationFrame(computeHud);
           canvas.style.cursor = 'grabbing';
           requestDrawRef.current();
         } else if (moved) {
+          if (blocked) {
+            const why = blocked;
+            blocked = null;
+            setBlockHint(why);
+            if (blockTimer.current) clearTimeout(blockTimer.current);
+            blockTimer.current = setTimeout(() => setBlockHint(null), 3200);
+          }
           view.current = { ...view.current, tx: view.current.tx + q.x - prev.x, ty: view.current.ty + q.y - prev.y };
           canvas.style.cursor = 'grabbing';
           requestDrawRef.current();
@@ -2253,6 +2461,7 @@ export default function Map2D(props: SceneProps) {
     canvas.addEventListener('pointerleave', onLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => {
+      if (hudRaf != null) cancelAnimationFrame(hudRaf);
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
@@ -2304,18 +2513,26 @@ export default function Map2D(props: SceneProps) {
                 type="button"
                 aria-pressed={egoPick === m}
                 title={egoTips[m][1]}
-                onClick={() => setEgoPick(m)}
+                onClick={() => {
+                  setEgoPick(m);
+                  setGrabbedSel(null);
+                }}
                 className={`rounded-full px-2.5 py-1 transition ${egoPick === m ? 'bg-ink text-page' : 'text-muted hover:text-ink'}`}
               >
                 {egoTips[m][0]}
               </button>
             ))}
           </div>
-          {caption && (
-            <p className="hidden max-w-full truncate rounded-full border border-divider/60 bg-surface/80 px-2 py-0.5 text-[10px] leading-snug text-muted backdrop-blur md:block">
-              {caption}
-            </p>
-          )}
+          <span className="pointer-events-auto -mt-0.5 inline-flex items-center gap-1">
+            {caption && (
+              <p className="hidden max-w-full truncate rounded-full border border-divider/60 bg-surface/80 px-2 py-0.5 text-[10px] leading-snug text-muted backdrop-blur md:block">
+                {caption}
+              </p>
+            )}
+            <span className="rounded-full bg-surface/80 backdrop-blur">
+              <InfoTip label={t2.info} text={t2.viewModesInfo} />
+            </span>
+          </span>
         </div>
       )}
 
@@ -2327,7 +2544,10 @@ export default function Map2D(props: SceneProps) {
           style={{ transform: `translate(${Math.round(here.sx + 14)}px, ${Math.round(Math.max(8, here.sy - 20))}px)` }}
         >
           <div className="flex items-start justify-between gap-2">
-            <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted">{t2.hereTitle}</p>
+            <p className="inline-flex items-center text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted">
+              {t2.hereTitle}
+              <InfoTip label={t2.info} text={t2.hereInfo} className="-my-1 ml-0.5" />
+            </p>
             <button type="button" aria-label={t2.close} onClick={() => setHere(null)} className="-m-1 rounded-full p-1 text-muted hover:text-ink">
               <X size={13} />
             </button>
@@ -2378,6 +2598,151 @@ export default function Map2D(props: SceneProps) {
           <HereSuggestions query={here.query} />
         </div>
       )}
+
+      {/* Drag HUD: what the move in progress changes, live (lib/tasteMap/dragImpact.ts). */}
+      {dragHud && <DragHud hud={dragHud} t2={t2} nodes={payload.nodes} label={hereLabel} swatch={hereSwatch} />}
+
+      {/* Why a star didn't move (schematic or refocus). */}
+      {blockHint && !dragHud && (
+        <div
+          role="status"
+          className="pointer-events-none absolute right-2.5 top-[52px] z-[7] w-[min(320px,calc(100%-1.25rem))] rounded-xl border border-divider bg-surface/95 px-3 py-2 text-[11.5px] leading-snug text-ink shadow-[0_8px_24px_rgba(0,0,0,0.25)] backdrop-blur-md"
+        >
+          {blockHint === 'schematic' ? t2.blockSchematic : t2.blockRefocus}
+        </div>
+      )}
+
+      {/* First visit: how to read and handle the sky (dismissed for good). */}
+      {introOpen && !dragHud && !blockHint && !here && !props.selectedKey && (
+        <div
+          role="note"
+          className="absolute left-1/2 top-[52px] z-[5] w-[min(380px,calc(100%-1.25rem))] -translate-x-1/2 rounded-xl border border-divider bg-surface/95 p-3 text-ink shadow-[0_8px_24px_rgba(0,0,0,0.25)] backdrop-blur-md"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted">{t2.introTitle}</p>
+            <button type="button" aria-label={t2.close} onClick={closeIntro} className="-m-1 rounded-full p-1 text-muted hover:text-ink">
+              <X size={13} />
+            </button>
+          </div>
+          {touchOnly ? (
+            <p className="mt-1 text-[11.5px] leading-snug">{t2.introTouch}</p>
+          ) : (
+            <ul className="mt-1 list-disc space-y-1 pl-4 text-[11.5px] leading-snug">
+              <li>{t2.introHover}</li>
+              <li>{t2.introClick}</li>
+              <li>{t2.introDrag}</li>
+            </ul>
+          )}
+          <button
+            type="button"
+            onClick={closeIntro}
+            className="mt-2 rounded-full border border-ink bg-ink px-3 py-1 text-[11.5px] font-semibold text-page"
+          >
+            {t2.gotIt}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type Copy2D = (typeof COPY2D)['en'];
+
+/** The live drag panel: distance, the sound mix it's moving into, neighbors joined and left, and fit with the data. */
+function DragHud({
+  hud,
+  t2,
+  nodes,
+  label,
+  swatch,
+}: {
+  hud: { key: NodeKey; impact: DragImpact };
+  t2: Copy2D;
+  nodes: TasteMapPayloadNode[];
+  label: (id: string) => string;
+  swatch: (id: string) => string;
+}) {
+  const { impact: d } = hud;
+  const name = (k: NodeKey) => nodes.find((n) => n.key === k)?.label ?? k;
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const fitDown = d.keptAfter < d.keptBefore;
+  const fitUp = d.keptAfter > d.keptBefore;
+  const dots = (a: number, k: number) => (
+    <span className="inline-flex gap-[3px]" aria-hidden>
+      {Array.from({ length: k }, (_, i) => (
+        <span key={i} className={`h-[6px] w-[6px] rounded-full ${i < a ? 'bg-ink' : 'border border-muted/60'}`} />
+      ))}
+    </span>
+  );
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="pointer-events-none absolute right-2.5 top-[52px] z-[7] w-[min(300px,calc(100%-1.25rem))] rounded-xl border border-divider bg-surface/95 p-3 text-ink shadow-[0_8px_24px_rgba(0,0,0,0.25)] backdrop-blur-md"
+    >
+      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">{t2.moving}</p>
+      <p className="truncate text-[14px] font-extrabold leading-tight">{name(hud.key)}</p>
+      <p className="mt-0.5 text-[11px] tabular-nums text-muted">{t2.moved(pct(d.movedPct))}</p>
+
+      <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.08em] text-muted">{t2.soundAround}</p>
+      {d.sound.length ? (
+        <ul className="mt-1 space-y-0.5">
+          {d.sound.map((m) => (
+            <li key={m.id} className="flex items-center gap-1.5 text-[11.5px] tabular-nums">
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: swatch(m.id) }} />
+              <span className="min-w-0 flex-1 truncate font-semibold">{label(m.id)}</span>
+              <span className="text-muted">
+                {pct(m.before)} → {pct(m.after)}
+              </span>
+              <span className={`w-9 text-right font-bold ${m.delta > 0 ? 'text-ink' : 'text-muted'}`}>
+                {m.delta > 0 ? '+' : '−'}
+                {Math.abs(Math.round(m.delta * 100))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-0.5 text-[11.5px] text-muted">{t2.noSoundChange}</p>
+      )}
+
+      {(d.joined.length > 0 || d.left.length > 0) && (
+        <div className="mt-2 space-y-0.5 text-[11.5px] leading-snug">
+          {d.joined.length > 0 && (
+            <p className="truncate">
+              <span className="font-bold text-muted">{t2.nextTo} </span>
+              {d.joined.map(name).join(', ')}
+            </p>
+          )}
+          {d.left.length > 0 && (
+            <p className="truncate text-muted">
+              <span className="font-bold">{t2.leaving} </span>
+              {d.left.map(name).join(', ')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {d.k > 0 && (
+        <div className="mt-2 text-[11.5px]">
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">{t2.fitData}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-1.5 tabular-nums">
+            {dots(d.keptBefore, d.k)}
+            <span className="text-muted">→</span>
+            {dots(d.keptAfter, d.k)}
+            <span className={`font-semibold ${fitDown ? 'text-ink' : 'text-muted'}`}>
+              {t2.fitOf(d.keptAfter, d.k)}
+              {fitDown ? ' ↓' : fitUp ? ' ↑' : ''}
+            </span>
+          </p>
+          {d.simBefore != null && d.simAfter != null && (
+            <p className="mt-0.5 text-muted tabular-nums">
+              {t2.avgSim}: {d.simBefore.toFixed(2)} → <span className="font-semibold text-ink">{d.simAfter.toFixed(2)}</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      <p className="mt-2 border-t border-divider pt-1.5 text-[10.5px] leading-snug text-muted">{t2.dropNote}</p>
     </div>
   );
 }
