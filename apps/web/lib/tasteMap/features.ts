@@ -24,6 +24,7 @@ import { toArtistEvidence, type StoredGenreEvidence } from '../genres/artistEvid
 import { fold } from '../genres/resolver';
 import { sceneOf, type Scene } from '../taste/albumVector';
 import { albumLang, albumTagVector, closureOf, splitEras } from './eras';
+import { LISTED_ONLY_CONF, normalizer, pairBlockWeight, STORE_ALBUM_SOURCES, WEAK_TAG_CONF } from './evidence';
 import {
   BLOCKS,
   type BlockName,
@@ -36,6 +37,7 @@ import {
   type MapNode,
   type MapUserInput,
   type MetricWeights,
+  type NodeKey,
   type TagDim,
 } from './types';
 
@@ -262,7 +264,7 @@ export function gramScores(G: Float64Array, n: number, k: number): number[][] {
 // ── tags ─────────────────────────────────────────────────────────────────────
 
 /** The artist's most common album language (null when none is known). */
-function artistLang(langs: (string | null)[]): string | null {
+export function artistLang(langs: (string | null)[]): string | null {
   const counts = new Map<string, number>();
   for (const l of langs) if (l) counts.set(l, (counts.get(l) ?? 0) + 1);
   let best: string | null = null;
@@ -281,14 +283,15 @@ function artistLang(langs: (string | null)[]): string | null {
  * relative to its own top tag, averaged across sources, iTunes at ITUNES_WEIGHT
  * like the placement. Catalog tags are left out — the albums already count.
  */
-function evidenceVector(raw: unknown, lang: string | null): Map<string, number> {
+function evidenceVector(raw: unknown, lang: string | null): { vec: Map<string, number>; trusted: boolean } {
   const out = new Map<string, number>();
-  if (!raw || typeof raw !== 'object') return out;
+  const none = { vec: out, trusted: false };
+  if (!raw || typeof raw !== 'object') return none;
   let artist;
   try {
     artist = toArtistEvidence(raw as StoredGenreEvidence).artist;
   } catch {
-    return out;
+    return none;
   }
   const sources: [{ tag: string; weight?: number }[] | undefined, number, boolean][] = [
     [artist.musicbrainz, 1, false],
@@ -298,6 +301,7 @@ function evidenceVector(raw: unknown, lang: string | null): Map<string, number> 
   ];
   const base = new Map<string, number>();
   let nSources = 0;
+  let trusted = false;
   for (const [tags, sw, isItunes] of sources) {
     if (!tags?.length) continue;
     const top = Math.max(...tags.map((t) => t.weight ?? 1));
@@ -311,12 +315,21 @@ function evidenceVector(raw: unknown, lang: string | null): Map<string, number> 
       base.set(id, (base.get(id) ?? 0) + (sw * (t.weight ?? 1)) / top);
     }
     if (any) nSources++;
+    if (any && !isItunes) trusted = true;
   }
-  if (!nSources) return out;
+  if (!nSources) return none;
   for (const [id, w] of base) closureOf(id, lang, w / nSources, out);
   const max = Math.max(0, ...out.values());
   if (max > 0) for (const [q, w] of out) out.set(q, w / max);
-  return out;
+  return { vec: out, trusted };
+}
+
+/** Whether an album's tags come from a trusted source: anything but store genres
+ *  only (iTunes / Deezer). Unknown provenance counts as trusted. */
+function trustedAlbumTags(a: MapAlbumInput): boolean {
+  const src = a.genreSources;
+  if (!src?.length) return true;
+  return src.some((s) => !STORE_ALBUM_SOURCES.has(s));
 }
 
 function tagLabel(qid: string): string {
@@ -367,6 +380,18 @@ function albumWeight(a: MapAlbumInput): number {
   return a.rated ? 1 : UNRATED_ALBUM_WEIGHT;
 }
 
+export interface FeatureOptions {
+  /**
+   * The user's answers to ghost questions (taste_map_node_state.answer): node
+   * key → taxonomy genre id. Added to that node's tag pool like one fully tagged
+   * rated album, and trusted (a person said so), so the map moves at once.
+   */
+  answers?: Record<NodeKey, string>;
+}
+
+/** Weight of a user's answered genre in the node's tag pool (one rated album's worth). */
+export const ANSWER_WEIGHT = 1;
+
 /**
  * Build the user's feature space. Only segments with ≥ 1 rated album become
  * nodes; an unrated era is dropped, and its albums stay out of the other eras (the
@@ -375,7 +400,7 @@ function albumWeight(a: MapAlbumInput): number {
  * mass = number of rated albums (each weighs 1 — the taste system's per-album
  * score weighting isn't needed for map size), avgScore = mean user score.
  */
-export function buildFeatureSpace(input: MapUserInput, overrides?: EraOverride[]): FeatureSpace {
+export function buildFeatureSpace(input: MapUserInput, overrides?: EraOverride[], opts: FeatureOptions = {}): FeatureSpace {
   const overrideBy = new Map((overrides ?? []).map((o) => [o.artistId, o]));
   const drafts: Draft[] = [];
   for (const artist of input.artists) {
@@ -396,23 +421,36 @@ export function buildFeatureSpace(input: MapUserInput, overrides?: EraOverride[]
     if (!langCache.has(a.id)) langCache.set(a.id, albumLang(a, artist));
     return langCache.get(a.id)!;
   };
-  const evidenceCache = new Map<string, Map<string, number>>();
-  const tf: Map<string, number>[] = drafts.map(({ artist, albums }) => {
+  const evidenceCache = new Map<string, { vec: Map<string, number>; trusted: boolean; lang: string | null }>();
+  // Whether the node's tags rest on anything but store genres (evidence.ts).
+  const tagTrusted: boolean[] = [];
+  const tf: Map<string, number>[] = drafts.map(({ artist, albums, segment }, i) => {
     const pool = new Map<string, number>();
     let wsum = 0;
+    let trusted = false;
     for (const a of albums) {
       const v = albumTagVector(a, langOf(a, artist));
       if (!v.size) continue;
       const w = albumWeight(a);
       wsum += w;
+      if (trustedAlbumTags(a)) trusted = true;
       for (const [q, x] of v) pool.set(q, (pool.get(q) ?? 0) + w * x);
     }
     if (wsum > 0) for (const [q, x] of pool) pool.set(q, x / wsum);
     if (!evidenceCache.has(artist.id)) {
       const lang = artistLang(artist.albums.map((a) => langOf(a, artist)));
-      evidenceCache.set(artist.id, evidenceVector(artist.genreEvidence, lang));
+      evidenceCache.set(artist.id, { ...evidenceVector(artist.genreEvidence, lang), lang });
     }
-    for (const [q, x] of evidenceCache.get(artist.id)!) pool.set(q, (pool.get(q) ?? 0) + ARTIST_EVIDENCE_WEIGHT * x);
+    const prior = evidenceCache.get(artist.id)!;
+    if (prior.trusted) trusted = true;
+    for (const [q, x] of prior.vec) pool.set(q, (pool.get(q) ?? 0) + ARTIST_EVIDENCE_WEIGHT * x);
+    const answer = opts.answers?.[segment.key];
+    if (answer) {
+      const add = closureOf(answer, prior.lang, ANSWER_WEIGHT);
+      for (const [q, x] of add) pool.set(q, (pool.get(q) ?? 0) + x);
+      if (add.size) trusted = true;
+    }
+    tagTrusted[i] = trusted;
     return pool;
   });
   const df = new Map<string, number>();
@@ -520,6 +558,7 @@ export function buildFeatureSpace(input: MapUserInput, overrides?: EraOverride[]
 
   const nodes: MapNode[] = drafts.map((d, i) => {
     const scores = d.rated.map((a) => a.score).filter((s): s is number => s != null && Number.isFinite(s));
+    const tagsConf = tagTrusted[i] ? 1 : WEAK_TAG_CONF;
     return {
       key: d.segment.key,
       artistId: d.artist.id,
@@ -531,6 +570,12 @@ export function buildFeatureSpace(input: MapUserInput, overrides?: EraOverride[]
       avgScore: scores.length ? scores.reduce((s, x) => s + x, 0) / scores.length : null,
       blocks: { tags: tagBlocks[i][0], text: textBlocks[i][0], graph: graphBlocks[i][0], era: eraBlocks[i][0] },
       has: { tags: tagBlocks[i][1], text: textBlocks[i][1], graph: graphBlocks[i][1], era: eraBlocks[i][1] },
+      confidence: {
+        tags: tagsConf,
+        text: 0.5 + 0.5 * tagsConf,
+        graph: rowsByArtist.get(d.artist.id)!.size > 0 ? 1 : LISTED_ONLY_CONF,
+        era: 1,
+      },
     };
   });
 
@@ -555,14 +600,19 @@ function gram(X: number[][]): Float64Array {
 
 // ── similarity + explanation (D8) ────────────────────────────────────────────
 
-/** Per-block weighted dot products and the normalizer Σ w_b over shared blocks. */
+/**
+ * Per-block weighted dot products and the normalizer: the shared blocks'
+ * effective weights (w_b × the pair's confidence in the block), summed and
+ * floored at COVER_MIN of the total weight (evidence.ts), so a pair sharing
+ * only weak evidence can't score ~1. Kept identical to layout.ts blockTerms.
+ */
 function blockTerms(a: MapNode, b: MapNode, w: MetricWeights): { terms: Record<BlockName, number>; z: number } {
   const terms = { tags: 0, text: 0, graph: 0, era: 0 } as Record<BlockName, number>;
-  let z = 0;
+  let shared = 0;
   for (const block of BLOCKS) {
-    const wb = Math.max(0, w.block[block] ?? 1);
-    if (!a.has[block] || !b.has[block] || wb === 0) continue;
-    z += wb;
+    const wb = pairBlockWeight(a, b, block, w);
+    if (wb === 0) continue;
+    shared += wb;
     if (block === 'tags' && w.tagDims) {
       const x = a.blocks.tags;
       const y = b.blocks.tags;
@@ -573,14 +623,16 @@ function blockTerms(a: MapNode, b: MapNode, w: MetricWeights): { terms: Record<B
       terms[block] = wb * dot(a.blocks[block], b.blocks[block]);
     }
   }
-  return { terms, z };
+  return { terms, z: normalizer(shared, w) };
 }
 
 /**
  * Weighted cosine between two nodes: Σ_b w_b·(a_b·b_b) / Σ w_b over the blocks
  * BOTH nodes have data for (a missing block is "unknown", not "different"). The
  * tags block uses per-dimension weights when the metric has them. 0 when the
- * nodes share no block.
+ * nodes share no block. Each w_b is scaled by the pair's confidence in the
+ * block and the normalizer is floored at COVER_MIN × Σ w (evidence.ts), so
+ * evidence-poor pairs are shrunk toward 0 instead of reading as identical.
  */
 export function similarity(a: MapNode, b: MapNode, w: MetricWeights = DEFAULT_METRIC): number {
   const { terms, z } = blockTerms(a, b, w);
@@ -608,7 +660,7 @@ export function explain(
   if (z <= 0) return [];
   const parts: { label: string; value: number }[] = [];
   if (a.has.tags && b.has.tags && terms.tags !== 0) {
-    const wb = Math.max(0, w.block.tags ?? 1);
+    const wb = pairBlockWeight(a, b, 'tags', w);
     const x = a.blocks.tags;
     const y = b.blocks.tags;
     for (let k = 0; k < Math.min(x.length, y.length); k++) {

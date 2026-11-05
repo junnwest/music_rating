@@ -40,5 +40,6 @@ export async function GET(req: NextRequest) {
 
 function cacheKey(userId: string, inputHash: string): string {
   // v2: payloads carry the genre-lens palette + per-node mix. v3: mix folds subgenres into picked ancestors. v4: family rollup hues. v5: all-pairs similarity.
-  return `tastemap:v5:${userId}:${inputHash}`;
+  // v6: ghost nodes (thin.ts: `ghost`, left out of neighbor lists) + evidence-weighted similarity (evidence.ts).
+  return `tastemap:v6:${userId}:${inputHash}`;
 }

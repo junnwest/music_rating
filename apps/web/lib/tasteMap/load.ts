@@ -20,6 +20,9 @@
  *      small id batches because each vector is ~12 KB of text over PostgREST.
  *   5. Similar artists from `artist_similar` (Phase 1 migration). Read
  *      defensively: when the table doesn't exist yet every artist gets `[]`.
+ *   6. Each album's genre provenance (distinct `release_genres.source`), so a
+ *      store-genre-only album (iTunes / Deezer) counts as weak evidence
+ *      (evidence.ts). Best effort: unreadable → every tag counts as trusted.
  *
  * Micro-instance rules: every bulk read is batched (`in()` ≤ 200 ids, fewer
  * for embedding rows), paged with a stable ORDER BY past PostgREST's 1000-row
@@ -205,6 +208,41 @@ async function loadEmbeddings(db: SupabaseClient, rgIds: string[]): Promise<Map<
   return out;
 }
 
+/**
+ * Distinct release_genres sources per release group (features.ts tells store
+ * genres from trusted ones). Best effort: on any error the map is built as if
+ * every tag were trusted (the pre-provenance behaviour), never failed.
+ */
+async function loadGenreSources(db: SupabaseClient, rgIds: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, Set<string>>();
+  let failed = false;
+  await pool(chunks(rgIds, ID_CHUNK), CONCURRENCY, async (chunk) => {
+    for (let from = 0; !failed; from += PAGE) {
+      const { data, error } = await db
+        .from('release_genres')
+        .select('release_group_id, source')
+        .in('release_group_id', chunk)
+        .order('release_group_id')
+        .order('genre_id')
+        .order('source')
+        .range(from, from + PAGE - 1);
+      if (error) {
+        failed = true;
+        console.warn(`[tasteMap/load] release_genres unreadable, treating all tags as trusted: ${error.message}`);
+        return;
+      }
+      for (const r of (data ?? []) as { release_group_id: string; source: string }[]) {
+        const s = out.get(r.release_group_id) ?? new Set<string>();
+        s.add(r.source);
+        out.set(r.release_group_id, s);
+      }
+      if ((data ?? []).length < PAGE) return;
+    }
+  });
+  if (failed) return new Map();
+  return new Map([...out].map(([id, s]) => [id, [...s].sort()]));
+}
+
 type SimilarBySource = MapArtistInput['similar'];
 
 /**
@@ -334,7 +372,10 @@ export async function loadMapUserInput(db: SupabaseClient, userId: string, opts:
   for (const rg of catalog) if (rg.is_official !== false && rg.primary_artist_id) rgs.set(rg.id, rg);
   for (const { rg } of rated.values()) rgs.set(rg.id, rg);
 
-  const embeddings = opts.embeddings === false ? new Map<string, number[]>() : await loadEmbeddings(db, [...rgs.keys()]);
+  const [embeddings, genreSources] = await Promise.all([
+    opts.embeddings === false ? new Map<string, number[]>() : loadEmbeddings(db, [...rgs.keys()]),
+    loadGenreSources(db, [...rgs.keys()]),
+  ]);
 
   const byArtist = new Map<string, MapAlbumInput[]>();
   for (const rg of rgs.values()) {
@@ -349,6 +390,7 @@ export async function loadMapUserInput(db: SupabaseClient, userId: string, opts:
       type: rg.release_group_type,
       coverUrl: rg.cover_url,
       embedding: embeddings.get(rg.id) ?? null,
+      ...(genreSources.has(rg.id) ? { genreSources: genreSources.get(rg.id) } : {}),
       score: r?.score ?? null,
       rated: !!r,
     };
@@ -455,7 +497,10 @@ export async function loadArtistInputs(
   const rgs = new Map<string, RgRow>();
   for (const rg of catalog) if (rg.is_official !== false && rg.primary_artist_id) rgs.set(rg.id, rg);
   for (const { rg } of rated.values()) rgs.set(rg.id, rg);
-  const embeddings = opts.embeddings === false ? new Map<string, number[]>() : await loadEmbeddings(db, [...rgs.keys()]);
+  const [embeddings, genreSources] = await Promise.all([
+    opts.embeddings === false ? new Map<string, number[]>() : loadEmbeddings(db, [...rgs.keys()]),
+    loadGenreSources(db, [...rgs.keys()]),
+  ]);
 
   const byArtist = new Map<string, MapAlbumInput[]>();
   for (const rg of rgs.values()) {
@@ -470,6 +515,7 @@ export async function loadArtistInputs(
       type: rg.release_group_type,
       coverUrl: rg.cover_url,
       embedding: embeddings.get(rg.id) ?? null,
+      ...(genreSources.has(rg.id) ? { genreSources: genreSources.get(rg.id) } : {}),
       score: r?.score ?? null,
       rated: !!r,
     };

@@ -30,6 +30,12 @@ export interface MapAlbumInput {
   /** The user's display score (1–5 scale used by the taste system), null if unrated. */
   score: number | null;
   rated: boolean;
+  /**
+   * Distinct release_genres sources behind the album's tags ('musicbrainz',
+   * 'itunes', …), so features.ts can tell store genres from trusted ones.
+   * Optional: absent (older fixtures, table unreadable) = trusted.
+   */
+  genreSources?: string[];
 }
 
 export interface SimilarArtist {
@@ -107,6 +113,11 @@ export interface MapNode {
   blocks: FeatureBlocks;
   /** Which blocks had real data (false → zero vector, excluded from that block's similarity). */
   has: Record<BlockName, boolean>;
+  /**
+   * How far each block's data can be trusted, 0–1 (evidence.ts). Absent or a
+   * missing block = 1. Set by buildFeatureSpace; used by similarity and thin.ts.
+   */
+  confidence?: Partial<Record<BlockName, number>>;
 }
 
 export interface FeatureSpace {

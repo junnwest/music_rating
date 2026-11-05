@@ -18,6 +18,7 @@ import { schematicLayout, type Schematic } from '../../../lib/tasteMap/schematic
 import type { NodeKey, TasteMapPayload, TasteMapPayloadNode, Vec2, Vec3 } from '../../../lib/tasteMap/types';
 import AddArtist from './AddArtist';
 import EraEditor from './EraEditor';
+import GhostTray from './GhostTray';
 import GroupEditor from './GroupEditor';
 import Map2D from './Map2D';
 import MembershipEditor from './MembershipEditor';
@@ -1166,6 +1167,7 @@ export default function TasteMapView({
         </button>
       </div>
       {editingGroups && <GroupEditor edits={edits} onClose={() => setEditingGroups(false)} />}
+      <GhostTray nodes={work} pins={pins} api={api} canDrag={!schematicOn && !running} onPick={selectAndFocus} onChanged={bump} onReload={onReload} />
 
       {/* ── Stage + inspector ── */}
       <div

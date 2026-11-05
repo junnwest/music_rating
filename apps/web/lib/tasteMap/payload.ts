@@ -20,7 +20,15 @@
  *                       invalidates the cached payload.
  * Anything added to the payload must be covered by the input hash, because the
  * Redis cache is keyed by it (pins incl. softZ, groups + members, eras, metric
- * fitted_at, block weights, and an arranged layout's version + solved_at).
+ * fitted_at, block weights, an arranged layout's version + solved_at, and the
+ * ghost choices / answers in taste_map_node_state).
+ *
+ * Ghosts (thin.ts): evidence-poor ("thin") or lonely ("misfit") nodes carry
+ * `ghost`, are left out of the UMAP solve (solveWithGhosts) and of every other
+ * node's neighbor list, and sit at the kNN barycentre of their most similar
+ * nodes. Their own neighbor list stays (= suggested spots), and `similarity`
+ * stays complete. A user's answer to a ghost question is a tag override for
+ * that node (features.ts FeatureOptions.answers).
  *
  * Groups: until the user edits groups (Phase 4), they are SEEDED from the Taste
  * tab's worlds (lib/taste/worlds.ts placeAlbum) — a node's membership is the
@@ -35,11 +43,13 @@ import { qualifiedInfo } from '../genres/language';
 import { artistInputFor, loadArtistPriors } from '../taste/artistPrior';
 import { loadMapUserInput } from './load';
 import { buildFeatureSpace, explain, DEFAULT_METRIC } from './features';
-import { finishLayout, placeNew, similarityMatrix, solveLayout, type ExplainFn } from './layout';
+import { finishLayout, placeNew, similarityMatrix, solveLayout, type ExplainFn, type SolveOptions } from './layout';
 import { metricFromRow } from './metricStore';
 import { buildPalette } from './palette';
 import { canSeeTasteMap, requiredRatedAlbums } from './access';
 import { selectPins, type StoredPin } from './store';
+import { answersOf, loadNodeStates, nodeStateHashPart } from './nodeState';
+import { classifyGhosts, type Ghost } from './thin';
 import type {
   EraOverride,
   FeatureSpace,
@@ -83,13 +93,14 @@ interface StoredLayoutRow {
 }
 
 export async function buildTasteMapPayload(db: SupabaseClient, userId: string, opts: BuildOptions = {}): Promise<BuildResult> {
-  const [input, erasRes, pinsRes, groupsRes, metricRes, layoutRes] = await Promise.all([
+  const [input, erasRes, pinsRes, groupsRes, metricRes, layoutRes, nodeStates] = await Promise.all([
     loadMapUserInput(db, userId),
     db.from('taste_map_eras').select('artist_id, split_rg_ids').eq('user_id', userId),
     selectPins(db, userId),
     db.from('taste_map_groups').select('id, name, color, seed_world, taste_map_members(node_key, weight)').eq('user_id', userId),
     db.from('taste_map_metric').select('block_w, dim_w, fitted_at').eq('user_id', userId).eq('lens', LENS).maybeSingle(),
     db.from('taste_map_layouts').select('positions, input_hash, version, solved_at').eq('user_id', userId).eq('lens', LENS).maybeSingle(),
+    loadNodeStates(db, userId),
   ]);
 
   if (!opts.ignoreAccess && !canSeeTasteMap(input.username)) return { kind: 'no-access' };
@@ -120,6 +131,8 @@ export async function buildTasteMapPayload(db: SupabaseClient, userId: string, o
         blockWeights,
         // A saved (user-arranged) layout is an input; a solved one is only a cache.
         arranged ? [stored!.version, stored!.solved_at] : null,
+        // Ghost choices + answers (thin.ts): they change classification, tags and placement.
+        nodeStateHashPart(nodeStates.data),
       ]),
     )
     .digest('hex')
@@ -127,15 +140,19 @@ export async function buildTasteMapPayload(db: SupabaseClient, userId: string, o
   const hit = await opts.cached?.(inputHash);
   if (hit) return { kind: 'ok', payload: hit, inputHash, cached: true };
 
-  const space = buildFeatureSpace(input, overrides);
+  const space = buildFeatureSpace(input, overrides, { answers: answersOf(nodeStates.data) });
   const weights: MetricWeights = {
     block: blockWeights,
     tagDims: metricRes.data ? metricFromRow(metricRes.data, space).tagDims : null,
   };
   const explainFn: ExplainFn = (a, b) => explain(a, b, space, weights);
+  const S = similarityMatrix(space.nodes, weights);
+  // Ghosts (thin.ts): placed by kNN barycentre, never anyone's neighbor.
+  const { ghosts } = classifyGhosts(space.nodes, S, { pinned: new Set(pins.keys()), states: nodeStates.data });
   const prev = stored?.positions ?? null;
-  const fromArranged = arranged && prev ? assembleArrangedLayout(space, prev, { weights, explain: explainFn }) : null;
-  const layout = fromArranged?.layout ?? solveLayout(space, { weights, init: prev ?? undefined, explain: explainFn });
+  const fromArranged =
+    arranged && prev ? assembleArrangedLayout(space, prev, { weights, explain: explainFn, S, ghosts: new Set(ghosts.keys()) }) : null;
+  const layout = fromArranged?.layout ?? solveWithGhosts(space, ghosts, { weights, init: prev ?? undefined, explain: explainFn, S });
 
   // ── groups ──
   const albumWorld = await worldsOf(db, input);
@@ -200,13 +217,15 @@ export async function buildTasteMapPayload(db: SupabaseClient, userId: string, o
       pinned: pins.has(n.key),
       ...(pins.get(n.key)?.softZ ? { softZ: true } : {}),
       mix: palette.mix[n.key] ?? {},
+      ...(ghosts.has(n.key) ? { ghost: ghosts.get(n.key)! } : {}),
     })),
     groups,
     palette: palette.hues,
     // space.nodes keeps each artist's eras in chronological order.
     trails: [...trails.entries()].filter(([, keys]) => keys.length > 1).map(([artistId, keys]) => ({ artistId, keys })),
     neighbors: layout.neighbors,
-    similarity: packSimilarity(space.nodes.map((n) => n.key), similarityMatrix(space.nodes, weights)),
+    // Complete, ghosts included (selection refocus wants every pair).
+    similarity: packSimilarity(space.nodes.map((n) => n.key), S),
   };
 
   if (opts.persist) await persistLayout(db, userId, stored, layout, fromArranged, inputHash);
@@ -286,30 +305,83 @@ const isVec3 = (p: unknown): p is Vec3 =>
 export function assembleArrangedLayout(
   space: FeatureSpace,
   stored: Record<NodeKey, Vec3>,
-  opts: { weights?: MetricWeights; explain?: ExplainFn; k?: number } = {},
+  opts: {
+    weights?: MetricWeights;
+    explain?: ExplainFn;
+    k?: number;
+    /** similarityMatrix(space.nodes, weights), when the caller has it. */
+    S?: Float64Array;
+    /** Ghost nodes (thin.ts): always placed by barycentre over the others, never anyone's neighbor. */
+    ghosts?: ReadonlySet<NodeKey>;
+  } = {},
 ): ArrangedResult | null {
+  const ghosts = opts.ghosts ?? new Set<NodeKey>();
   const kept: Record<NodeKey, Vec3> = {};
   for (const m of space.nodes) {
     const p = stored[m.key];
-    if (isVec3(p)) kept[m.key] = [p[0], p[1], p[2]];
+    if (isVec3(p) && !ghosts.has(m.key)) kept[m.key] = [p[0], p[1], p[2]];
   }
-  const n = space.nodes.length;
+  const n = space.nodes.length - space.nodes.filter((m) => ghosts.has(m.key)).length;
   if (!n || Object.keys(kept).length < Math.min(3, n)) return null;
 
   const placed: Record<NodeKey, Vec3> = {};
+  const ghostPos: Record<NodeKey, Vec3> = {};
   for (const m of space.nodes) {
     if (kept[m.key]) continue;
     // Anchored on the stored positions only, so the order of new nodes doesn't matter.
     const { pos } = placeNew(space, kept, m, { weights: opts.weights });
     const j = jitterFor(m.key);
-    placed[m.key] = [pos[0] + j[0], pos[1] + j[1], pos[2] + j[2]];
+    const p: Vec3 = [pos[0] + j[0], pos[1] + j[1], pos[2] + j[2]];
+    // A ghost that already has a stored spot is re-placed every time but not re-saved.
+    if (ghosts.has(m.key) && isVec3(stored[m.key])) ghostPos[m.key] = p;
+    else placed[m.key] = p;
   }
   const layout = finishLayout(
     space,
-    { ...kept, ...placed },
-    { weights: opts.weights, explain: opts.explain, k: opts.k, S: similarityMatrix(space.nodes, opts.weights) },
+    { ...kept, ...placed, ...ghostPos },
+    {
+      weights: opts.weights,
+      explain: opts.explain,
+      k: opts.k,
+      S: opts.S ?? similarityMatrix(space.nodes, opts.weights),
+      exclude: ghosts,
+    },
   );
   return { layout, placed };
+}
+
+/**
+ * solveLayout for a map with ghosts (thin.ts): UMAP over the other nodes only,
+ * so a ghost can't pull the solve, then each ghost at the kNN barycentre of
+ * where its most similar nodes landed (layout.ts placeNew), and the shared
+ * tail with ghosts out of every neighbor list. With fewer than 3 other nodes
+ * everything is solved together (there'd be nothing to anchor to).
+ */
+export function solveWithGhosts(
+  space: FeatureSpace,
+  ghosts: ReadonlyMap<NodeKey, Ghost> | ReadonlySet<NodeKey>,
+  opts: SolveOptions & { S?: Float64Array } = {},
+): LayoutResult {
+  const { S, ...solveOpts } = opts;
+  const isGhost = (k: NodeKey) => ghosts.has(k);
+  const core = space.nodes.filter((m) => !isGhost(m.key));
+  const exclude = new Set(space.nodes.filter((m) => isGhost(m.key)).map((m) => m.key));
+  const finish = (positions: Record<NodeKey, Vec3>) =>
+    finishLayout(space, positions, { weights: opts.weights, explain: opts.explain, k: opts.k, S, exclude });
+  if (!exclude.size) return solveLayout(space, solveOpts);
+  if (core.length < 3) return finish(solveLayout(space, solveOpts).positions);
+
+  let init = solveOpts.init;
+  if (init) init = Object.fromEntries(Object.entries(init).filter(([k]) => !exclude.has(k)));
+  const solved = solveLayout({ ...space, nodes: core }, { ...solveOpts, init });
+  const positions: Record<NodeKey, Vec3> = { ...solved.positions };
+  for (const m of space.nodes) {
+    if (!exclude.has(m.key)) continue;
+    const { pos } = placeNew(space, solved.positions, m, { weights: opts.weights });
+    const j = jitterFor(m.key);
+    positions[m.key] = [pos[0] + j[0], pos[1] + j[1], pos[2] + j[2]];
+  }
+  return finish(positions);
 }
 
 /** Rated album id → its Taste-tab world, placed exactly as /api/taste/profile places it. */

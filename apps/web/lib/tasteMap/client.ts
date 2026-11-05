@@ -22,6 +22,7 @@ import type {
   TasteMapExport,
 } from './apiTypes';
 import type { TasteMapGroup, TasteMapPayload } from './types';
+import type { AnswerPostBody, AnswerPostResponse, NodeStatePutBody, NodeStatePutResponse, QuestionsResponse } from './ghostApi';
 
 const BASE = '/api/taste/map';
 
@@ -147,6 +148,20 @@ export function fitMetric(body: MetricFitBody = {}): Promise<MetricFitResponse> 
 
 export function placeArtist(artistId: string): Promise<PlaceResponse> {
   return call('GET', `/place?artistId=${encodeURIComponent(artistId)}`);
+}
+
+// ── Ghost nodes (thin.ts, ghostApi.ts) ───────────────────────────────────────
+
+export function putNodeState(body: NodeStatePutBody): Promise<NodeStatePutResponse> {
+  return call('PUT', '/node-state', body);
+}
+
+export function getQuestions(signal?: AbortSignal): Promise<QuestionsResponse> {
+  return call('GET', '/questions', undefined, signal);
+}
+
+export function postAnswer(body: AnswerPostBody): Promise<AnswerPostResponse> {
+  return call('POST', '/questions', body);
 }
 
 // ── Export file helpers ──────────────────────────────────────────────────────

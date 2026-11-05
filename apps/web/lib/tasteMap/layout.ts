@@ -7,7 +7,8 @@
  *
  * The similarity here mirrors features.ts `similarity(a, b, w)` on purpose (this
  * file must not import it): sim = Σ_b w_b·dot(a_b, b_b) / Σ_{b where both has} w_b,
- * with per-dim weights on the tags block when provided.
+ * with per-dim weights on the tags block when provided, each w_b scaled by the
+ * pair's confidence in the block and the denominator floored (evidence.ts).
  */
 import { UMAP } from 'umap-js';
 import {
@@ -22,7 +23,8 @@ import {
   type NodeKey,
   type Vec3,
 } from './types';
-import { principalAxes, projectPlane } from './plane';
+import { planeBasis, principalAxes, projectPlane, toPlane } from './plane';
+import { normalizer, pairBlockWeight } from './evidence';
 
 // ── Small utilities ──────────────────────────────────────────────────────────
 
@@ -63,24 +65,24 @@ function blockDot(a: number[], b: number[], dimW: number[] | null): number {
   return s;
 }
 
-/** Per-block numerators w_b·dot_b and the shared denominator Σ_{both has} w_b. */
+/** Per-block numerators w_b·dot_b and the shared denominator Σ_{both has} w_b (confidence-scaled, floored: evidence.ts). */
 export function blockTerms(
   a: MapNode,
   b: MapNode,
   w: MetricWeights = unitWeights(),
 ): { terms: Record<BlockName, number>; denom: number } {
   const terms = { tags: 0, text: 0, graph: 0, era: 0 } as Record<BlockName, number>;
-  let denom = 0;
+  let shared = 0;
   for (const blk of BLOCKS) {
-    if (!a.has[blk] || !b.has[blk]) continue;
     // Same semantics as features.similarity: a zero-weighted block is ignored,
-    // not counted as disagreement.
-    const wb = Math.max(0, w.block[blk] ?? 1);
+    // not counted as disagreement; weights are scaled by the pair's confidence
+    // and the normalizer is floored (evidence.ts).
+    const wb = pairBlockWeight(a, b, blk, w);
     if (wb === 0) continue;
-    denom += wb;
+    shared += wb;
     terms[blk] = wb * blockDot(a.blocks[blk], b.blocks[blk], blk === 'tags' ? w.tagDims : null);
   }
-  return { terms, denom };
+  return { terms, denom: normalizer(shared, w) };
 }
 
 /** Weighted cosine similarity; 0 when the nodes share no block with weight. */
@@ -691,6 +693,12 @@ export interface FinishOptions {
   explain?: ExplainFn;
   /** similarityMatrix(space.nodes, weights), when the caller already has it. */
   S?: Float64Array;
+  /**
+   * Ghost nodes (thin.ts): never listed as anyone's neighbor (their own list is
+   * kept, over the other nodes: it's where they'd go), and left out of the fit
+   * of the D5 plane, which they are only projected onto.
+   */
+  exclude?: ReadonlySet<NodeKey>;
 }
 
 /**
@@ -710,9 +718,19 @@ export function finishLayout(
   const S = opts.S ?? similarityMatrix(nodes, w);
   const result: LayoutResult = { positions: {}, plane2d: {}, neighbors: {} };
   for (const m of nodes) if (positions[m.key]) result.positions[m.key] = positions[m.key];
-  result.plane2d = projectPlane(result.positions);
+  const ex = opts.exclude;
+  const core = ex?.size ? Object.fromEntries(Object.entries(result.positions).filter(([key]) => !ex.has(key))) : null;
+  if (core && Object.keys(core).length) {
+    const b = planeBasis(core);
+    for (const [key, p] of Object.entries(result.positions)) {
+      const q = toPlane(p, b);
+      result.plane2d[key] = [q[0], q[1]];
+    }
+  } else {
+    result.plane2d = projectPlane(result.positions);
+  }
   for (let i = 0; i < n; i++) {
-    const near = topK(i, n, (j) => S[i * n + j], k, (j) => nodes[j].key);
+    const near = topK(i, n, (j) => S[i * n + j], k, (j) => nodes[j].key, ex?.size ? (j) => !ex.has(nodes[j].key) : undefined);
     result.neighbors[nodes[i].key] = near.map((c) => ({
       key: nodes[c.j].key,
       sim: c.s,
