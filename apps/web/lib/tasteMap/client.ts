@@ -21,7 +21,8 @@ import type {
   PlaceResponse,
   TasteMapExport,
 } from './apiTypes';
-import type { TasteMapGroup, TasteMapPayload } from './types';
+import type { NodeKey, TasteMapGroup, TasteMapPayload } from './types';
+import type { NearbyResponse } from './nearby';
 import type { AnswerPostBody, AnswerPostResponse, NodeStatePutBody, NodeStatePutResponse, QuestionsResponse } from './ghostApi';
 
 const BASE = '/api/taste/map';
@@ -148,6 +149,23 @@ export function fitMetric(body: MetricFitBody = {}): Promise<MetricFitResponse> 
 
 export function placeArtist(artistId: string): Promise<PlaceResponse> {
   return call('GET', `/place?artistId=${encodeURIComponent(artistId)}`);
+}
+
+/** "What's here?": unrated catalog albums near the given nodes (keys + kernel weights, focus.ts hereQuery). */
+export function fetchNearby(q: { keys: NodeKey[]; w: number[] }, signal?: AbortSignal): Promise<NearbyResponse> {
+  const qs = `keys=${encodeURIComponent(q.keys.join(','))}&w=${encodeURIComponent(q.w.join(','))}`;
+  return call('GET', `/nearby?${qs}`, undefined, signal);
+}
+
+/**
+ * Whether this page can call the map API (the rule app/(main)/taste/map/page.tsx
+ * uses): not in `?mock=1` / `?fixture=` mode, unless dev `?api=1`. For views
+ * that don't receive the `api` prop.
+ */
+export function mapApiEnabled(search: string = typeof window !== 'undefined' ? window.location.search : ''): boolean {
+  const p = new URLSearchParams(search);
+  const local = p.get('mock') === '1' || (process.env.NODE_ENV === 'development' && !!p.get('fixture'));
+  return !local || (process.env.NODE_ENV === 'development' && p.get('api') === '1');
 }
 
 // ── Ghost nodes (thin.ts, ghostApi.ts) ───────────────────────────────────────

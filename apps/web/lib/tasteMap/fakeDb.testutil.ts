@@ -82,6 +82,15 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: FakeResult['error
   limit(n: number) {
     return this.filter('limit', n);
   }
+  range(from: number, to: number) {
+    return this.filter('range', from, to);
+  }
+  or(expr: string) {
+    return this.filter('or', expr);
+  }
+  overlaps(col: string, v: unknown[]) {
+    return this.filter('overlaps', col, v);
+  }
   maybeSingle() {
     this.call.single = true;
     return this;

@@ -283,7 +283,7 @@ export function artistLang(langs: (string | null)[]): string | null {
  * relative to its own top tag, averaged across sources, iTunes at ITUNES_WEIGHT
  * like the placement. Catalog tags are left out — the albums already count.
  */
-function evidenceVector(raw: unknown, lang: string | null): { vec: Map<string, number>; trusted: boolean } {
+export function evidenceVector(raw: unknown, lang: string | null): { vec: Map<string, number>; trusted: boolean } {
   const out = new Map<string, number>();
   const none = { vec: out, trusted: false };
   if (!raw || typeof raw !== 'object') return none;

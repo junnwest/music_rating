@@ -394,3 +394,23 @@ export function whatsHere(points: HerePoint[], at: Vec2, bandwidth: number, near
     .slice(0, nearestK);
   return { mix, density, nearest };
 }
+
+/**
+ * The map nodes behind a point, for GET /api/taste/map/nearby: the same kernel
+ * as whatsHere, the `max` heaviest nodes (dropping any under 5% of the top one),
+ * weights normalized to sum 1 and rounded (stable cache keys). In empty sky,
+ * where every kernel weight vanishes, the nearest `fallbackK` nodes count equally.
+ */
+export function hereQuery(points: HerePoint[], at: Vec2, bandwidth: number, max = 8, fallbackK = 3): { keys: NodeKey[]; w: number[] } {
+  const h2 = 2 * bandwidth * bandwidth;
+  const ks = points
+    .map((p) => {
+      const d2 = (p.x - at[0]) ** 2 + (p.y - at[1]) ** 2;
+      return { key: p.key, d2, k: (0.5 + 0.5 * Math.sqrt(Math.max(0, p.mass))) * Math.exp(-d2 / h2) };
+    })
+    .sort((a, b) => b.k - a.k || a.d2 - b.d2);
+  let picked = ks.length && ks[0].k >= 1e-6 ? ks.filter((x) => x.k >= 0.05 * ks[0].k).slice(0, max) : [];
+  if (!picked.length) picked = [...ks].sort((a, b) => a.d2 - b.d2).slice(0, fallbackK).map((x) => ({ ...x, k: 1 }));
+  const total = picked.reduce((s, x) => s + x.k, 0) || 1;
+  return { keys: picked.map((x) => x.key), w: picked.map((x) => Math.round((x.k / total) * 1000) / 1000) };
+}

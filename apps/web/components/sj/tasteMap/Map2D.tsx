@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { contourDensity, contours as gridContours } from 'd3-contour';
 import { depthLightness, distortionRgb, GRAY, hueMap, nodeRgb, oklabToRgb, rgbCss, type MapLens, type Rgb } from '../../../lib/tasteMap/color';
 import { colorField, spanningTree, tagGradients, type FieldPoint } from '../../../lib/tasteMap/fields';
-import { egoLayout, EGO_MODES, VEC_H, VEC_W, whatsHere, type EgoLayout, type EgoMode, type HereSummary } from '../../../lib/tasteMap/focus';
+import { egoLayout, EGO_MODES, hereQuery, VEC_H, VEC_W, whatsHere, type EgoLayout, type EgoMode, type HereSummary } from '../../../lib/tasteMap/focus';
+import HereSuggestions from './HereSuggestions';
 import {
   approach,
   coverAmount,
@@ -181,14 +182,6 @@ const COPY2D = {
     viewModes: '선택한 아티스트를 중심으로 다시 배치',
   },
 };
-
-/**
- * Hook for the "What's here?" card: unrated catalog albums near a point of the
- * map need a server route (out of scope for the 2D pass). When one exists,
- * set this to a fetcher; the card lists what it returns under the nearest artists.
- */
-export type HereSuggest = (q: { pos2d: Vec2; mix: HereSummary['mix']; nearest: NodeKey[] }) => Promise<{ id: string; title: string; artist: string }[]>;
-const suggestNearby = (): HereSuggest | null => null;
 
 /** Album-cover images, shared across mounts. ok: null = loading, false = failed (the star is drawn instead). */
 const coverCache = new Map<string, { img: HTMLImageElement; ok: boolean | null }>();
@@ -406,7 +399,7 @@ export default function Map2D(props: SceneProps) {
     stagger: number;
   }>({ from: null, fromLayout: null, to: null, t0: 0, dur: 0, stagger: 0 });
   const preEgoView = useRef<View | null>(null);
-  const [here, setHere] = useState<{ at: Vec2; summary: HereSummary; sx: number; sy: number } | null>(null);
+  const [here, setHere] = useState<{ at: Vec2; summary: HereSummary; query: { keys: NodeKey[]; w: number[] }; sx: number; sy: number } | null>(null);
   const hereRef = useRef(here);
   hereRef.current = here;
   const hereCard = useRef<HTMLDivElement>(null);
@@ -2143,7 +2136,7 @@ export default function Map2D(props: SceneProps) {
         const q = lastPlane.current.get(n.key);
         return q && !n.ghost ? [{ key: n.key, x: q[0], y: q[1], mass: n.mass, mix: n.mix }] : [];
       });
-      setHere({ at, summary: whatsHere(pts, at, 40 * frame.gs), sx, sy });
+      setHere({ at, summary: whatsHere(pts, at, 40 * frame.gs), query: hereQuery(pts, at, 40 * frame.gs), sx, sy });
     };
 
     const onDown = (e: PointerEvent) => {
@@ -2379,8 +2372,8 @@ export default function Map2D(props: SceneProps) {
               </div>
             </>
           )}
-          {/* Unrated catalog albums near this spot plug in here (suggestNearby, needs a server route). */}
-          {suggestNearby() && null}
+          {/* Unrated catalog albums near this spot (GET /api/taste/map/nearby). */}
+          <HereSuggestions query={here.query} />
         </div>
       )}
     </div>
