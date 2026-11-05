@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Atom, Box, Download, Map as MapIcon, Maximize2, Minimize2, Pencil, Pin, PinOff, Scissors, Shuffle, Ruler, SlidersHorizontal, Square, Upload, UserPlus, X } from 'lucide-react';
+import { Atom, Box, ChevronUp, Download, Map as MapIcon, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, PinOff, Scissors, Shuffle, Ruler, SlidersHorizontal, Square, Upload, UserPlus, X } from 'lucide-react';
 import Cover from '../Cover';
 import { FlowerSpinner } from '../Loading';
 import { useLanguage } from '../../../lib/i18n';
@@ -33,7 +33,10 @@ import { useGroupEdits } from './useGroupEdits';
  * principal plane. Both read the same canonical positions (`pos` / `pos2d`), so
  * switching modes keeps the selection and re-frames it. The inspector ("Why
  * here?") shows the hovered-or-selected node; at phone width it becomes a
- * bottom sheet over the stage for the selected node.
+ * bottom sheet over the stage for the selected node, peeking (name + score)
+ * until opened so the map stays in view. Its height reaches the scenes as
+ * `bottomInset`. Phones also get the legend as a pill and the secondary
+ * toolbar actions in a "More" menu.
  *
  * Phase 3 editing: drag a node (2D or 3D) to pin it there, unpin from the
  * inspector, "Re-arrange" runs the D4 force solve (lib/tasteMap/forceLayout)
@@ -57,8 +60,7 @@ import { useGroupEdits } from './useGroupEdits';
  * inspector. `api` gates server calls: group edits stay in memory without it;
  * eras / weights / placement say "Sign in to use".
  *
- * Copy is inline en/ko (the dictionaries aren't part of this dev-only shell
- * yet); move it to lib/i18n when the route ships.
+ * Copy is inline en/ko (not in the lib/i18n dictionaries yet).
  */
 
 const Scene3D = dynamic(() => import('./Scene3D'), {
@@ -141,6 +143,12 @@ export interface SceneProps {
   schematic: Schematic | null;
   /** The schematic's center mark ("you"). */
   nucleusLabel: string;
+  /**
+   * Phones: px of the stage's bottom edge covered by the shell's bottom sheet
+   * (inspector peek / expanded, or an open panel); 0 when none. Scenes keep
+   * the picture and their own controls above it.
+   */
+  bottomInset?: number;
 }
 
 function cssVar(name: string): string {
@@ -188,7 +196,11 @@ function useMapTheme(): MapTheme | null {
 const COPY = {
   en: {
     title: 'Taste map',
-    sub: 'Dev preview',
+    sub: 'Your artists, placed by how alike they are',
+    more: 'More actions',
+    legend: 'Legend',
+    showDetails: 'Show details',
+    hideDetails: 'Hide details',
     rearrange: 'Re-arrange',
     stop: 'Stop',
     export: 'Export',
@@ -256,7 +268,11 @@ const COPY = {
   },
   ko: {
     title: '취향 지도',
-    sub: '개발 미리보기',
+    sub: '비슷한 아티스트끼리 가까이 놓인 지도',
+    more: '더 보기',
+    legend: '범례',
+    showDetails: '자세히 보기',
+    hideDetails: '접기',
     rearrange: '다시 배치',
     stop: '멈추기',
     export: '내보내기',
@@ -907,6 +923,50 @@ export default function TasteMapView({
   const inspected = (hoveredKey && byKey.get(hoveredKey)) || (selectedKey && byKey.get(selectedKey)) || null;
   const selectedNode = selectedKey ? byKey.get(selectedKey) ?? null : null;
 
+  // ── Phone chrome: the inspector sheet peeks (a header row) until opened, the
+  // legend is a pill until tapped, secondary toolbar actions sit in a menu. ──
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // A new selection from nothing starts as a peek; picking another node from the open sheet keeps it open.
+  useEffect(() => {
+    if (!selectedKey) setSheetOpen(false);
+  }, [selectedKey]);
+  const [sheetPx, setSheetPx] = useState(0);
+  const sheetObs = useRef<ResizeObserver | null>(null);
+  const sheetRef = useCallback((el: HTMLDivElement | null) => {
+    sheetObs.current?.disconnect();
+    sheetObs.current = null;
+    if (!el) {
+      setSheetPx(0);
+      return;
+    }
+    const ro = new ResizeObserver(() => setSheetPx(Math.round(el.getBoundingClientRect().height)));
+    ro.observe(el);
+    sheetObs.current = ro;
+    setSheetPx(Math.round(el.getBoundingClientRect().height));
+  }, []);
+  useEffect(() => () => sheetObs.current?.disconnect(), []);
+  const sheetDrag = useRef<{ y: number; moved: boolean } | null>(null);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const away = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', away);
+    window.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      window.removeEventListener('keydown', esc);
+    };
+  }, [menuOpen]);
+  const phoneSheet = isPhone && (!!panel || !!selectedNode);
+  const bottomInset = phoneSheet ? sheetPx : 0;
+
   const sceneProps: SceneProps | null = theme
     ? {
         payload: live,
@@ -932,6 +992,7 @@ export default function TasteMapView({
         scale,
         schematic,
         nucleusLabel: c.you,
+        bottomInset,
       }
     : null;
 
@@ -1012,9 +1073,9 @@ export default function TasteMapView({
     <div className="w-full min-w-0">
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="mr-auto min-w-0">
+        <div className="mr-auto min-w-0 flex-1 md:flex-none">
           <h1 className="text-[20px] font-extrabold tracking-tight text-ink">{c.title}</h1>
-          <p className="text-[11.5px] text-muted">{c.sub}</p>
+          <p className="truncate text-[11.5px] text-muted">{c.sub}</p>
         </div>
         <div role="group" className="inline-flex rounded-full border border-divider bg-surface p-0.5 text-[12px] font-semibold">
           {(['3d', '2d'] as const).map((m) => (
@@ -1038,19 +1099,78 @@ export default function TasteMapView({
             {c.stop}
           </button>
         ) : (
+          // Phones: Re-arrange lives in the overflow menu.
+          <div className="hidden md:block">
+            <button
+              type="button"
+              onClick={startRearrange}
+              disabled={importing}
+              className={`${pillPlain} ${lg}`}
+            >
+              <Shuffle size={13} />
+              {c.rearrange}
+            </button>
+          </div>
+        )}
+        {/* Phones: secondary actions in one menu. */}
+        <div ref={menuRef} className="relative md:hidden">
           <button
             type="button"
-            onClick={startRearrange}
-            disabled={importing}
-            className={`${pillPlain} ${lg}`}
+            aria-label={c.more}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            className={`inline-flex h-[34px] w-[34px] items-center justify-center rounded-full border border-divider text-ink transition ${menuOpen ? 'bg-ink/[0.06]' : 'bg-surface'}`}
           >
-            <Shuffle size={13} />
-            {c.rearrange}
+            <MoreHorizontal size={16} />
           </button>
-        )}
+          {menuOpen && (
+            <div
+              role="menu"
+              aria-label={c.more}
+              className="absolute right-0 top-full z-30 mt-1.5 w-52 overflow-hidden rounded-xl border border-divider bg-surface py-1 shadow-[0_8px_24px_rgba(0,0,0,0.14)]"
+            >
+              {(
+                [
+                  [c.rearrange, Shuffle, startRearrange, running || importing],
+                  [c.addArtist, UserPlus, () => (panel?.kind === 'add' ? closePanel() : openPanel({ kind: 'add' })), false],
+                  [c.weights, SlidersHorizontal, () => (panel?.kind === 'metric' ? closePanel() : openPanel({ kind: 'metric' })), false],
+                  [c.export, Download, doExport, false],
+                  [c.import, Upload, () => fileInput.current?.click(), importing],
+                ] as const
+              ).map(([label, Icon, run, off]) => (
+                <button
+                  key={label}
+                  type="button"
+                  role="menuitem"
+                  disabled={off}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void run();
+                  }}
+                  className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-semibold text-ink transition hover:bg-ink/[0.04] disabled:text-muted/60"
+                >
+                  <Icon size={14} className="shrink-0 text-muted" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {saveLabel && (
+        <p
+          role="status"
+          aria-live="polite"
+          className={`mt-1 truncate text-right text-[11px] md:hidden ${shownSave.kind === 'error' ? 'font-semibold text-ink' : 'text-muted'}`}
+          title={saveLabel}
+        >
+          {saveLabel}
+        </p>
+      )}
+
+      <div className="mt-2 hidden flex-wrap items-center gap-1.5 md:flex">
         <button type="button" onClick={doExport} className={`${pillPlain} ${sm}`}>
           <Download size={12} />
           {c.export}
@@ -1135,7 +1255,11 @@ export default function TasteMapView({
         </div>
       )}
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-1.5" aria-label={c.groups}>
+      {/* Phones: one row that scrolls sideways; wider screens wrap. */}
+      <div
+        className="-mx-4 mt-2.5 flex items-center gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [&::-webkit-scrollbar]:hidden"
+        aria-label={c.groups}
+      >
         {edits.groups.map((g) => {
           const off = hiddenGroups.has(g.id);
           return (
@@ -1144,7 +1268,7 @@ export default function TasteMapView({
               type="button"
               aria-pressed={!off}
               onClick={() => toggleGroup(g.id)}
-              className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold transition ${
+              className={`inline-flex max-w-full shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold transition ${
                 off ? 'border-divider text-muted/60 line-through' : 'border-divider bg-surface text-ink hover:bg-ink/[0.04]'
               }`}
             >
@@ -1160,7 +1284,7 @@ export default function TasteMapView({
           type="button"
           aria-expanded={editingGroups}
           onClick={() => setEditingGroups((v) => !v)}
-          className={`inline-flex items-center gap-1 rounded-full border border-dashed px-2.5 py-1 text-[11.5px] font-semibold transition ${
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed px-2.5 py-1 text-[11.5px] font-semibold transition ${
             editingGroups ? 'border-ink text-ink' : 'border-divider text-muted hover:text-ink'
           }`}
         >
@@ -1181,8 +1305,10 @@ export default function TasteMapView({
         }
       >
         <div
-          className={`relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-divider bg-surface ${
-            full ? 'h-full' : 'h-[68vh] max-h-[720px] min-h-[380px]'
+          className={`relative min-w-0 overflow-hidden rounded-2xl border border-divider bg-surface ${
+            // Phones (column layout): no flex-1, its zero basis would override the height and
+            // leave only min-h. Tall enough to fill the screen between the app's header and tab bar.
+            full ? 'h-full flex-1' : 'h-[calc(100svh-8.5rem)] max-h-[720px] min-h-[380px] md:h-[68vh] md:flex-1'
           }`}
         >
           {sceneProps && (mode === '3d' ? <Scene3D {...sceneProps} /> : <Map2D {...sceneProps} />)}
@@ -1224,41 +1350,132 @@ export default function TasteMapView({
                     key={sc}
                     type="button"
                     aria-pressed={scale === sc}
+                    aria-label={label}
                     title={tip}
                     onClick={() => setScale(sc)}
                     className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 transition ${scale === sc ? 'bg-ink text-page' : 'text-muted hover:text-ink'}`}
                   >
-                    <Icon size={12} />
-                    {label}
+                    <Icon size={12} className="my-[1.5px]" />
+                    {/* Phones: icons only, so the lens switch at top right keeps its room. */}
+                    <span className="hidden md:inline">{label}</span>
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          <Legend c={c} lens={lens} genreOk={genreOk} onLens={setLens} palette={payload.palette} depth={mode === '2d'} schematic={schematicOn} honesty={honesty} />
+          <Legend
+            c={c}
+            lens={lens}
+            genreOk={genreOk}
+            onLens={setLens}
+            palette={payload.palette}
+            depth={mode === '2d'}
+            schematic={schematicOn}
+            honesty={honesty}
+            phone={isPhone}
+            open={legendOpen}
+            onToggle={() => setLegendOpen((v) => !v)}
+            bottomInset={bottomInset}
+          />
 
 
-          {/* Phone: the inspector (or an open panel) is a bottom sheet over the stage. */}
-          {((isPhone && panelBody) || selectedNode) && (
-            <div className="absolute inset-x-0 bottom-0 z-10 max-h-[58%] overflow-y-auto rounded-t-2xl border-t border-divider bg-surface/95 px-4 pb-4 pt-2 shadow-[0_-8px_24px_rgba(0,0,0,0.12)] backdrop-blur-md md:hidden">
+          {/* Phone: an open panel is a bottom sheet over the stage; the inspector is one
+              that peeks (a header row) and opens on tap or an upward drag, so a
+              refocused map stays in view. The scenes read its height (`bottomInset`). */}
+          {isPhone && panelBody ? (
+            <div
+              ref={sheetRef}
+              className="absolute inset-x-0 bottom-0 z-10 max-h-[58%] overflow-y-auto rounded-t-2xl border-t border-divider bg-surface/95 px-4 pb-4 pt-2 shadow-[0_-8px_24px_rgba(0,0,0,0.12)] backdrop-blur-md md:hidden"
+            >
               <div className="mx-auto mb-2 h-1 w-9 rounded-full bg-divider" />
-              {(isPhone && panelBody) || (
-                selectedNode && (
-                  <>
-                    <button
-                      type="button"
-                      aria-label={c.close}
-                      onClick={() => setSelectedKey(null)}
-                      className="absolute right-3 top-3 rounded-full p-1 text-muted hover:text-ink"
-                    >
-                      <X size={16} />
-                    </button>
-                    <Inspector {...inspectorProps} node={selectedNode} pin={pins.get(selectedNode.key) ?? null} />
-                  </>
-                )
-              )}
+              {panelBody}
             </div>
+          ) : (
+            isPhone &&
+            selectedNode && (
+              <div
+                ref={sheetRef}
+                className="absolute inset-x-0 bottom-0 z-10 flex max-h-[58%] flex-col rounded-t-2xl border-t border-divider bg-surface/95 shadow-[0_-8px_24px_rgba(0,0,0,0.12)] backdrop-blur-md md:hidden"
+              >
+                <div
+                  className="relative shrink-0 touch-none select-none"
+                  onPointerDown={(e) => {
+                    sheetDrag.current = { y: e.clientY, moved: false };
+                  }}
+                  onPointerMove={(e) => {
+                    const d = sheetDrag.current;
+                    if (d && !d.moved && Math.abs(e.clientY - d.y) > 8) {
+                      d.moved = true;
+                      // Only a drag captures the pointer: a tap must still reach the buttons.
+                      e.currentTarget.setPointerCapture?.(e.pointerId);
+                    }
+                  }}
+                  onPointerUp={(e) => {
+                    const d = sheetDrag.current;
+                    if (!d?.moved) return;
+                    const dy = e.clientY - d.y;
+                    if (dy < -20) setSheetOpen(true);
+                    else if (dy > 20) {
+                      // Down on an open sheet folds it; down on a peek lets go of the selection.
+                      if (sheetOpen) setSheetOpen(false);
+                      else setSelectedKey(null);
+                    }
+                  }}
+                  onPointerCancel={() => {
+                    sheetDrag.current = null;
+                  }}
+                >
+                  <button
+                    type="button"
+                    aria-expanded={sheetOpen}
+                    aria-label={`${selectedNode.label}: ${sheetOpen ? c.hideDetails : c.showDetails}`}
+                    onClick={() => {
+                      // A drag already decided; only a tap toggles.
+                      if (sheetDrag.current?.moved) {
+                        sheetDrag.current = null;
+                        return;
+                      }
+                      sheetDrag.current = null;
+                      setSheetOpen((v) => !v);
+                    }}
+                    className="block w-full pb-2.5 pl-4 pr-12 pt-1.5 text-left"
+                  >
+                    <span aria-hidden className="mx-auto mb-1.5 block h-1 w-9 rounded-full bg-divider" />
+                    <span className="flex items-center gap-2">
+                      <span
+                        aria-hidden
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ background: dotColor(selectedNode, lens, payload.palette, honesty.byKey.get(selectedNode.key)?.recall) }}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[15px] font-extrabold leading-tight text-ink">{selectedNode.label}</span>
+                        <span className="block truncate text-[11px] text-muted">
+                          {selectedNode.eraLabel ? `${selectedNode.eraLabel} · ` : ''}
+                          {selectedNode.covers.length} {c.albums} · {c.weight} {selectedNode.mass.toFixed(1)}
+                          {pins.has(selectedNode.key) ? ` · ${c.pinned}` : ''}
+                        </span>
+                      </span>
+                      <ScoreChip score={selectedNode.avgScore} c={c} />
+                      <ChevronUp size={16} className={`shrink-0 text-muted transition ${sheetOpen ? 'rotate-180' : ''}`} />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={c.close}
+                    onClick={() => setSelectedKey(null)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-muted hover:text-ink"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                {sheetOpen && (
+                  <div className="min-h-0 overflow-y-auto border-t border-divider/60 px-4 pb-4 pt-2.5">
+                    <Inspector {...inspectorProps} node={selectedNode} pin={pins.get(selectedNode.key) ?? null} hideHead />
+                  </div>
+                )}
+              </div>
+            )
           )}
         </div>
 
@@ -1333,6 +1550,10 @@ function Legend({
   depth,
   schematic,
   honesty,
+  phone,
+  open,
+  onToggle,
+  bottomInset,
 }: {
   c: Copy;
   lens: MapLens;
@@ -1342,7 +1563,63 @@ function Legend({
   depth: boolean;
   schematic: boolean;
   honesty: HonestySummary;
+  /** Phones: the legend is a pill that opens on tap (it covered a third of the stage). */
+  phone: boolean;
+  open: boolean;
+  onToggle: () => void;
+  /** Px of the stage bottom under the phone sheet: the legend sits above it. */
+  bottomInset: number;
 }) {
+  const lift = phone && bottomInset > 0 ? { bottom: bottomInset + 10 } : undefined;
+  // A tall sheet (an open panel or the expanded inspector) leaves no room: the legend steps aside.
+  const hidden = phone && bottomInset > 160;
+  const body = (
+    <>
+      {lens === 'genre' && palette?.length ? (
+        <>
+          <div className="flex flex-wrap justify-end gap-x-2 gap-y-0.5">
+            {palette.map((p) => (
+              <span key={p.id} className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-ink">
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: swatch(p.hue) }} />
+                {p.label}
+              </span>
+            ))}
+          </div>
+          <p className="mt-1 text-right text-[10px] leading-snug text-muted">
+            {c.legendGenre}
+            {depth && <> · {c.legendDepth}</>}
+          </p>
+        </>
+      ) : lens === 'distortion' ? (
+        <>
+          <div className="flex items-center justify-end gap-1.5">
+            <span className="text-[10px] text-muted">{c.legendTorn}</span>
+            <span
+              className="h-[6px] w-14 rounded-full"
+              style={{ background: `linear-gradient(to right, ${[0, 0.25, 0.5, 0.75, 1].map((t) => rgbCss(distortionRgb(t, 0.7))).join(', ')})` }}
+            />
+            <span className="text-[10px] text-muted">{c.legendKept}</span>
+          </div>
+          <p className="mt-1 text-right text-[10px] leading-snug text-muted">
+            <span className="font-semibold tabular-nums text-ink">{Math.round(honesty.mean * 100)}%</span> {c.legendDistortion} (k={HONEST_K})
+          </p>
+        </>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] tabular-nums text-muted">1</span>
+          <span
+            className="h-[6px] w-14 rounded-full"
+            style={{
+              background: `linear-gradient(to right, ${[1, 2, 3, 4, 5].map((s) => spectrumColor(s, 0.62, 1)).join(', ')})`,
+            }}
+          />
+          <span className="text-[10px] tabular-nums text-muted">5</span>
+          <span className="text-[10px] text-muted">{c.score}</span>
+        </div>
+      )}
+      {schematic && <p className="mt-0.5 text-right text-[10px] leading-snug text-muted">{c.legendSchematic}</p>}
+    </>
+  );
   return (
     <>
       <div role="group" className="absolute right-2.5 top-2.5 inline-flex rounded-full border border-divider bg-surface/85 p-0.5 text-[11.5px] font-semibold backdrop-blur">
@@ -1366,51 +1643,52 @@ function Legend({
             </button>
           ))}
       </div>
-      <div className="pointer-events-none absolute bottom-2.5 right-2.5 max-w-[min(330px,calc(100%-14rem))] rounded-xl border border-divider/60 bg-surface/85 px-2.5 py-1.5 backdrop-blur">
-        {lens === 'genre' && palette?.length ? (
-          <>
-            <div className="flex flex-wrap justify-end gap-x-2 gap-y-0.5">
-              {palette.map((p) => (
-                <span key={p.id} className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-ink">
-                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: swatch(p.hue) }} />
-                  {p.label}
-                </span>
+      {hidden ? null : phone && !open ? (
+        <button
+          type="button"
+          aria-expanded={false}
+          onClick={onToggle}
+          style={lift}
+          className="absolute bottom-2.5 right-2.5 inline-flex items-center gap-1.5 rounded-full border border-divider bg-surface/85 px-2.5 py-1 text-[11.5px] font-semibold text-ink backdrop-blur"
+        >
+          {lens === 'genre' && palette?.length ? (
+            <span aria-hidden className="flex -space-x-0.5">
+              {palette.slice(0, 4).map((p) => (
+                <span key={p.id} className="h-2 w-2 rounded-full ring-1 ring-surface" style={{ background: swatch(p.hue) }} />
               ))}
-            </div>
-            <p className="mt-1 text-right text-[10px] leading-snug text-muted">
-              {c.legendGenre}
-              {depth && <> · {c.legendDepth}</>}
-            </p>
-          </>
-        ) : lens === 'distortion' ? (
-          <>
-            <div className="flex items-center justify-end gap-1.5">
-              <span className="text-[10px] text-muted">{c.legendTorn}</span>
-              <span
-                className="h-[6px] w-14 rounded-full"
-                style={{ background: `linear-gradient(to right, ${[0, 0.25, 0.5, 0.75, 1].map((t) => rgbCss(distortionRgb(t, 0.7))).join(', ')})` }}
-              />
-              <span className="text-[10px] text-muted">{c.legendKept}</span>
-            </div>
-            <p className="mt-1 text-right text-[10px] leading-snug text-muted">
-              <span className="font-semibold tabular-nums text-ink">{Math.round(honesty.mean * 100)}%</span> {c.legendDistortion} (k={HONEST_K})
-            </p>
-          </>
-        ) : (
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] tabular-nums text-muted">1</span>
+            </span>
+          ) : lens === 'distortion' ? (
+            <span className="tabular-nums text-muted">{Math.round(honesty.mean * 100)}%</span>
+          ) : (
             <span
-              className="h-[6px] w-14 rounded-full"
-              style={{
-                background: `linear-gradient(to right, ${[1, 2, 3, 4, 5].map((s) => spectrumColor(s, 0.62, 1)).join(', ')})`,
-              }}
+              aria-hidden
+              className="h-[6px] w-6 rounded-full"
+              style={{ background: `linear-gradient(to right, ${[1, 3, 5].map((s) => spectrumColor(s, 0.62, 1)).join(', ')})` }}
             />
-            <span className="text-[10px] tabular-nums text-muted">5</span>
-            <span className="text-[10px] text-muted">{c.score}</span>
+          )}
+          {c.legend}
+        </button>
+      ) : phone ? (
+        // Open on a phone: a tap anywhere on the card folds it back into the pill.
+        <div
+          onClick={onToggle}
+          style={lift}
+          className="absolute bottom-2.5 right-2.5 max-w-[calc(100%-1.25rem)] rounded-xl border border-divider/60 bg-surface/90 px-2.5 pb-1.5 pt-1 backdrop-blur"
+        >
+          <div className="mb-0.5 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted/70">{c.legend}</span>
+            {/* Its click bubbles to the card's toggle. */}
+            <button type="button" aria-label={c.close} aria-expanded className="-mr-1 rounded-full p-0.5 text-muted hover:text-ink">
+              <X size={13} />
+            </button>
           </div>
-        )}
-        {schematic && <p className="mt-0.5 text-right text-[10px] leading-snug text-muted">{c.legendSchematic}</p>}
-      </div>
+          {body}
+        </div>
+      ) : (
+        <div className="pointer-events-none absolute bottom-2.5 right-2.5 max-w-[min(330px,calc(100%-14rem))] rounded-xl border border-divider/60 bg-surface/85 px-2.5 py-1.5 backdrop-blur">
+          {body}
+        </div>
+      )}
     </>
   );
 }
@@ -1557,6 +1835,7 @@ function Inspector({
   onTogglePin,
   honesty,
   atlas,
+  hideHead = false,
 }: {
   node: TasteMapPayloadNode;
   payload: TasteMapPayload;
@@ -1570,6 +1849,8 @@ function Inspector({
   onTogglePin: (k: NodeKey) => void;
   honesty: HonestySummary;
   atlas: Atlas;
+  /** The phone sheet's own header already shows the name and score. */
+  hideHead?: boolean;
 }) {
   const neighbors = (payload.neighbors[node.key] ?? []).slice(0, 4);
   const honest = honesty.byKey.get(node.key) ?? null;
@@ -1578,22 +1859,26 @@ function Inspector({
 
   return (
     <div>
-      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted/60">{c.whyHere}</p>
-      <div className="mt-1 flex items-start gap-2 pr-7 md:pr-0">
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-[17px] font-extrabold leading-tight text-ink">{node.label}</h2>
-          <p className="mt-0.5 text-[11.5px] text-muted">
-            {node.eraLabel ? `${node.eraLabel} · ` : ''}
-            {node.covers.length} {c.albums} · {c.weight} {node.mass.toFixed(1)}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1 pt-0.5">
-          <span className="text-[10.5px] text-muted">{c.avg}</span>
-          <ScoreChip score={node.avgScore} c={c} />
-        </div>
-      </div>
+      {!hideHead && (
+        <>
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted/60">{c.whyHere}</p>
+          <div className="mt-1 flex items-start gap-2 pr-7 md:pr-0">
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-[17px] font-extrabold leading-tight text-ink">{node.label}</h2>
+              <p className="mt-0.5 text-[11.5px] text-muted">
+                {node.eraLabel ? `${node.eraLabel} · ` : ''}
+                {node.covers.length} {c.albums} · {c.weight} {node.mass.toFixed(1)}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1 pt-0.5">
+              <span className="text-[10.5px] text-muted">{c.avg}</span>
+              <ScoreChip score={node.avgScore} c={c} />
+            </div>
+          </div>
+        </>
+      )}
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <div className={`${hideHead ? '' : 'mt-2 '}flex flex-wrap items-center gap-1.5`}>
         {pin && (
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ink">
             <Pin size={12} className={pin.softZ ? '' : 'fill-current'} />

@@ -161,6 +161,12 @@ export default function Scene3D(props: SceneProps) {
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
   }, []);
+  // Phones: the shell's bottom sheet (inspector peek / expanded, or a panel) covers this much of the stage.
+  const inset = isPhone ? props.bottomInset ?? 0 : 0;
+  // A tall sheet sends the chrome to the top left (under the fullscreen button); a peek just lifts it.
+  const chromeTop = inset > 160;
+  const insetRef = useRef(inset);
+  insetRef.current = inset;
 
   const ghostAt = useMemo(() => {
     if (!props.ghost) return null;
@@ -182,6 +188,8 @@ export default function Scene3D(props: SceneProps) {
       if (r.width > 0 && r.height > 0 && r.width < s.width * 0.9) out.push({ x: r.left - s.left - 4, y: r.top - s.top - 4, w: r.width + 8, h: r.height + 8 });
     };
     for (const child of Array.from(stage.children)) if (child !== el) add(child.getBoundingClientRect());
+    // The phone sheet spans the full width (so `add` skips it): reserve the strip it covers.
+    if (insetRef.current > 0) out.push({ x: 0, y: s.height - insetRef.current - 4, w: s.width, h: insetRef.current + 4 });
     if (chromeRef.current) for (const c of Array.from(chromeRef.current.children)) add(c.getBoundingClientRect());
     reserved.current = out;
     if (live.current) live.current.paint.reserved = out;
@@ -216,7 +224,7 @@ export default function Scene3D(props: SceneProps) {
   useEffect(() => {
     const id = window.requestAnimationFrame(measureChrome);
     return () => window.cancelAnimationFrame(id);
-  }, [measureChrome, selectedKey, isPhone, orbitOn, touched, props.ghost]);
+  }, [measureChrome, selectedKey, isPhone, inset, orbitOn, touched, props.ghost]);
   const kick = () => three.current?.invalidate();
   // Any prop change may start an animation (selection, lens, visibility).
   useEffect(kick);
@@ -384,15 +392,16 @@ export default function Scene3D(props: SceneProps) {
           autoRotate={rotating && !selectedKey && !props.hoveredKey}
           autoRotateSpeed={0.45}
         />
-        <Rig m={model} live={live} api={rig} pending={pendingFly} lift={isPhone && selectedKey ? 0.24 : 0} onTouched={() => { interacted(); }} onUserMove={() => { if (rotating) setRotating(false); }} />
+        <Rig m={model} live={live} api={rig} pending={pendingFly} lift={inset * 0.45} onTouched={() => { interacted(); }} onUserMove={() => { if (rotating) setRotating(false); }} />
         <Painter m={model} live={live} back={backRef} front={frontRef} />
       </Canvas>
       <canvas ref={frontRef} role="img" aria-label="Taste map (3D)" className="pointer-events-none absolute inset-0 h-full w-full" />
 
-      {/* Chrome: bottom left (top left on phones while the bottom sheet is up). */}
+      {/* Chrome: bottom left, above a phone's peeking sheet (top left while a tall one is up). */}
       <div
         ref={chromeRef}
-        className={`pointer-events-none absolute left-2.5 flex items-center gap-1.5 ${isPhone && selectedKey ? 'top-[52px]' : 'bottom-2.5'}`}
+        className={`pointer-events-none absolute left-2.5 flex items-center gap-1.5 ${chromeTop ? 'top-[52px]' : 'bottom-2.5'}`}
+        style={!chromeTop && inset > 0 ? { bottom: inset + 10 } : undefined}
       >
         <button
           type="button"
@@ -589,7 +598,7 @@ function Rig({
   live: MutableRefObject<Live>;
   api: MutableRefObject<RigApi | null>;
   pending: MutableRefObject<{ i: number; orbit: boolean } | null>;
-  /** Share of the stage height to shift the picture up (phones: clear of the bottom sheet). */
+  /** Px to shift the picture up (phones: centered in what the bottom sheet leaves visible). */
   lift: number;
   onTouched: () => void;
   onUserMove: () => void;
@@ -702,7 +711,7 @@ function Rig({
   const liftNow = useRef(0);
   useEffect(() => invalidate(), [lift, invalidate]);
   useFrame((state, dt) => {
-    const goal = lift * state.size.height;
+    const goal = lift;
     const cur = liftNow.current;
     if (Math.abs(goal - cur) > 0.5 || (goal !== 0 && !camera.view?.enabled)) {
       liftNow.current = Math.abs(goal - cur) > 0.5 ? cur + (goal - cur) * approach(dt, 6) : goal;

@@ -4,6 +4,73 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-11-05 (Windows, overnight) — Taste map: access gate, ghost nodes, interactive 2D, 3D rebuild, resonance plan.** Jun was AFK. Work ran as parallel agents with file ownership; each piece was checked in a clean worktree (tsc, vitest, lint, and `next build` once), then committed and pushed separately.
+
+- **Access** (`fca6c7e`). New `lib/tasteMap/access.ts`:
+  - allowlist `junnwest` / `zero` / `one`, which skips the gate (Jun's call: junnwest has 40 rated albums, one has 27)
+  - `MIN_RATED_ALBUMS` 50 for everyone else, once `TASTE_MAP_OPEN` flips
+  - The map GET and the metric POST return 403 to anyone else, and the page shows "isn't open yet".
+  - The Taste tab "Open the taste map" link is visible to the allowlist only.
+  - Dump scripts pass `ignoreAccess`.
+- **Payload contract** (`616d5e9`):
+  - `similarity`: all-pairs, upper triangle as 0–1000 integers; `lib/tasteMap/similarity.ts` reads it.
+  - optional `node.ghost`
+  - Redis key v5.
+- **Ghost nodes** (`61d8e4d`):
+  - **Evidence** (`evidence.ts`) = tags 0.45 + listener graph 0.35 + text 0.20, each scaled by confidence. Era doesn't count, and store-only tags (iTunes/Deezer, read from `release_genres.source`) get confidence 0.35.
+  - **Thin** = evidence < 0.35. **Misfit** = best similarity < 0.45 × the map median and < 0.3. At most 15% of a map is ghosted.
+  - **Similarity:** block weights are scaled by pair confidence, and the normalizer never drops below 0.7 × the total, so an era-only pair scores ≤ 0.2. On zero, 이상순 was in kNN@3 lists 10 → 0 (CAMO on junnwest 10 → 0); 96% / 91% of the other kNN@8 lists are kept.
+  - **Payload:** ghosts are left out of the UMAP solve and of other nodes' neighbor lists, and placed with `placeNew`. Redis key v6.
+  - **Migration** `20261105000000_taste_map_node_state.sql` (applied). Routes: `PUT /api/taste/map/node-state`, `GET`/`POST /api/taste/map/questions`.
+  - **Answers** are stored per user and act as that user's tag override. For allowlisted users they are also written as `release_genres` source `manual`, only on albums with no MB/Last.fm/legacy rows and no other manual rows. "None of these" writes nothing.
+  - **UI:** `GhostTray.tsx`.
+- **2D** (`b308bd0`, `focus.ts`, `lens2d.ts`, `Map2D.tsx`):
+  - **Parallax:** 7px per σ of depth.
+  - **Fisheye:** 1.55× at the cursor, about 60px falloff; never reorders stars.
+  - **Proximity reveal:** cards at 72px and sound chips at 28px.
+  - **Semantic zoom:** covers from zoom 2.4–3.6.
+  - **Refocus:** In place / Distance (log-scaled similarity rings, because zero's median similarity is 0.09) / Vector (x = similarity, y = strongest remaining sound contrast) / Depth. Animated 760ms.
+  - **What's here?** card.
+  - **Speed:** 300 nodes draw in 2.6ms (median); a refocus layout takes 17ms.
+- **3D** (`aaebb10`, `Scene3D.tsx` + `scene3d/*`, `lib/tasteMap/scene3d.ts`):
+  - dark sky, with the 2D plane as a ring-grid floor and drop lines
+  - glow stars, per-star sound clouds, constellation lines
+  - label slots, with collisions checked against stars and the controls
+  - click-to-fly; Similarity orbit (reuses 2D's `simRadius`/`RINGS`); idle turn; demand rendering
+  - 300 nodes at 57 fps on software GL
+- **Resonance** (`1341df4`): `RESONANCE_PLAN.md` + `scripts/analyze-resonance.ts` (read-only).
+  - Prediction from other artists' albums has no skill (zero 0.03, interval [−0.18, 0.22]); predicting from the same artist's other albums has 0.45.
+  - Crowd agreement r = 0.41.
+  - Re-rate noise floor: 0.5 standard deviations.
+  - Instinct comparisons hold 0 events.
+  - Phase R1 = an "It's mine" + GEMS emotion tap.
+- **What's here? suggestions** (`cb2de6d`): `GET /api/taste/map/nearby` with the kernel-weighted nodes around the click (`focus.ts hereQuery`) returns 6 unrated catalog albums.
+  - **Score:** 0.55 tag match (the map's tag evidence) + 0.35 similar-artist link + 0.10 how well known the album is. Artists already on the map ×0.4. Cached for 10 min.
+  - **Embeddings left out:** they encode title+tags text, and a multi-seed lookup takes seconds on the Micro DB.
+  - **zero:** Alternative Rock → RHCP, Muse, U2, The Killers. Korean Hip-Hop → The Quiett, JUSTHIS, C JAMM, pH-1. Empty sky near the J-pop stars → Aimer, BUMP OF CHICKEN, RADWIMPS.
+- **Review fixes** (`b5ce887`, from an independent review pass):
+  - the allowlist is keyed by `profiles.id`, because usernames are mutable and it fences `manual` catalog writes
+  - every `/api/taste/map/*` route returns 403 to anyone else, and the map GET checks before loading
+  - `taste_map_node_state` is read-only for users (migration `20261105000001` applied), so `catalogRgIds` can't be forged
+  - "None of these" keeps catalog ownership
+  - node-state rows are capped at 1,000 per user
+  - **Found, not fixed (out of scope):** `release_genres` has `true` write policies, and `anon`/`authenticated` hold INSERT/UPDATE/DELETE live. See README START HERE for the proposed revoke.
+- **Phone layout:**
+  - **Legend:** a pill.
+  - **Selection sheet:** peeks with a header row and drags up for details. 3D centers the selection in the visible area (`bottomInset`), and the 2D refocus frames above the sheet.
+  - **Toolbar:** secondary actions moved into a ⋯ menu; chips scroll sideways.
+  - **Stage:** it was stuck at 380px (`flex-1` cancelled `68vh`) and now fills the screen.
+  - **Subtitle:** "Dev preview" is now "Your artists, placed by how alike they are".
+- **CI:** the `61d8e4d` web build failed on a transient Google Fonts fetch in `next/font`. It passed locally; the job was re-run.
+- **Pipeline check** after the migration: healthy, unchanged (PIPELINE_CHECKS row).
+- **Open questions for Jun:**
+  - **Ghosts:** a "Something else…" genre picker? Should misfits like ヨルシカ on one's map be ghosts, or only marked? Should a placed ghost also count as a tag signal? The metric learner (`metric.ts`) still trains on the old similarity.
+  - **2D:** keep Distance as the default refocus? Should Vector's up/down axis mix value and rank? Parallax/fisheye strength.
+  - **3D:** Similarity orbit off by default? Idle turn on? Is a 34° camera angle right?
+  - **Resonance:** see RESONANCE_PLAN §8.
+
+---
+
 **2026-11-04 (Windows, Nov 4 evening) — Taste map 2D: schematic as hyperbole (emergent overlaps); to-scale island gaps closed.**
 
 - Jun: the schematic should keep genre overlaps and connections, not treat genres as discrete ("just hyperbole"). To scale, the Korean/Japanese world sat too far from the rest.

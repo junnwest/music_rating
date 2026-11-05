@@ -2,7 +2,7 @@
 
 Source idea: `taste-map-prompt.md` (Jun, 2026-11). Written 2026-11-03.
 
-**Status (2026-11-03, evening):** Phase 0 and Phase 1 are built; Phase 2 is built except Jun's visual sign-off.
+**Status (2026-11-05):** access gate (allowlist junnwest/zero/one; 50 rated albums for others), ghost nodes, interactive 2D refocus, rebuilt 3D — see README START HERE. Earlier status (2026-11-03, evening): Phase 0 and Phase 1 are built; Phase 2 is built except Jun's visual sign-off.
 - **Engine:** `apps/web/lib/tasteMap/` holds `types.ts` (the contract), `load.ts`, `eras.ts`, `features.ts`, `layout.ts`, `forceLayout.ts` and `metric.ts`. Tests: 47 passing.
 - **Migration:** `20261103000000_taste_map.sql` is ✅ applied.
 - **Similar artists:** `backfill:artist-similar` ✅ ran for the 116 rated artists (Last.fm + ListenBrainz).
@@ -206,7 +206,7 @@ Order by expected value per effort. Each item is **kept only if it beats the fro
 6. **Decide:** should the iOS map be 2D read-only for a long time? Recommendation: yes. 3D drag on a phone is poor UX anyway.
 
 ## 7. Next action
-Phase 0, step 1: `scripts/dump-taste-map-nodes.ts --user=junnwest`, then the throwaway 3D look.
+See README START HERE (2026-11-05). Candidates: Jun's review of ghosts / refocus / 3D; Phase 4 leftovers (affinity glow, auto metric re-fit; `metric.ts` still uses the pre-evidence similarity); Phase 5 taste model; RESONANCE_PLAN R1.
 
 ## 8. Visualization pass (2026-11-04)
 
@@ -224,9 +224,9 @@ Palette addendum (2026-11-04 night): **family rollups** (palette.ts step 3b). A 
 2. ⏸ **2D-native layout** (shelved 2026-11-04): measured with (1) on zero. 2D spring links: ≤ 0.72 (no gain). A 2-component UMAP warm-started from the plane: 0.74 at best (≈1 neighbor over 29 nodes). The ceiling is 3D UMAP's 0.76. Revisit only if a bigger map shows a real 2D-vs-3D gap. Any refine must keep D5 (move in-plane, lift via `fromPlane`).
 3. ✅ **Countries** (built 2026-11-04, `regions.ts`): Louvain (γ=2) + connected-piece split (the Leiden guarantee) on the symmetrized kNN graph → density-clipped territories (min(K_c − max other, D − τ) contoured at 0), named by the dominant palette tag along each country's long axis, sized by area. Names are straight and rotated, not yet curved. Seeding groups from countries is not done yet.
 4. ✅ **Bridges** (built 2026-11-04): Brandes betweenness ≥ 0.12 with a neighbor in another country → diamonds + an inspector line; one bundled arc per country pair, bent through the bridge. Hubness guard: a node in ≥60% of all kNN lists keeps only mutual edges.
-5. **True-distance rings** on select: recolor by real similarity, with 0.8 / 0.6 / 0.4 isolines.
-6. **Semantic zoom** to album covers; fisheye / overlap removal at each zoom level.
-7. **"What's here?"** on empty space: the smoothed tag mix at that point plus unrated catalog albums nearby (fog of war / blind spots).
+5. ✅ **True-distance rings** (built 2026-11-05 as part of selection refocus, `focus.ts`): Distance / Vector / Depth refocus modes around the selected star, log-scaled similarity rings; 3D has the same rings as a Similarity orbit.
+6. ✅ **Semantic zoom** to album covers, cursor fisheye, depth parallax, proximity cards, overlap removal (built 2026-11-05, `lens2d.ts`).
+7. ✅ **"What's here?"** on empty space: the smoothed tag mix + nearest artists (built 2026-11-05); unrated catalog albums nearby via `/api/taste/map/nearby` (see SESSIONS).
 
 ### Slice 3 — schematic 2D (built 2026-11-04 afternoon)
 **Schematic / To scale** toggle on the 2D stage. Schematic is the default. `schematic.ts` treats countries as VSEPR domains around a "YOU" nucleus: they repel, bigger ones take wider angles, and linked ones sit side by side. Members fill orbital shells (capital, then 6k) around each country's center, spaced evenly and turned toward the countries they link to. Stars morph between the views. The density layers belong to the true plane and fade out. Drag is off in the schematic. zero: honest map 0.69 schematic vs 0.75 true. Open: octilinear bonds, drag in the schematic, what to do with many one-member countries.

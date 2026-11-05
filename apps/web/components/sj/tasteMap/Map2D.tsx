@@ -691,7 +691,9 @@ export default function Map2D(props: SceneProps) {
     const phone = w < 768;
     const top = phone ? 84 : 92;
     // Phone: the inspector sheet covers up to 58% of the stage; its top edge may overlap a little.
-    const bottom = (phone && propsRef.current.selectedKey ? h * 0.5 : 80) + (phone ? 0 : extra.bottom);
+    // Phone: keep the refocus clear of the selection sheet (its peek height, from TasteMapView).
+    const sheet = propsRef.current.bottomInset;
+    const bottom = (phone && propsRef.current.selectedKey ? (sheet != null ? sheet + 24 : h * 0.5) : 80) + (phone ? 0 : extra.bottom);
     const side = Math.min(70, w * 0.08);
     const left = side + extra.left;
     const k = Math.max(
