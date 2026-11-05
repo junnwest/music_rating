@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import NextTopLoader from 'nextjs-toploader';
 import PostHogProvider from '../components/PostHogProvider';
+import IosAppRedirect from '../components/IosAppRedirect';
 import { ThemeProvider } from '../components/ThemeProvider';
 import { LanguageProvider } from '../lib/i18n';
 
@@ -34,6 +35,9 @@ export const metadata: Metadata = {
     title: 'sillajuku',
     description: 'Every record you\'ve loved.',
   },
+  // Safari's Smart App Banner: "Open" if the app is installed, "Get" if not. Complements
+  // IosAppRedirect, which only fires once per session.
+  itunes: { appId: '6785741603' },
 };
 
 // Site-wide Organization markup (not homepage-only) -- this represents the publisher/brand
@@ -60,6 +64,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd).replace(/</g, '\\u003c') }}
         />
+        <IosAppRedirect />
         <NextTopLoader color="#2979B7" height={2} showSpinner={false} />
         <ThemeProvider>
           <LanguageProvider>
