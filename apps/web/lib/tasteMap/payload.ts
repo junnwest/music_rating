@@ -206,6 +206,7 @@ export async function buildTasteMapPayload(db: SupabaseClient, userId: string, o
     // space.nodes keeps each artist's eras in chronological order.
     trails: [...trails.entries()].filter(([, keys]) => keys.length > 1).map(([artistId, keys]) => ({ artistId, keys })),
     neighbors: layout.neighbors,
+    similarity: packSimilarity(space.nodes.map((n) => n.key), similarityMatrix(space.nodes, weights)),
   };
 
   if (opts.persist) await persistLayout(db, userId, stored, layout, fromArranged, inputHash);
@@ -331,4 +332,12 @@ async function worldsOf(db: SupabaseClient, input: MapUserInput): Promise<Map<st
       if (placed.world) out.set(al.id, placed.world);
     }
   return out;
+}
+
+/** TasteMapPayload.similarity: the upper triangle of S as integers 0–1000. */
+export function packSimilarity(keys: NodeKey[], S: Float64Array): { keys: NodeKey[]; q: number[] } {
+  const n = keys.length;
+  const q: number[] = [];
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) q.push(Math.round(Math.max(0, Math.min(1, S[i * n + j])) * 1000));
+  return { keys, q };
 }

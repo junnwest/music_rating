@@ -183,6 +183,14 @@ export interface TasteMapPayloadNode {
    * Optional: older cached payloads and fixtures don't carry it.
    */
   mix?: Record<string, number>;
+  /**
+   * Evidence-poor or ill-fitting node (thin.ts). Drawn as a ghost: hollow and
+   * faint, not counted in density fields / countries / honesty, and left out of
+   * other nodes' neighbor lists (its own list = suggested spots). The user can
+   * place it (pin), answer a question about it, or leave it out (`hidden`:
+   * not drawn on the map, only listed in the ghost tray). Absent on normal nodes.
+   */
+  ghost?: { reason: 'thin' | 'misfit'; evidence: number; hidden?: boolean };
 }
 
 /** One palette color of the genre lens: a defining tag of this map and its OKLCh hue. */
@@ -202,4 +210,11 @@ export interface TasteMapPayload {
   /** One per artist with ≥2 eras, keys in chronological order. */
   trails: { artistId: string; keys: NodeKey[] }[];
   neighbors: Record<NodeKey, Neighbor[]>;
+  /**
+   * All-pairs similarity under the map's metric, for selection refocus (every
+   * node's true similarity to the selected one, not just its top-k). Row-major
+   * upper triangle without the diagonal, in `keys` order, each value rounded to
+   * 0–1000 (similarity × 1000). Optional: older payloads don't carry it.
+   */
+  similarity?: { keys: NodeKey[]; q: number[] };
 }
