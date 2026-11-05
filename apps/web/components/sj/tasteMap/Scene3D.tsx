@@ -1,922 +1,769 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
-import { Billboard, Line, OrbitControls } from '@react-three/drei';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import { hueMap, nodeRgb, rgbCss } from '../../../lib/tasteMap/color';
-import type { NodeKey, TasteMapPayloadNode, Vec3 } from '../../../lib/tasteMap/types';
+import { LocateFixed, Orbit, Pause, RotateCw } from 'lucide-react';
+import { useLanguage } from '../../../lib/i18n';
+import { spanningTree } from '../../../lib/tasteMap/fields';
+import { fitDistance, orbitPosition, toScene, type Box } from '../../../lib/tasteMap/scene3d';
+import { similarityLookup } from '../../../lib/tasteMap/similarity';
+import type { NodeKey } from '../../../lib/tasteMap/types';
 import type { SceneProps } from './TasteMapView';
-import { useDrag3D } from './useDrag3D';
-import { createGroupLayoutScratch, ensureBoxes, hitsAny, labelBoard, layoutGroupLabels } from './labelLayout';
+import { useDrag3D, type ThreeHandles } from './useDrag3D';
+import { Constellations, Floor, Nebulae, Stars } from './scene3d/layers';
+import { createModel, lensColors, measureExtent, project, type Model } from './scene3d/model';
+import { paintBack, paintFront, type PaintInput } from './scene3d/overlay';
+import { approach, SKY_CSS, smooth, starPx } from './scene3d/sky';
 
 /**
- * 3D taste map (react-three-fiber). Loaded only through `next/dynamic` from
- * TasteMapView, so three.js ships on /taste/map alone.
+ * 3D taste map: a star chart in the same night sky as the 2D view.
+ * Loaded only through `next/dynamic` from TasteMapView, so three.js ships on
+ * /taste/map alone.
  *
- * - Nodes: one instanced sphere mesh, radius by mass, colored by the current
- *   lens (lib/tasteMap/color.ts: genre mix or the score ramp). Raycast
- *   hover/select via instanceId.
- * - Labels: camera-facing sprites with canvas-drawn text in the app font (see
- *   makeLabel for why not drei <Text>), sized by mass. Semantic zoom: each
- *   label has a reach distance by its mass rank and fades with camera
- *   distance; selection/hover/neighbors always show. Opacities are written
- *   straight to the materials inside useFrame — no React state, no per-frame
- *   allocation.
- * - Group nebulae: one soft radial sprite per (member, group), tinted by the
- *   group color, opacity by membership weight. Additive in dark mode; normal
- *   blending in light mode (additive on a light background washes to white).
- *   They thin out as the camera gets close so they never fog the labels.
- * - Far zoom: one label per group above its members.
- * - Trails: dashed lines through an artist's era nodes, chronological.
- * - Camera: damped OrbitControls plus a small rig that eases target + position
- *   to a focused node; any user drag cancels the ease.
- * - Add-artist ghost (Phase 4, preview only): a translucent sphere with a
- *   dashed camera-facing ring, a "preview" label and dashed lines to its anchors.
+ * Frame (lib/tasteMap/scene3d): the session's D5 plane is the floor. Seen
+ * from straight above, this is the 2D "to scale" view; tilt it and every
+ * star's height above or below the plane, the depth 2D folds away, shows,
+ * with a drop line to its foot on a faint polar graticule.
+ *
+ * Layers, back to front:
+ * - Back canvas (2D): sky gradient, country names as faint spaced capitals,
+ *   era trails, the selection's links drawn outward, similarity shells.
+ * - WebGL (transparent, every pixel added as light): nebulae (one soft cloud
+ *   per star in its lens color: the sound field), the graticule and drop
+ *   lines, constellation lines (kNN minimum spanning tree), stars (point
+ *   sprites: white-hot core, colored body, glow; far stars dim; ghosts
+ *   hollow).
+ * - Front canvas (2D): rings, pin badges and level-of-detail labels.
+ * - Chrome: reset view, auto-rotate, similarity orbit (on a selection).
+ *
+ * Interaction: stars are picked in screen space (nearest within reach, or
+ * its label), so tiny stars are easy to hit. Stars near the cursor swell,
+ * brighten and reveal their names. Click a star to select it and fly to it;
+ * the rest dims and its neighbor links draw on. "Similarity orbit" (on a
+ * selection) moves every other star along its bearing to the radius its true
+ * similarity gives (payload.similarity; lib/tasteMap/focus.ts simRadius, the
+ * same log scale as the 2D refocus), with labelled shells; turning it off or
+ * deselecting eases everything back. Drag a star to move + pin it (not while
+ * orbiting). Double-click the sky or press Esc to reset the view. The map turns
+ * slowly until you touch it.
+ *
+ * Rendering is on demand: frames run only while something moves (damping,
+ * auto-rotate, easing, a drag); all per-frame state lives in typed arrays
+ * (scene3d/model.ts), no React state.
  */
-
-const SCALE = 10;
 
 // Typing note: the workspace has two @types/three copies (apps/web pins 0.170;
 // a transitive `@types/three: *` hoists 0.187 to the root, which fiber/drei
-// resolve). Where a THREE object crosses into a fiber prop, refs take `unknown`
-// and the one texture prop is cast — runtime three is a single 0.170 copy.
+// resolve). Every THREE object is mounted with <primitive>, and fiber's
+// camera / gl are cast where they're read. Runtime three is one 0.170 copy.
 
-const v3 = (p: Vec3): [number, number, number] => [p[0] * SCALE, p[1] * SCALE, p[2] * SCALE];
-const radiusOf = (mass: number) => 0.12 + 0.07 * Math.sqrt(Math.max(mass, 0));
-const fontOf = (mass: number) => 0.3 + 0.1 * Math.sqrt(Math.max(mass, 0));
+const FOV = 50;
+/** Home view: elevation above the floor plane. */
+const ELEVATION = (34 * Math.PI) / 180;
+const PICK_PX = 11;
 
-function useGlowTexture(): THREE.Texture {
-  const tex = useMemo(() => {
-    const c = document.createElement('canvas');
-    c.width = c.height = 128;
-    const g = c.getContext('2d')!;
-    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grad.addColorStop(0, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
-    grad.addColorStop(0.7, 'rgba(255,255,255,0.12)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, 128, 128);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  }, []);
-  useEffect(() => () => tex.dispose(), [tex]);
-  return tex;
+interface Live {
+  props: SceneProps;
+  orbitActive: boolean;
+  colors: Float32Array;
+  simRow: Map<NodeKey, number> | null;
+  paint: PaintInput;
+}
+
+interface RigApi {
+  /** False when the camera isn't ready yet (the request is then kept for later). */
+  flyTo: (i: number, opts?: { orbit?: boolean }) => boolean;
+  reset: () => void;
+}
+
+const COPY = {
+  en: {
+    reset: 'Reset view (Esc)',
+    rotate: 'Turn slowly',
+    stopRotate: 'Stop turning',
+    orbit: 'Similarity orbit',
+    orbitTip: 'Arrange every other artist around this one by how alike they really are',
+    hint: 'Drag to orbit · scroll to zoom · click a star',
+  },
+  ko: {
+    reset: '처음 시점으로 (Esc)',
+    rotate: '천천히 돌리기',
+    stopRotate: '회전 멈추기',
+    orbit: '유사도 궤도',
+    orbitTip: '다른 아티스트를 이 아티스트와 실제로 얼마나 비슷한지에 따라 둘러 배치해요',
+    hint: '드래그로 회전 · 스크롤로 확대 · 별을 클릭',
+  },
+};
+
+function readStored(key: string, fallback: boolean): boolean {
+  try {
+    const v = window.localStorage.getItem(key);
+    return v == null ? fallback : v === '1';
+  } catch {
+    return fallback;
+  }
+}
+function writeStored(key: string, v: boolean) {
+  try {
+    window.localStorage.setItem(key, v ? '1' : '0');
+  } catch {
+    // Private mode / blocked storage: the preference just isn't remembered.
+  }
 }
 
 export default function Scene3D(props: SceneProps) {
-  const { theme, focus } = props;
-  const down = useRef<{ x: number; y: number } | null>(null);
+  const { payload, basis, lens, honesty, visible, selectedKey, focus } = props;
+  const { lang } = useLanguage();
+  const L = lang === 'ko' ? 'ko' : 'en';
+  const copy = COPY[L];
+  const root = useRef<HTMLDivElement>(null);
+  const backRef = useRef<HTMLCanvasElement>(null);
+  const frontRef = useRef<HTMLCanvasElement>(null);
+  const chromeRef = useRef<HTMLDivElement>(null);
+  const three = useRef<ThreeHandles | null>(null);
+  const rig = useRef<RigApi | null>(null);
+  /** A fly-to asked for before the rig was ready (mode switch with a selection). */
+  const pendingFly = useRef<{ i: number; orbit: boolean } | null>(null);
 
-  // Effective focus: the shell's requests plus clicks inside the scene.
-  const nonce = useRef(0);
-  const [rigFocus, setRigFocus] = useState<{ key: NodeKey; nonce: number } | null>(() =>
-    focus ? { key: focus.key, nonce: ++nonce.current } : null,
+  const model = useMemo(() => createModel(payload.nodes, basis), [payload.nodes, basis]);
+  // Re-arrange / drags move nodes in place: keep the floor's extent current once things settle.
+  useEffect(() => {
+    if (!props.busy) model.extent = measureExtent(model);
+  }, [model, props.busy, props.layoutVersion]);
+
+  const colors = useMemo(() => lensColors(payload.nodes, lens, payload.palette, honesty), [payload.nodes, lens, payload.palette, honesty]);
+  const keep = useMemo(() => new Set(payload.nodes.filter((n) => visible.has(n.key) && !n.ghost).map((n) => n.key)), [payload.nodes, visible]);
+  const edges = useMemo(() => spanningTree(payload.neighbors, keep), [payload.neighbors, keep]);
+  const lookup = useMemo(() => similarityLookup(payload), [payload]);
+  const hasSim = !!payload.similarity;
+  const simRow = useMemo(() => (selectedKey && hasSim ? lookup.row(selectedKey) : null), [lookup, selectedKey, hasSim]);
+  const neighborSim = useMemo(
+    () => new Map((selectedKey ? payload.neighbors[selectedKey] ?? [] : []).map((nb) => [nb.key, nb.sim])),
+    [payload.neighbors, selectedKey],
   );
+
+  const [orbitOn, setOrbitOn] = useState(false);
+  const orbitActive = orbitOn && hasSim && !!selectedKey && model.index.has(selectedKey);
+  const [rotating, setRotating] = useState(false);
+  useEffect(() => {
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    setRotating(readStored('tasteMap3d.rotate', !reduce));
+  }, []);
+  const [touched, setTouched] = useState(false);
+  const [isPhone, setIsPhone] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767.98px)');
+    const on = () => setIsPhone(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+
+  const ghostAt = useMemo(() => {
+    if (!props.ghost) return null;
+    const out: [number, number, number] = [0, 0, 0];
+    toScene(model.frame, props.ghost.pos, out);
+    return out;
+  }, [props.ghost, model]);
+
+  const live = useRef<Live>(null as unknown as Live);
+  // Stage chrome (the shell's buttons and legend, our own controls): labels keep off it.
+  const reserved = useRef<Box[]>([]);
+  const measureChrome = useCallback(() => {
+    const el = root.current;
+    const stage = el?.parentElement;
+    if (!el || !stage) return;
+    const s = stage.getBoundingClientRect();
+    const out: Box[] = [];
+    const add = (r: DOMRect) => {
+      if (r.width > 0 && r.height > 0 && r.width < s.width * 0.9) out.push({ x: r.left - s.left - 4, y: r.top - s.top - 4, w: r.width + 8, h: r.height + 8 });
+    };
+    for (const child of Array.from(stage.children)) if (child !== el) add(child.getBoundingClientRect());
+    if (chromeRef.current) for (const c of Array.from(chromeRef.current.children)) add(c.getBoundingClientRect());
+    reserved.current = out;
+    if (live.current) live.current.paint.reserved = out;
+    three.current?.invalidate();
+  }, []);
+  useEffect(() => {
+    const id = window.setInterval(measureChrome, 700);
+    return () => window.clearInterval(id);
+  }, [measureChrome]);
+
+  live.current = {
+    props,
+    orbitActive,
+    colors,
+    simRow,
+    paint: {
+      payload,
+      atlas: props.atlas,
+      hiddenGroups: props.hiddenGroups,
+      selectedKey,
+      hoveredKey: props.hoveredKey,
+      ghost: props.ghost,
+      ghostAt,
+      pins: props.pins,
+      font: props.theme.font,
+      lang: L,
+      reserved: reserved.current,
+      neighborSim,
+    },
+  };
+  // The chrome moves with the selection / orbit / hint: re-measure once it has laid out.
+  useEffect(() => {
+    const id = window.requestAnimationFrame(measureChrome);
+    return () => window.cancelAnimationFrame(id);
+  }, [measureChrome, selectedKey, isPhone, orbitOn, touched, props.ghost]);
+  const kick = () => three.current?.invalidate();
+  // Any prop change may start an animation (selection, lens, visibility).
+  useEffect(kick);
+
+  // Shell focus requests (inspector clicks, mode switch) fly to the node.
   const focusNonce = focus?.nonce;
   useEffect(() => {
-    if (focus) setRigFocus({ key: focus.key, nonce: ++nonce.current });
-    // Re-run only when the shell bumps the nonce.
+    if (!focus) return;
+    const i = model.index.get(focus.key);
+    if (i != null && !rig.current?.flyTo(i, { orbit: orbitActive })) pendingFly.current = { i, orbit: orbitActive };
+    // Keyed on the nonce: the same node can be re-focused.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusNonce]);
 
-  const pick = (key: NodeKey) => {
-    props.onSelect(key);
-    setRigFocus({ key, nonce: ++nonce.current });
+  // Orbit on / off: frame the selection's neighborhood.
+  useEffect(() => {
+    if (!selectedKey) return;
+    const i = model.index.get(selectedKey);
+    if (i != null && orbitActive) rig.current?.flyTo(i, { orbit: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orbitActive]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') rig.current?.reset();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Dev only: lets the screenshot harness find stars on screen.
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    const w = window as unknown as { __tasteMap3D?: unknown };
+    w.__tasteMap3D = {
+      heaviest: () => model.nodes.reduce((a, b) => (b.mass > a.mass ? b : a)).key,
+      keys: () => model.nodes.map((n) => n.key),
+      frames: () => model.frames,
+      screenOf: (key: NodeKey) => {
+        const i = model.index.get(key);
+        return i == null ? null : { x: model.sx[i], y: model.sy[i], front: !!model.front[i] };
+      },
+    };
+    return () => {
+      delete w.__tasteMap3D;
+    };
+  }, [model]);
+
+  const drag = useDrag3D({ three, frame: model.frame, enabled: props.editable && !orbitActive, onDragNode: props.onDragNode });
+
+  // ── Screen-space picking ──
+  const pickAt = (x: number, y: number): number => {
+    const m = model;
+    const b = m.labelBoxes;
+    for (let k = 0; k + 4 < b.length; k += 5) {
+      if (x >= b[k] && x <= b[k] + b[k + 2] && y >= b[k + 1] && y <= b[k + 1] + b[k + 3]) return b[k + 4];
+    }
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < m.n; i++) {
+      if (!m.show[i] || !m.front[i] || m.alpha[i] < 0.15) continue;
+      const d = Math.hypot(m.sx[i] - x, m.sy[i] - y);
+      const reach = Math.max(PICK_PX, m.rpx[i] + 6);
+      if (d > reach) continue;
+      // Nearer the pointer wins; ties go to the star nearer the camera.
+      const score = d / reach + m.depth[i] * 1e-4;
+      if (score < bestD) {
+        bestD = score;
+        best = i;
+      }
+    }
+    return best;
+  };
+  const local = (e: { clientX: number; clientY: number }) => {
+    const r = root.current!.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  const down = useRef<{ x: number; y: number; i: number; dragging: boolean } | null>(null);
+  const hoverKey = useRef<NodeKey | null>(props.hoveredKey);
+  hoverKey.current = props.hoveredKey;
+  const setHover = (i: number) => {
+    const k = i >= 0 ? model.nodes[i].key : null;
+    if (k !== hoverKey.current) {
+      hoverKey.current = k;
+      props.onHover(k);
+    }
+  };
+  const interacted = () => {
+    if (!touched) setTouched(true);
   };
 
+  const cursor = props.hoveredKey ? 'pointer' : 'grab';
   return (
     <div
-      className="absolute inset-0 select-none"
-      style={{ cursor: props.hoveredKey ? 'pointer' : 'grab' }}
+      ref={root}
+      className="absolute inset-0 select-none overflow-hidden"
+      style={{ cursor, touchAction: 'none', background: SKY_CSS }}
+      onPointerMove={(e) => {
+        const p = local(e);
+        model.cursor = e.pointerType === 'mouse' ? p : null;
+        if (!drag.dragging.current && e.pointerType === 'mouse') setHover(pickAt(p.x, p.y));
+        kick();
+      }}
+      onPointerLeave={() => {
+        model.cursor = null;
+        if (!drag.dragging.current) setHover(-1);
+        kick();
+      }}
       onPointerDownCapture={(e) => {
-        down.current = { x: e.clientX, y: e.clientY };
+        if ((e.target as HTMLElement).closest('button')) return;
+        const p = local(e);
+        const i = pickAt(p.x, p.y);
+        down.current = { x: e.clientX, y: e.clientY, i, dragging: false };
+        interacted();
+        if (i >= 0) {
+          const w = new THREE.Vector3(model.pos[i * 3], model.pos[i * 3 + 1], model.pos[i * 3 + 2]);
+          if (drag.begin(model.nodes[i].key, w, e)) {
+            down.current.dragging = true;
+            e.stopPropagation();
+          }
+        }
+      }}
+      onPointerUp={(e) => {
+        const d = down.current;
+        down.current = null;
+        if (!d || (e.target as HTMLElement).closest('button')) return;
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) return;
+        if (d.i >= 0) {
+          props.onSelect(model.nodes[d.i].key);
+          rig.current?.flyTo(d.i, { orbit: orbitOn && hasSim });
+        } else props.onSelect(null);
+      }}
+      onDoubleClick={(e) => {
+        if ((e.target as HTMLElement).closest('button')) return;
+        const p = local(e);
+        if (pickAt(p.x, p.y) < 0) rig.current?.reset();
       }}
     >
+      <canvas ref={backRef} className="pointer-events-none absolute inset-0 h-full w-full" />
       <Canvas
-        camera={{ position: [0, 0, 26], fov: 50, near: 0.1, far: 400 }}
+        className="!absolute inset-0"
+        frameloop="demand"
+        camera={{ position: [0, 8, 24], fov: FOV, near: 0.1, far: 2000 }}
         dpr={[1, 2]}
-        gl={{ antialias: true }}
-        onPointerMissed={(e) => {
-          const d = down.current;
-          if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) return;
-          props.onSelect(null);
-        }}
+        gl={{ antialias: true, alpha: true, premultipliedAlpha: true }}
+        onCreated={({ gl }) => (gl as unknown as THREE.WebGLRenderer).setClearColor(0x000000, 0)}
       >
-        <color key={theme.bg} attach="background" args={[theme.bg]} />
-        <ambientLight intensity={theme.dark ? 0.9 : 1.1} />
-        <directionalLight position={[6, 10, 8]} intensity={theme.dark ? 1.2 : 1.4} />
-        <Nebulae {...props} />
-        <Trails {...props} />
-        <NeighborLinks {...props} />
-        <Nodes {...props} onPick={pick} />
-        <PinMarkers {...props} />
-        <Labels {...props} onPick={pick} />
-        <GroupLabels {...props} />
-        <Ghost {...props} />
-        <OrbitControls makeDefault enableDamping dampingFactor={0.08} minDistance={2.5} maxDistance={70} />
-        <CameraRig {...props} rigFocus={rigFocus} />
+        <ThreeBridge three={three} />
+        <Director m={model} live={live} />
+        <Nebulae m={model} />
+        <Floor m={model} />
+        <Constellations m={model} edges={edges} />
+        <Stars m={model} />
+        <OrbitControls
+          makeDefault
+          enableDamping
+          dampingFactor={0.075}
+          rotateSpeed={0.55}
+          zoomSpeed={0.9}
+          zoomToCursor
+          enablePan
+          screenSpacePanning
+          minDistance={1.5}
+          maxDistance={400}
+          autoRotate={rotating && !selectedKey && !props.hoveredKey}
+          autoRotateSpeed={0.45}
+        />
+        <Rig m={model} live={live} api={rig} pending={pendingFly} lift={isPhone && selectedKey ? 0.24 : 0} onTouched={() => { interacted(); }} onUserMove={() => { if (rotating) setRotating(false); }} />
+        <Painter m={model} live={live} back={backRef} front={frontRef} />
       </Canvas>
+      <canvas ref={frontRef} role="img" aria-label="Taste map (3D)" className="pointer-events-none absolute inset-0 h-full w-full" />
+
+      {/* Chrome: bottom left (top left on phones while the bottom sheet is up). */}
+      <div
+        ref={chromeRef}
+        className={`pointer-events-none absolute left-2.5 flex items-center gap-1.5 ${isPhone && selectedKey ? 'top-[52px]' : 'bottom-2.5'}`}
+      >
+        <button
+          type="button"
+          onClick={() => rig.current?.reset()}
+          aria-label={copy.reset}
+          title={copy.reset}
+          className="pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider bg-surface/85 text-ink backdrop-blur transition hover:bg-surface"
+        >
+          <LocateFixed size={14} />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const next = !rotating;
+            setRotating(next);
+            writeStored('tasteMap3d.rotate', next);
+          }}
+          aria-pressed={rotating}
+          aria-label={rotating ? copy.stopRotate : copy.rotate}
+          title={rotating ? copy.stopRotate : copy.rotate}
+          className="pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full border border-divider bg-surface/85 text-ink backdrop-blur transition hover:bg-surface"
+        >
+          {rotating ? <Pause size={13} /> : <RotateCw size={13} />}
+        </button>
+        {selectedKey && hasSim && (
+          <button
+            type="button"
+            aria-pressed={orbitOn}
+            title={copy.orbitTip}
+            onClick={() => setOrbitOn((v) => !v)}
+            className={`pointer-events-auto inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11.5px] font-semibold backdrop-blur transition ${
+              orbitOn ? 'border-ink bg-ink text-page' : 'border-divider bg-surface/85 text-ink hover:bg-surface'
+            }`}
+          >
+            <Orbit size={13} />
+            {copy.orbit}
+          </button>
+        )}
+        {!touched && !selectedKey && !isPhone && (
+          <span className="pl-1 text-[11px] font-medium tracking-wide text-[rgb(140,148,168)] transition-opacity">{copy.hint}</span>
+        )}
+      </div>
     </div>
   );
 }
 
-// ── Camera ───────────────────────────────────────────────────────────────────
+// ── Inside the Canvas ────────────────────────────────────────────────────────
 
-function CameraRig({
-  payload,
-  ghost,
-  rigFocus,
-}: SceneProps & { rigFocus: { key: NodeKey; nonce: number } | null }) {
-  const camera = useThree((s) => s.camera);
-  const controls = useThree((s) => s.controls) as OrbitControlsImpl | null;
-  const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
-  const anim = useRef<{ target: THREE.Vector3; cam: THREE.Vector3 } | null>(null);
-  const fitted = useRef(false);
-
-  // Portrait stages need the camera further back to keep the whole map in view.
+/** Hands the camera / controls / invalidate to code outside the Canvas (picking, drag). */
+function ThreeBridge({ three }: { three: MutableRefObject<ThreeHandles | null> }) {
+  const camera = useThree((s) => s.camera) as unknown as THREE.Camera;
+  const gl = useThree((s) => s.gl) as unknown as { domElement: HTMLElement };
+  const controls = useThree((s) => s.controls) as { enabled: boolean } | null;
+  const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
-    if (fitted.current || !controls) return;
-    fitted.current = true;
-    if (aspect < 1 && !rigFocus) {
-      camera.position.setLength(26 / Math.max(aspect, 0.45) ** 0.85);
-      controls.update();
+    three.current = { camera, dom: gl.domElement, controls, invalidate: () => invalidate() };
+  }, [camera, gl, controls, invalidate, three]);
+  return null;
+}
+
+/**
+ * Once per frame, before the layers: positions (layout, orbit refocus,
+ * easing), colors, alphas, relations, screen projections and cursor
+ * proximity into the model.
+ */
+function Director({ m, live }: { m: Model; live: MutableRefObject<Live> }) {
+  const first = useRef(true);
+  useFrame((state, dt) => {
+    const cam = state.camera as unknown as THREE.PerspectiveCamera;
+    const controls = state.controls as unknown as OrbitControlsImpl | null;
+    const { props: p, orbitActive, colors, simRow } = live.current;
+    m.w = state.size.width;
+    m.h = state.size.height;
+    cam.updateMatrixWorld();
+    m.view.copy(cam.matrixWorldInverse);
+    m.viewProj.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    m.tanHalf = Math.tan(((cam.fov ?? FOV) * Math.PI) / 360);
+    if (controls) m.focusDist = cam.position.distanceTo(controls.target);
+    m.moving = false;
+
+    const sel = p.selectedKey != null ? m.index.get(p.selectedKey) ?? -1 : -1;
+    const hov = p.hoveredKey != null ? m.index.get(p.hoveredKey) ?? -1 : -1;
+    if (p.selectedKey !== m.selKey) {
+      m.selKey = p.selectedKey;
+      m.selAt = performance.now();
     }
-  }, [aspect, camera, controls, rigFocus]);
+    for (let i = 0; i < m.n; i++) {
+      const n = m.nodes[i];
+      m.ghost[i] = n.ghost ? 1 : 0;
+      m.show[i] = p.visible.has(n.key) && !n.ghost?.hidden ? 1 : 0;
+      m.rel[i] = 0;
+      toScene(m.frame, n.pos, m.base, i * 3);
+    }
+    if (sel >= 0) for (const nb of p.payload.neighbors[p.selectedKey!] ?? []) {
+      const j = m.index.get(nb.key);
+      if (j != null) m.rel[j] = 1;
+    }
+    if (sel >= 0) m.rel[sel] = 2;
+    if (hov >= 0) m.rel[hov] = 2;
+
+    // Orbit refocus.
+    const wantOrbit = orbitActive && sel >= 0 && !!simRow;
+    if (wantOrbit) m.orbit = { i: sel, R: m.extent * 0.95 };
+    const ot = wantOrbit ? 1 : 0;
+    m.orbitT += (ot - m.orbitT) * approach(dt, 3.2);
+    if (Math.abs(ot - m.orbitT) < 0.002) m.orbitT = ot;
+    else m.moving = true;
+    if (m.orbitT === 0 && !wantOrbit) m.orbit = null;
+
+    const sx = m.base[sel * 3];
+    const sy = m.base[sel * 3 + 1];
+    const sz = m.base[sel * 3 + 2];
+    const minR = m.extent * 0.05;
+    for (let i = 0; i < m.n; i++) {
+      const o = i * 3;
+      if (wantOrbit && i !== sel) {
+        const t = orbitPosition(
+          [sx, sy, sz],
+          [m.base[o], m.base[o + 1], m.base[o + 2]],
+          simRow!.get(m.nodes[i].key) ?? 0,
+          m.orbit!.R,
+          minR,
+          [m.fallback[o], m.fallback[o + 1], m.fallback[o + 2]],
+        );
+        m.target[o] = t[0];
+        m.target[o + 1] = t[1];
+        m.target[o + 2] = t[2];
+      } else {
+        m.target[o] = m.base[o];
+        m.target[o + 1] = m.base[o + 1];
+        m.target[o + 2] = m.base[o + 2];
+      }
+    }
+
+    // Ease positions (snap during drags / re-arrange, which animate themselves), colors, alphas.
+    const kPos = first.current || p.busy ? 1 : approach(dt, 4.2);
+    const kCol = first.current ? 1 : approach(dt, 6);
+    const kA = first.current ? 1 : approach(dt, 7);
+    let maxMove = 0;
+    for (let k = 0; k < m.n * 3; k++) {
+      const d = m.target[k] - m.pos[k];
+      m.pos[k] += d * kPos;
+      maxMove = Math.max(maxMove, Math.abs(d));
+      const c = colors[k] - m.col[k];
+      m.col[k] += c * kCol;
+      if (Math.abs(c) > 0.003) m.moving = true;
+    }
+    if (maxMove > 0.004) m.moving = true;
+    for (let i = 0; i < m.n; i++) {
+      const goal = m.show[i] ? (sel >= 0 && m.rel[i] === 0 ? 0.26 : 1) * (m.ghost[i] ? 0.6 : 1) : 0;
+      const d = goal - m.alpha[i];
+      m.alpha[i] += d * kA;
+      if (Math.abs(d) > 0.004) m.moving = true;
+    }
+
+    // Project; cursor proximity.
+    const cur = m.cursor;
+    const kP = approach(dt, 10);
+    const pt = [0, 0, 0];
+    for (let i = 0; i < m.n; i++) {
+      project(m, m.pos[i * 3], m.pos[i * 3 + 1], m.pos[i * 3 + 2], pt);
+      m.sx[i] = pt[0];
+      m.sy[i] = pt[1];
+      m.depth[i] = pt[2];
+      m.front[i] = pt[2] > 0.2 ? 1 : 0;
+      let goal = 0;
+      if (cur && m.show[i] && m.front[i]) goal = smooth(1 - Math.hypot(pt[0] - cur.x, pt[1] - cur.y) / 100) * (sel >= 0 && !m.rel[i] ? 0.6 : 1);
+      if (m.rel[i] === 2) goal = Math.max(goal, 0.8);
+      const d = goal - m.prox[i];
+      m.prox[i] += d * kP;
+      if (Math.abs(d) > 0.004) m.moving = true;
+      m.rpx[i] = starPx(m.radius[i], m.h / (2 * Math.max(pt[2], 1e-3) * m.tanHalf), m.prox[i]);
+    }
+    first.current = false;
+  }, -0.5);
+  return null;
+}
+
+/**
+ * Camera: home framing (the map fitted to the stage from 34° above the
+ * floor), fly-to on select, reset. User input cancels a flight and stops the
+ * idle turn.
+ */
+function Rig({
+  m,
+  live,
+  api,
+  pending,
+  lift,
+  onTouched,
+  onUserMove,
+}: {
+  m: Model;
+  live: MutableRefObject<Live>;
+  api: MutableRefObject<RigApi | null>;
+  pending: MutableRefObject<{ i: number; orbit: boolean } | null>;
+  /** Share of the stage height to shift the picture up (phones: clear of the bottom sheet). */
+  lift: number;
+  onTouched: () => void;
+  onUserMove: () => void;
+}) {
+  const camera = useThree((s) => s.camera) as unknown as THREE.PerspectiveCamera;
+  const controls = useThree((s) => s.controls) as unknown as OrbitControlsImpl | null;
+  const size = useThree((s) => s.size);
+  const invalidate = useThree((s) => s.invalidate);
+  const anim = useRef<{ target: THREE.Vector3; cam: THREE.Vector3 } | null>(null);
+  const pristine = useRef(true);
+  const cb = useRef({ onTouched, onUserMove });
+  cb.current = { onTouched, onUserMove };
+
+  const home = useCallback(() => {
+    const visible = live.current.props.visible;
+    const mask = Uint8Array.from(m.nodes, (n) => (visible.has(n.key) && !n.ghost?.hidden ? 1 : 0));
+    let lo = [Infinity, Infinity, Infinity];
+    let hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < m.n; i++) {
+      if (!mask[i]) continue;
+      for (let k = 0; k < 3; k++) {
+        lo[k] = Math.min(lo[k], m.base[i * 3 + k]);
+        hi[k] = Math.max(hi[k], m.base[i * 3 + k]);
+      }
+    }
+    if (!Number.isFinite(lo[0])) {
+      lo = [-1, -1, -1];
+      hi = [1, 1, 1];
+    }
+    const center: [number, number, number] = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
+    const back: [number, number, number] = [0, Math.sin(ELEVATION), Math.cos(ELEVATION)];
+    const aspect = size.width / Math.max(1, size.height);
+    // Room for the stage chrome: the map fills ~78% of the shorter half-axis.
+    const D = Math.max(5, fitDistance(m.base, center, back, [0, 1, 0], camera.fov ?? FOV, aspect, 0.78, mask)) * 1.04;
+    m.homeDist = D;
+    const t = new THREE.Vector3(...center);
+    return { target: t, cam: t.clone().add(new THREE.Vector3(...back).multiplyScalar(D)) };
+  }, [m, size.width, size.height, camera, live]);
+
+  // First framing (and re-framing on resize until the user moves the view).
+  useEffect(() => {
+    if (!controls || !pristine.current) return;
+    const h = home();
+    controls.target.copy(h.target);
+    camera.position.copy(h.cam);
+    controls.update();
+    invalidate();
+  }, [controls, camera, home, invalidate]);
 
   useEffect(() => {
     if (!controls) return;
-    const stop = () => {
+    const start = () => {
       anim.current = null;
+      pristine.current = false;
+      cb.current.onTouched();
+      cb.current.onUserMove();
     };
-    controls.addEventListener('start', stop);
-    return () => controls.removeEventListener('start', stop);
+    controls.addEventListener('start', start);
+    return () => controls.removeEventListener('start', start);
   }, [controls]);
 
-  const rigNonce = rigFocus?.nonce;
   useEffect(() => {
-    if (!rigFocus || !controls) return;
-    const n = payload.nodes.find((m) => m.key === rigFocus.key) ?? (ghost?.key === rigFocus.key ? ghost : null);
-    if (!n) return;
-    const target = new THREE.Vector3(...v3(n.pos));
-    const offset = camera.position.clone().sub(controls.target);
-    offset.setLength(Math.min(Math.max(offset.length(), 6), 11));
-    anim.current = { target, cam: target.clone().add(offset) };
-    // Keyed on the nonce: the same node can be re-focused.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rigNonce, controls]);
+    api.current = {
+      flyTo: (i, opts) => {
+        if (!controls) return false;
+        pristine.current = false;
+        const target = new THREE.Vector3(m.target[i * 3], m.target[i * 3 + 1], m.target[i * 3 + 2]);
+        const offset = camera.position.clone().sub(controls.target);
+        let dist: number;
+        if (opts?.orbit) {
+          const aspect = size.width / Math.max(1, size.height);
+          // The 0.1 shell (simRadius ≈ 0.58 R) near the edge; the far rim may run off-stage.
+          dist = (m.extent * 0.95 * 0.66) / (m.tanHalf * Math.min(1, aspect));
+        } else {
+          // Frame the star's neighborhood (itself + its kNN), so a dense
+          // cluster opens up and a loner doesn't zoom into empty sky.
+          const p = live.current.props;
+          const key = m.nodes[i].key;
+          const pts = [m.target[i * 3], m.target[i * 3 + 1], m.target[i * 3 + 2]];
+          for (const nb of p.payload.neighbors[key] ?? []) {
+            const j = m.index.get(nb.key);
+            if (j == null || !m.show[j]) continue;
+            pts.push(m.target[j * 3], m.target[j * 3 + 1], m.target[j * 3 + 2]);
+          }
+          const back = offset.clone().normalize();
+          const aspect = size.width / Math.max(1, size.height);
+          const fit = fitDistance(pts, [target.x, target.y, target.z], [back.x, back.y, back.z], [0, 1, 0], camera.fov ?? FOV, aspect, 0.62);
+          dist = Math.min(m.homeDist * 0.85, Math.max(3.5, fit));
+        }
+        offset.setLength(dist);
+        anim.current = { target, cam: target.clone().add(offset) };
+        invalidate();
+        return true;
+      },
+      reset: () => {
+        if (!controls) return;
+        anim.current = home();
+        invalidate();
+      },
+    };
+    const want = pending.current;
+    if (want && controls) {
+      pending.current = null;
+      api.current.flyTo(want.i, { orbit: want.orbit });
+    }
+  }, [api, pending, controls, camera, m, home, invalidate, size.width, size.height, live]);
+
+  // Lift: a view offset moves the picture without moving the camera, so
+  // orbiting still turns around the selected star.
+  const liftNow = useRef(0);
+  useEffect(() => invalidate(), [lift, invalidate]);
+  useFrame((state, dt) => {
+    const goal = lift * state.size.height;
+    const cur = liftNow.current;
+    if (Math.abs(goal - cur) > 0.5 || (goal !== 0 && !camera.view?.enabled)) {
+      liftNow.current = Math.abs(goal - cur) > 0.5 ? cur + (goal - cur) * approach(dt, 6) : goal;
+      m.moving = true;
+    }
+    if (Math.abs(liftNow.current) > 0.5) {
+      const { width: w, height: h } = state.size;
+      camera.setViewOffset(w, h, 0, liftNow.current, w, h);
+    } else if (camera.view?.enabled) camera.clearViewOffset();
+  }, -3);
 
   useFrame((_, dt) => {
     const a = anim.current;
     if (!a || !controls) return;
-    const t = 1 - Math.exp(-Math.min(dt, 0.1) * 5);
+    const t = approach(dt, 4.5);
     controls.target.lerp(a.target, t);
     camera.position.lerp(a.cam, t);
     controls.update();
-    if (camera.position.distanceToSquared(a.cam) < 1e-4 && controls.target.distanceToSquared(a.target) < 1e-4) {
-      anim.current = null;
-    }
-  });
+    m.moving = true;
+    if (camera.position.distanceToSquared(a.cam) < 1e-4 && controls.target.distanceToSquared(a.target) < 1e-4) anim.current = null;
+  }, -2);
   return null;
 }
 
-// ── Nodes ────────────────────────────────────────────────────────────────────
-
-/** The selection, its neighbors and the hovered node — always fully shown. */
-function useRelated({ payload, selectedKey, hoveredKey }: SceneProps): Set<NodeKey> {
-  const neighbors = payload.neighbors;
-  return useMemo(() => {
-    const s = new Set<NodeKey>();
-    if (selectedKey) {
-      s.add(selectedKey);
-      for (const nb of neighbors[selectedKey] ?? []) s.add(nb.key);
-    }
-    if (hoveredKey) s.add(hoveredKey);
-    return s;
-  }, [neighbors, selectedKey, hoveredKey]);
-}
-
-function Nodes(props: SceneProps & { onPick: (k: NodeKey) => void }) {
-  const { payload, visible, selectedKey, hoveredKey, theme, onHover, onPick, layoutVersion, editable, onDragNode, lens, honesty } = props;
-  const nodes = payload.nodes;
-  const mesh = useRef<THREE.InstancedMesh | null>(null);
-  const related = useRelated(props);
-  const drag = useDrag3D({ scale: SCALE, enabled: editable, onDragNode });
-
-  useLayoutEffect(() => {
-    const m = mesh.current;
-    if (!m) return;
-    const obj = new THREE.Object3D();
-    const color = new THREE.Color();
-    const bg = new THREE.Color(theme.bg);
-    const L = theme.dark ? 0.72 : 0.62;
-    const hues = hueMap(payload.palette);
-    nodes.forEach((n, i) => {
-      const shown = visible.has(n.key);
-      const r = radiusOf(n.mass) * (n.key === selectedKey ? 1.45 : n.key === hoveredKey ? 1.25 : 1);
-      obj.position.set(...v3(n.pos));
-      obj.scale.setScalar(shown ? r : 0);
-      obj.updateMatrix();
-      m.setMatrixAt(i, obj.matrix);
-      color.set(
-        lens === 'score' && n.avgScore == null ? theme.muted : rgbCss(nodeRgb(n, lens, hues, L, honesty.byKey.get(n.key)?.recall)),
-      );
-      if (selectedKey && !related.has(n.key)) color.lerp(bg, 0.6);
-      m.setColorAt(i, color);
-    });
-    m.instanceMatrix.needsUpdate = true;
-    if (m.instanceColor) m.instanceColor.needsUpdate = true;
-    m.computeBoundingSphere();
-    // layoutVersion: node positions change in place (drag, re-arrange).
-  }, [nodes, visible, selectedKey, hoveredKey, related, theme, layoutVersion, lens, payload.palette, honesty]);
-
-  const keyAt = (e: ThreeEvent<PointerEvent | MouseEvent>) =>
-    e.instanceId != null ? nodes[e.instanceId]?.key ?? null : null;
-
-  return (
-    <instancedMesh
-      ref={(el: unknown) => {
-        mesh.current = el as THREE.InstancedMesh | null;
-      }}
-      args={[undefined, undefined, nodes.length]}
-      onPointerMove={(e) => {
-        e.stopPropagation();
-        const k = keyAt(e);
-        if (k && visible.has(k) && k !== hoveredKey) onHover(k);
-      }}
-      onPointerOut={() => onHover(null)}
-      onPointerDown={(e) => {
-        // Grab the nearest hit node; OrbitControls stays off until the drag ends.
-        const k = keyAt(e);
-        const n = e.instanceId != null ? nodes[e.instanceId] : null;
-        if (!k || !n || !visible.has(k)) return;
-        if (drag.begin(k, new THREE.Vector3(...v3(n.pos)), e)) e.stopPropagation();
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (e.delta > 5) return;
-        const k = keyAt(e);
-        if (k && visible.has(k)) onPick(k);
-      }}
-    >
-      <sphereGeometry args={[1, 24, 16]} />
-      <meshStandardMaterial roughness={0.55} metalness={0.05} />
-    </instancedMesh>
-  );
-}
-
-/** Push-pin badge on pinned nodes, facing the camera: filled = full pin, hollow ring = pinned in 2D (depth free). */
-function PinMarkers({ payload, pins, visible, theme, layoutVersion }: SceneProps) {
-  const marks = useMemo(
-    () =>
-      payload.nodes
-        .filter((n) => pins.has(n.key) && visible.has(n.key))
-        .map((n) => ({ key: n.key, pos: v3(n.pos), r: radiusOf(n.mass), soft: pins.get(n.key)!.softZ })),
-    // layoutVersion: positions change in place.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [payload.nodes, pins, visible, layoutVersion],
-  );
-  return (
-    <>
-      {marks.map((m) => {
-        const head = Math.max(0.09, m.r * 0.42);
-        return (
-          <Billboard key={m.key} position={m.pos}>
-            {/* Offset up-right and toward the camera so the sphere never hides it. */}
-            <group position={[m.r * 0.85, m.r * 0.85, m.r * 1.1]} renderOrder={4}>
-              <mesh raycast={() => null}>
-                <circleGeometry args={[head * 1.35, 24]} />
-                <meshBasicMaterial color={theme.bg} depthWrite={false} />
-              </mesh>
-              <mesh raycast={() => null} position={[0, 0, 0.001]}>
-                {m.soft ? <ringGeometry args={[head * 0.55, head, 24]} /> : <circleGeometry args={[head, 24]} />}
-                <meshBasicMaterial color={theme.ink} depthWrite={false} />
-              </mesh>
-            </group>
-          </Billboard>
-        );
-      })}
-    </>
-  );
-}
-
-// ── Labels (semantic zoom) ───────────────────────────────────────────────────
-
-/**
- * Label textures are drawn on a 2D canvas with the app's own font stack, not
- * troika/drei <Text>: troika fetches its font + unicode data from jsdelivr and
- * spins up a blob: worker, and the app's CSP (next.config.mjs connect-src /
- * script-src) blocks both — <Text> then suspends forever. System fonts also
- * cover Hangul/Japanese for free.
- */
-interface LabelTex {
-  tex: THREE.CanvasTexture;
-  /** World-space width/height for a given font size (height of one line = fontSize). */
-  w: number;
-  h: number;
-}
-
-const LABEL_PX = 48;
-
-function makeLabel(lines: string[], color: string, outline: string, font: string, weight: number, fontSize: number): LabelTex {
-  const c = document.createElement('canvas');
-  const g = c.getContext('2d')!;
-  const f = `${weight} ${LABEL_PX}px ${font}`;
-  g.font = f;
-  const sub = `${Math.round(weight * 0.8)} ${Math.round(LABEL_PX * 0.72)}px ${font}`;
-  const widths = lines.map((l, i) => {
-    g.font = i === 0 ? f : sub;
-    return g.measureText(l).width;
-  });
-  const pad = LABEL_PX * 0.25;
-  const lineH = LABEL_PX * 1.18;
-  c.width = Math.ceil(Math.max(...widths) + pad * 2);
-  c.height = Math.ceil(lineH * lines.length + pad);
-  g.textAlign = 'center';
-  g.textBaseline = 'top';
-  g.lineJoin = 'round';
-  lines.forEach((l, i) => {
-    g.font = i === 0 ? f : sub;
-    const y = pad / 2 + i * lineH;
-    g.lineWidth = LABEL_PX * 0.16;
-    g.strokeStyle = outline;
-    g.strokeText(l, c.width / 2, y);
-    g.fillStyle = color;
-    g.fillText(l, c.width / 2, y);
-  });
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  const k = fontSize / lineH;
-  return { tex, w: c.width * k, h: c.height * k };
-}
-
-function useLabelTextures(
-  items: { id: string; lines: string[]; color: string; fontSize: number; weight: number }[],
-  theme: SceneProps['theme'],
-): LabelTex[] {
-  const texs = useMemo(
-    () => items.map((it) => makeLabel(it.lines, it.color, theme.bg, theme.font, it.weight, it.fontSize)),
-    [items, theme.bg, theme.font],
-  );
-  useEffect(() => () => texs.forEach((t) => t.tex.dispose()), [texs]);
-  return texs;
-}
-
-function Labels(props: SceneProps & { onPick: (k: NodeKey) => void }) {
-  const { payload, visible, theme, selectedKey, hoveredKey, onHover, onPick, layoutVersion } = props;
-  const nodes = payload.nodes;
-  const sprites = useRef<(THREE.Sprite | null)[]>([]);
-  const related = useRelated(props);
-
-  const items = useMemo(
-    () =>
-      nodes.map((n) => ({
-        id: n.key,
-        lines: n.eraLabel ? [n.label, n.eraLabel] : [n.label],
-        color: theme.ink,
-        fontSize: fontOf(n.mass),
-        weight: 650,
-      })),
-    [nodes, theme.ink],
-  );
-  const texs = useLabelTextures(items, theme);
-
-  // Reach: how far the camera can be before a label fades; bigger nodes carry further.
-  const reach = useMemo(() => {
-    const order = nodes.map((n, i) => ({ i, m: n.mass })).sort((a, b) => b.m - a.m);
-    const r = new Float32Array(nodes.length);
-    const denom = Math.max(1, order.length - 1);
-    order.forEach(({ i }, rank) => {
-      r[i] = 9 + 30 * Math.pow(1 - rank / denom, 1.4);
-    });
-    return r;
-  }, [nodes]);
-  // layoutVersion: positions change in place (drag, re-arrange).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const worldPos = useMemo(() => nodes.map((n) => new THREE.Vector3(...v3(n.pos))), [nodes, layoutVersion]);
-
-  // Screen-space declutter: every few frames, a greedy pass by priority hides
-  // labels whose screen box overlaps one already kept. Priority: related labels
-  // (selection, hover, neighbors — pinned, never hidden), then the group labels
-  // GroupLabels has placed (read off the shared board), then the rest by mass.
-  // Pinned boxes go back on the board so group labels steer around them.
-  // Alphas ease toward their targets, so a label hidden by the pass fades out.
-  const scene = useThree((s) => s.scene);
-  const board = labelBoard(scene);
-  const massOrder = useMemo(
-    () => nodes.map((n, i) => ({ i, m: n.mass })).sort((a, b) => b.m - a.m).map((x) => x.i),
-    [nodes],
-  );
-  const scratch = useMemo(
-    () => ({
-      v: new THREE.Vector3(),
-      boxes: new Float32Array(nodes.length * 4),
-      blocked: new Uint8Array(nodes.length),
-      alpha: new Float32Array(nodes.length),
-      frame: 0,
-    }),
-    [nodes.length],
-  );
-
-  useFrame(({ camera, size }, dt) => {
-    const st = scratch;
-    const fade = 1 - Math.exp(-Math.min(dt, 0.1) * 10);
-    const target = (i: number, d: number) => {
-      const n = nodes[i];
-      if (!visible.has(n.key)) return 0;
-      if (related.has(n.key)) return 1;
-      const a = Math.min(1, Math.max(0, (reach[i] - d) / 5));
-      return selectedKey ? a * 0.4 : a;
-    };
-
-    if (st.frame++ % 6 === 0) {
-      const persp = camera as unknown as THREE.PerspectiveCamera;
-      const tanHalf = Math.tan(((persp.fov ?? 50) * Math.PI) / 360);
-      let kept = 0;
-      const place = (i: number) => {
-        const s = sprites.current[i];
-        st.blocked[i] = 1;
-        if (!s) return;
-        const d = camera.position.distanceTo(s.position);
-        if (target(i, d) <= 0.02) return;
-        st.v.copy(s.position).project(persp);
-        if (st.v.z > 1) return;
-        const ppu = size.height / (2 * d * tanHalf);
-        const w = s.scale.x * ppu;
-        const h = s.scale.y * ppu;
-        const x = ((st.v.x + 1) / 2) * size.width - w / 2;
-        const y = ((1 - st.v.y) / 2) * size.height - h;
-        const forced = related.has(nodes[i].key);
-        if (!forced && (hitsAny(st.boxes, kept, x, y, w, h) || hitsAny(board.groupBoxes, board.groupCount, x, y, w, h, 2))) return;
-        const o = kept * 4;
-        st.boxes[o] = x;
-        st.boxes[o + 1] = y;
-        st.boxes[o + 2] = w;
-        st.boxes[o + 3] = h;
-        kept += 1;
-        st.blocked[i] = 0;
-      };
-      for (const i of massOrder) if (related.has(nodes[i].key)) place(i);
-      board.pinnedBoxes = ensureBoxes(board.pinnedBoxes, kept);
-      board.pinnedBoxes.set(st.boxes.subarray(0, kept * 4));
-      board.pinnedCount = kept;
-      for (const i of massOrder) if (!related.has(nodes[i].key)) place(i);
-    }
-
-    for (let i = 0; i < nodes.length; i += 1) {
-      const s = sprites.current[i];
-      if (!s) continue;
-      const goal = st.blocked[i] ? 0 : target(i, camera.position.distanceTo(worldPos[i]));
-      st.alpha[i] += (goal - st.alpha[i]) * fade;
-      if (related.has(nodes[i].key)) st.alpha[i] = goal;
-      s.visible = st.alpha[i] > 0.02;
-      (s.material as THREE.SpriteMaterial).opacity = st.alpha[i];
-    }
-  });
-
-  return (
-    <>
-      {nodes.map((n, i) => {
-        const t = texs[i];
-        if (!t) return null;
-        const strong = n.key === selectedKey || n.key === hoveredKey ? 1.15 : 1;
-        const [x, y, z] = v3(n.pos);
-        return (
-          <sprite
-            key={n.key}
-            ref={(el: unknown) => {
-              sprites.current[i] = el as THREE.Sprite | null;
-            }}
-            position={[x, y + radiusOf(n.mass) * 1.5 + 0.04, z]}
-            scale={[t.w * strong, t.h * strong, 1]}
-            center={[0.5, 0] as never}
-            renderOrder={2}
-            onPointerMove={(e) => {
-              e.stopPropagation();
-              if (n.key !== hoveredKey && visible.has(n.key)) onHover(n.key);
-            }}
-            onPointerOut={() => onHover(null)}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (e.delta <= 5 && visible.has(n.key)) onPick(n.key);
-            }}
-          >
-            <spriteMaterial map={t.tex as never} transparent depthWrite={false} />
-          </sprite>
-        );
-      })}
-    </>
-  );
-}
-
-/**
- * Far-zoom group names. Each group's home point sits above its members; every
- * frame the homes are projected and labelLayout slides colliding names along
- * screen y (up preferred) into free slots, steering around pinned node labels.
- * A displaced name gets a thin leader in the group color back to its home. The
- * drawn offset and alpha ease toward the layout's targets, and the layout
- * prefers each name's previous slot, so names hold still while orbiting.
- * Placed boxes go on the shared board; ordinary node labels yield to them.
- */
-function GroupLabels({ payload, hiddenGroups, theme, layoutVersion }: SceneProps) {
-  const groups = payload.groups;
-  const scene = useThree((s) => s.scene);
-  const board = labelBoard(scene);
-  const sprites = useRef<(THREE.Sprite | null)[]>([]);
-  const anchors = useMemo(
-    () =>
-      groups.map((g) => {
-        const c = new THREE.Vector3();
-        let w = 0;
-        let top = -Infinity;
-        for (const n of payload.nodes) {
-          const m = n.groups[g.id] ?? 0;
-          if (m < 0.5) continue;
-          const p = v3(n.pos);
-          c.x += p[0] * m * n.mass;
-          c.y += p[1] * m * n.mass;
-          c.z += p[2] * m * n.mass;
-          w += m * n.mass;
-          top = Math.max(top, p[1]);
-        }
-        if (w === 0) return null;
-        c.divideScalar(w);
-        c.y = top + 1.4;
-        return { at: c, weight: w };
-      }),
-    // layoutVersion: positions change in place (drag, re-arrange).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [payload.nodes, groups, layoutVersion],
-  );
-  // Layout priority: heaviest group first.
-  const order = useMemo(
-    () =>
-      Int32Array.from(
-        anchors
-          .map((a, i) => ({ i, w: a?.weight ?? 0 }))
-          .sort((a, b) => b.w - a.w)
-          .map((x) => x.i),
-      ),
-    [anchors],
-  );
-  const items = useMemo(
-    () => groups.map((g) => ({ id: g.id, lines: [g.name], color: g.color, fontSize: 0.85, weight: 800 })),
-    [groups],
-  );
-  const texs = useLabelTextures(items, theme);
-
-  const st = useMemo(() => {
-    const G = groups.length;
-    const nan = () => new Float32Array(G).fill(Number.NaN);
-    return {
-      v: new THREE.Vector3(),
-      up: new THREE.Vector3(),
-      right: new THREE.Vector3(),
-      hx: new Float32Array(G),
-      hy: new Float32Array(G),
-      w: new Float32Array(G),
-      h: new Float32Array(G),
-      ppu: new Float32Array(G),
-      fade: new Float32Array(G),
-      active: new Uint8Array(G),
-      target: nan(),
-      next: nan(),
-      targetX: new Float32Array(G),
-      shift: new Float32Array(G),
-      shiftX: new Float32Array(G),
-      alpha: new Float32Array(G),
-      layout: createGroupLayoutScratch(G, 16),
-      obstacleCap: 16,
-    };
-  }, [groups.length]);
-
-  // Leaders: one line segment per group, per-vertex RGBA so each fades alone.
-  const leaders = useMemo(() => {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(groups.length * 6), 3));
-    const col = new Float32Array(groups.length * 8);
-    const c = new THREE.Color();
-    groups.forEach((g, i) => {
-      c.set(g.color);
-      col.set([c.r, c.g, c.b, 0, c.r, c.g, c.b, 0], i * 8);
-    });
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 4));
-    const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthTest: false, depthWrite: false });
-    const seg = new THREE.LineSegments(geo, mat);
-    seg.renderOrder = 3;
-    seg.frustumCulled = false;
-    seg.raycast = () => {};
-    return seg;
-  }, [groups]);
-  useEffect(
-    () => () => {
-      leaders.geometry.dispose();
-      (leaders.material as THREE.Material).dispose();
-    },
-    [leaders],
-  );
-
-  // Priority -0.5: after OrbitControls (-1) has moved the camera, before Labels (0) reads the board.
-  useFrame(({ camera, size }, dt) => {
-    const cam = camera as unknown as THREE.PerspectiveCamera;
-    cam.updateMatrixWorld();
-    const tanHalf = Math.tan(((cam.fov ?? 50) * Math.PI) / 360);
-    const ease = 1 - Math.exp(-Math.min(dt, 0.1) * 9);
-    st.right.setFromMatrixColumn(cam.matrixWorld, 0);
-    st.up.setFromMatrixColumn(cam.matrixWorld, 1);
-    const G = groups.length;
-
-    for (let i = 0; i < G; i += 1) {
-      const a = anchors[i];
-      const t = texs[i];
-      st.active[i] = 0;
-      st.fade[i] = 0;
-      if (!a || !t || hiddenGroups.has(groups[i].id)) continue;
-      const depth = -st.v.copy(a.at).applyMatrix4(cam.matrixWorldInverse).z;
-      if (depth <= cam.near) continue;
-      st.fade[i] = Math.min(1, Math.max(0, (cam.position.distanceTo(a.at) - 15) / 7));
-      if (st.fade[i] <= 0.02) continue;
-      st.v.copy(a.at).project(cam);
-      const ppu = size.height / (2 * depth * tanHalf);
-      st.ppu[i] = ppu;
-      st.hx[i] = ((st.v.x + 1) / 2) * size.width;
-      st.hy[i] = ((1 - st.v.y) / 2) * size.height;
-      st.w[i] = t.w * ppu;
-      st.h[i] = t.h * ppu;
-      st.active[i] = 1;
-    }
-
-    if (board.pinnedCount > st.obstacleCap) {
-      st.obstacleCap = board.pinnedCount * 2;
-      st.layout = createGroupLayoutScratch(G, st.obstacleCap);
-    }
-    layoutGroupLabels(st.hx, st.hy, st.w, st.h, st.active, st.target, order, board.pinnedBoxes, board.pinnedCount, size.width, st.next, st.targetX, st.layout);
-    st.target.set(st.next);
-
-    board.groupBoxes = ensureBoxes(board.groupBoxes, G);
-    let nb = 0;
-    const pos = leaders.geometry.getAttribute('position') as THREE.BufferAttribute;
-    const col = leaders.geometry.getAttribute('color') as THREE.BufferAttribute;
-    const P = pos.array as Float32Array;
-    const C = col.array as Float32Array;
-    for (let i = 0; i < G; i += 1) {
-      const s = sprites.current[i];
-      const a = anchors[i];
-      C[i * 8 + 3] = 0;
-      C[i * 8 + 7] = 0;
-      if (!s || !a) continue;
-      const tgt = st.target[i];
-      const placed = Number.isFinite(tgt);
-      // A name coming back from invisible appears in its new slot rather than sliding there.
-      if (placed) {
-        const snap = st.alpha[i] < 0.03;
-        st.shift[i] = snap ? tgt : st.shift[i] + (tgt - st.shift[i]) * ease;
-        st.shiftX[i] = snap ? st.targetX[i] : st.shiftX[i] + (st.targetX[i] - st.shiftX[i]) * ease;
+/** Draws the back and front 2D canvases after the Director, then keeps frames coming while anything moves. */
+function Painter({
+  m,
+  live,
+  back,
+  front,
+}: {
+  m: Model;
+  live: MutableRefObject<Live>;
+  back: MutableRefObject<HTMLCanvasElement | null>;
+  front: MutableRefObject<HTMLCanvasElement | null>;
+}) {
+  const invalidate = useThree((s) => s.invalidate);
+  useFrame((state, dt) => {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = state.size.width;
+    const H = state.size.height;
+    const now = performance.now();
+    for (const [ref, paint] of [
+      [back, (ctx: CanvasRenderingContext2D) => paintBack(ctx, m, live.current.paint, now)],
+      [front, (ctx: CanvasRenderingContext2D) => paintFront(ctx, m, live.current.paint, dt)],
+    ] as const) {
+      const c = ref.current;
+      if (!c) continue;
+      const pw = Math.round(W * dpr);
+      const ph = Math.round(H * dpr);
+      if (c.width !== pw || c.height !== ph) {
+        c.width = pw;
+        c.height = ph;
       }
-      st.alpha[i] += ((placed ? st.fade[i] : 0) - st.alpha[i]) * ease;
-      const alpha = st.alpha[i];
-      s.visible = alpha > 0.02;
-      (s.material as THREE.SpriteMaterial).opacity = alpha;
-      if (!s.visible) continue;
-
-      const ppu = st.ppu[i];
-      const sh = st.shift[i];
-      const sx = st.shiftX[i] / ppu;
-      s.position.copy(a.at).addScaledVector(st.up, -sh / ppu).addScaledVector(st.right, sx);
-
-      // Leader from the home point to the nearer edge of the displaced name.
-      const lead = alpha * 0.55 * Math.min(1, Math.max(0, (Math.abs(sh) - 8) / 16));
-      if (lead > 0.01) {
-        const from = sh < 0 ? 2 : -2;
-        const to = sh < 0 ? -sh - 3 : -sh + st.h[i] + 3;
-        st.v.copy(a.at).addScaledVector(st.up, from / ppu).toArray(P, i * 6);
-        st.v.copy(a.at).addScaledVector(st.up, to / ppu).addScaledVector(st.right, sx).toArray(P, i * 6 + 3);
-        C[i * 8 + 3] = lead;
-        C[i * 8 + 7] = lead;
-      }
-
-      if (placed && st.fade[i] > 0.35) {
-        const o = nb * 4;
-        board.groupBoxes[o] = st.hx[i] + st.targetX[i] - st.w[i] / 2;
-        board.groupBoxes[o + 1] = st.hy[i] + tgt - st.h[i];
-        board.groupBoxes[o + 2] = st.w[i];
-        board.groupBoxes[o + 3] = st.h[i];
-        nb += 1;
-      }
+      const ctx = c.getContext('2d');
+      if (!ctx) continue;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      paint(ctx);
     }
-    board.groupCount = nb;
-    pos.needsUpdate = true;
-    col.needsUpdate = true;
-  }, -0.5);
-
-  return (
-    <>
-      <primitive object={leaders} />
-      {groups.map((g, i) => {
-        const t = texs[i];
-        if (!anchors[i] || !t) return null;
-        return (
-          <sprite
-            key={g.id}
-            ref={(el: unknown) => {
-              sprites.current[i] = el as THREE.Sprite | null;
-            }}
-            visible={false}
-            scale={[t.w, t.h, 1]}
-            center={[0.5, 0] as never}
-            renderOrder={3}
-            raycast={() => null}
-          >
-            <spriteMaterial map={t.tex as never} transparent opacity={0} depthWrite={false} depthTest={false} />
-          </sprite>
-        );
-      })}
-    </>
-  );
-}
-
-
-// ── Nebulae, trails, links ───────────────────────────────────────────────────
-
-function Nebulae({ payload, visible, hiddenGroups, theme }: SceneProps) {
-  const tex = useGlowTexture();
-  const mats = useRef<(THREE.SpriteMaterial | null)[]>([]);
-
-  const sprites = useMemo(() => {
-    const out: { key: string; pos: [number, number, number]; color: string; base: number; scale: number }[] = [];
-    const colorOf = new Map(payload.groups.map((g) => [g.id, g.color]));
-    for (const n of payload.nodes) {
-      if (!visible.has(n.key)) continue;
-      for (const [gid, w] of Object.entries(n.groups)) {
-        if (w < 0.1 || hiddenGroups.has(gid)) continue;
-        const color = colorOf.get(gid);
-        if (!color) continue;
-        out.push({
-          key: `${n.key}|${gid}`,
-          pos: v3(n.pos),
-          color,
-          base: (theme.dark ? 0.34 : 0.2) * w,
-          scale: 3.4 + 0.5 * Math.sqrt(n.mass),
-        });
-      }
-    }
-    return out;
-  }, [payload, visible, hiddenGroups, theme.dark]);
-
-  const worldPos = useMemo(() => sprites.map((s) => new THREE.Vector3(...s.pos)), [sprites]);
-
-  useFrame(({ camera }) => {
-    for (let i = 0; i < sprites.length; i += 1) {
-      const m = mats.current[i];
-      if (!m) continue;
-      const d = camera.position.distanceTo(worldPos[i]);
-      m.opacity = sprites[i].base * Math.min(1, Math.max(0.2, (d - 2) / 12));
-    }
+    m.frames++;
+    if (m.moving) invalidate();
   });
-
-  const blending = theme.dark ? THREE.AdditiveBlending : THREE.NormalBlending;
-  return (
-    <group>
-      {sprites.map((s, i) => (
-        <sprite
-          key={`${s.key}|${theme.dark ? 'd' : 'l'}`}
-          renderOrder={-1}
-          position={s.pos}           scale={[s.scale, s.scale, 1]}
-          raycast={() => null}
-        >
-          <spriteMaterial
-            ref={(el: unknown) => {
-              mats.current[i] = el as THREE.SpriteMaterial | null;
-            }}
-            map={tex as never}
-            color={s.color}
-            transparent
-            opacity={s.base}
-            depthWrite={false}
-            blending={blending}
-          />
-        </sprite>
-      ))}
-    </group>
-  );
-}
-
-function Trails({ payload, visible, theme }: SceneProps) {
-  const byKey = useMemo(() => new Map(payload.nodes.map((n) => [n.key, n])), [payload.nodes]);
-  return (
-    <>
-      {payload.trails.map((tr) => {
-        const pts = tr.keys
-          .filter((k) => visible.has(k))
-          .map((k) => byKey.get(k))
-          .filter((n): n is TasteMapPayloadNode => !!n)
-          .map((n) => v3(n.pos));
-        if (pts.length < 2) return null;
-        return (
-          <Line
-            key={tr.artistId}
-            points={pts}
-            color={theme.muted}
-            lineWidth={1.5}
-            dashed
-            dashSize={0.25}
-            gapSize={0.18}
-            transparent
-            opacity={0.75}
-            raycast={() => null}
-          />
-        );
-      })}
-    </>
-  );
-}
-
-function NeighborLinks({ payload, visible, selectedKey, theme }: SceneProps) {
-  const byKey = useMemo(() => new Map(payload.nodes.map((n) => [n.key, n])), [payload.nodes]);
-  if (!selectedKey) return null;
-  const from = byKey.get(selectedKey);
-  if (!from) return null;
-  return (
-    <>
-      {(payload.neighbors[selectedKey] ?? []).map((nb) => {
-        const to = byKey.get(nb.key);
-        if (!to || !visible.has(nb.key)) return null;
-        return (
-          <Line
-            key={nb.key}
-            points={[v3(from.pos), v3(to.pos)]}
-            color={theme.ink}
-            lineWidth={1}
-            transparent
-            opacity={0.15 + 0.4 * nb.sim}
-            raycast={() => null}
-          />
-        );
-      })}
-      <Billboard position={v3(from.pos)}>
-        <mesh raycast={() => null}>
-          <ringGeometry args={[radiusOf(from.mass) * 1.75, radiusOf(from.mass) * 2.05, 48]} />
-          <meshBasicMaterial color={theme.ink} transparent opacity={0.85} depthWrite={false} />
-        </mesh>
-      </Billboard>
-    </>
-  );
-}
-
-// ── Add-artist ghost ─────────────────────────────────────────────────────────
-
-const GHOST_R = 0.32;
-const RING = Array.from({ length: 49 }, (_, i) => {
-  const a = (i / 48) * Math.PI * 2;
-  return [Math.cos(a) * GHOST_R * 1.35, Math.sin(a) * GHOST_R * 1.35, 0] as [number, number, number];
-});
-
-function Ghost({ ghost, payload, visible, theme }: SceneProps) {
-  const items = useMemo(
-    () => (ghost ? [{ id: ghost.key, lines: [ghost.label, ghost.tag], color: theme.ink, fontSize: 0.42, weight: 800 }] : []),
-    [ghost, theme.ink],
-  );
-  const texs = useLabelTextures(items, theme);
-  const byKey = useMemo(() => new Map(payload.nodes.map((n) => [n.key, n])), [payload.nodes]);
-  if (!ghost) return null;
-  const at = v3(ghost.pos);
-  const t = texs[0];
-  return (
-    <group>
-      {ghost.anchors.map((k) => {
-        const n = byKey.get(k);
-        if (!n || !visible.has(k)) return null;
-        return (
-          <Line
-            key={k}
-            points={[at, v3(n.pos)]}
-            color={theme.ink}
-            lineWidth={1}
-            dashed
-            dashSize={0.18}
-            gapSize={0.14}
-            transparent
-            opacity={0.55}
-            raycast={() => null}
-          />
-        );
-      })}
-      <mesh position={at} raycast={() => null} renderOrder={1}>
-        <sphereGeometry args={[GHOST_R, 24, 16]} />
-        <meshBasicMaterial color={theme.ink} transparent opacity={0.16} depthWrite={false} />
-      </mesh>
-      <Billboard position={at}>
-        <Line points={RING} color={theme.ink} lineWidth={1.4} dashed dashSize={0.09} gapSize={0.07} transparent opacity={0.9} raycast={() => null} />
-      </Billboard>
-      {t && (
-        <sprite position={[at[0], at[1] + GHOST_R * 1.6, at[2]]} scale={[t.w, t.h, 1]} center={[0.5, 0] as never} renderOrder={5} raycast={() => null}>
-          <spriteMaterial map={t.tex as never} transparent depthWrite={false} depthTest={false} />
-        </sprite>
-      )}
-    </group>
-  );
+  return null;
 }
