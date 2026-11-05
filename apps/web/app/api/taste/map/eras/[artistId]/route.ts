@@ -5,6 +5,7 @@ import { rateLimit } from '../../../../../../lib/rateLimit';
 import { loadArtistInputs } from '../../../../../../lib/tasteMap/load';
 import { eraView, parseEraPut, validateSplits } from '../../../../../../lib/tasteMap/eraEdit';
 import { isUuid, readJson } from '../../../../../../lib/tasteMap/validatePhase4';
+import { canSeeTasteMap } from '../../../../../../lib/tasteMap/access';
 
 // GET /api/taste/map/eras/[artistId] → EraGetResponse: the artist's whole
 // discography (chronological, rated albums marked), the stored override and what
@@ -24,6 +25,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   if (limited) return limited;
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
   const db = createServerClient();
   if (!db) return NextResponse.json({ error: 'not configured' }, { status: 503 });
   if (!isUuid(params.artistId)) return NextResponse.json({ error: 'invalid artist id' }, { status: 400 });
@@ -44,6 +46,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   if (limited) return limited;
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
   const db = createServerClient();
   if (!db) return NextResponse.json({ error: 'not configured' }, { status: 503 });
   if (!isUuid(params.artistId)) return NextResponse.json({ error: 'invalid artist id' }, { status: 400 });

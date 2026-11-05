@@ -31,6 +31,18 @@ vi.mock('../genres/sourceWriter', () => ({
     return { releaseGroups: items.length, upserted: items.length, deleted: 0, unmappedStaged: 0, unchanged: 0 };
   },
 }));
+// access.ts allowlists real profile ids; route tests run as USER, so stand in for it.
+const access = vi.hoisted(() => ({ open: false, allow: new Set<string>(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']) }));
+vi.mock('./access', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./access')>();
+  const allowed = (id: string | null | undefined) => !!id && access.allow.has(id);
+  return {
+    ...real,
+    isTasteMapAllowlisted: allowed,
+    canSeeTasteMap: (id: string | null | undefined) => access.open || allowed(id),
+    requiredRatedAlbums: (id: string | null | undefined) => (allowed(id) ? real.HARD_FLOOR_RATED_ALBUMS : real.MIN_RATED_ALBUMS),
+  };
+});
 
 import { PUT as putNodeState } from '../../app/api/taste/map/node-state/route';
 import { GET as getQuestions, POST as postAnswer } from '../../app/api/taste/map/questions/route';
@@ -129,6 +141,8 @@ function expectScoped(): void {
 }
 
 beforeEach(() => {
+  access.open = false;
+  access.allow = new Set([USER]);
   state.userId = USER;
   state.input = makeInput();
   state.catalogArtists = makeInput().artists.map(withOldTags);
@@ -217,7 +231,16 @@ describe('POST /api/taste/map/questions', () => {
     expect(res.status).toBe(404);
   });
 
-  it('a non-allowlisted user: answer stored, catalog untouched', async () => {
+  it('403 for a non-allowlisted user while the map is closed', async () => {
+    access.allow = new Set();
+    const res = await postAnswer(req('/api/taste/map/questions', 'POST', { key: thinKey, genreId: 'folk' }));
+    expect(res.status).toBe(403);
+    expect(calls.some((c) => c.table === 'taste_map_node_state')).toBe(false);
+  });
+
+  it('once the map is open, a non-allowlisted user: answer stored, catalog untouched', async () => {
+    access.open = true;
+    access.allow = new Set();
     useDb({ username: 'someone', genres });
     const res = await postAnswer(req('/api/taste/map/questions', 'POST', { key: thinKey, genreId: 'folk' }));
     expect(res.status).toBe(200);
@@ -251,6 +274,15 @@ describe('POST /api/taste/map/questions', () => {
     const up = calls.find((c) => c.table === 'taste_map_node_state' && c.op === 'upsert')!;
     expect(rowsOf(up)[0].answer).toMatchObject({ none: true });
     expect(state.written).toEqual([]);
+  });
+
+  it('"none of these" keeps ownership of earlier catalog writes, so a later answer can replace them', async () => {
+    const owned = ['11111111-1111-4111-8111-111111111111'];
+    useDb({ username: 'zero', genres, nodeState: [{ node_key: thinKey, state: null, answer: { genreId: 'folk', at: 'x', catalogRgIds: owned } }] });
+    const res = await postAnswer(req('/api/taste/map/questions', 'POST', { key: thinKey, none: true }));
+    expect(res.status).toBe(200);
+    const up = calls.find((c) => c.table === 'taste_map_node_state' && c.op === 'upsert')!;
+    expect(rowsOf(up)[0].answer).toMatchObject({ none: true, catalogRgIds: owned });
   });
 
   it('503 when the migration is not applied, before touching the catalog', async () => {

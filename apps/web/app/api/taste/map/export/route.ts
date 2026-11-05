@@ -5,6 +5,7 @@ import { rateLimit } from '../../../../../lib/rateLimit';
 import { LENS } from '../../../../../lib/tasteMap/payload';
 import { selectPins } from '../../../../../lib/tasteMap/store';
 import { buildExport } from '../../../../../lib/tasteMap/exportImport';
+import { canSeeTasteMap } from '../../../../../lib/tasteMap/access';
 
 // GET /api/taste/map/export (TASTE_MAP_PLAN.md Phase 3): the user's map inputs
 // (pins, groups + members, era overrides, metric, stored layout) as a
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest) {
 
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
 
   const db = createServerClient();
   if (!db) return NextResponse.json({ error: 'not configured' }, { status: 503 });

@@ -45,11 +45,10 @@ function parseAnswer(raw: unknown): NodeAnswer | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
   const at = typeof o.at === 'string' ? o.at : '';
-  if (typeof o.genreId === 'string' && o.genreId) {
-    const ids = Array.isArray(o.catalogRgIds) ? o.catalogRgIds.filter((x): x is string => typeof x === 'string') : undefined;
-    return { genreId: o.genreId, at, ...(ids?.length ? { catalogRgIds: ids } : {}) };
-  }
-  if (o.none === true) return { none: true, at };
+  const ids = Array.isArray(o.catalogRgIds) ? o.catalogRgIds.filter((x): x is string => typeof x === 'string') : undefined;
+  const owned = ids?.length ? { catalogRgIds: ids } : {};
+  if (typeof o.genreId === 'string' && o.genreId) return { genreId: o.genreId, at, ...owned };
+  if (o.none === true) return { none: true, at, ...owned };
   return null;
 }
 

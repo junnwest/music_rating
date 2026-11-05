@@ -28,6 +28,18 @@ vi.mock('./metric', async (importOriginal) => {
   const real = await importOriginal<typeof import('./metric')>();
   return { ...real, leaveOnePinOut: (...args: Parameters<typeof real.leaveOnePinOut>) => lopo.value ?? real.leaveOnePinOut(...args) };
 });
+// access.ts allowlists real profile ids; route tests run as USER, so stand in for it.
+const access = vi.hoisted(() => ({ open: false, allow: new Set<string>(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']) }));
+vi.mock('./access', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./access')>();
+  const allowed = (id: string | null | undefined) => !!id && access.allow.has(id);
+  return {
+    ...real,
+    isTasteMapAllowlisted: allowed,
+    canSeeTasteMap: (id: string | null | undefined) => access.open || allowed(id),
+    requiredRatedAlbums: (id: string | null | undefined) => (allowed(id) ? real.HARD_FLOOR_RATED_ALBUMS : real.MIN_RATED_ALBUMS),
+  };
+});
 
 import { POST as createGroup } from '../../app/api/taste/map/groups/route';
 import { PATCH as patchGroup, DELETE as deleteGroup } from '../../app/api/taste/map/groups/[id]/route';

@@ -93,6 +93,8 @@ interface StoredLayoutRow {
 }
 
 export async function buildTasteMapPayload(db: SupabaseClient, userId: string, opts: BuildOptions = {}): Promise<BuildResult> {
+  // Before any loading: the full input read (embeddings included) is the expensive part.
+  if (!opts.ignoreAccess && !canSeeTasteMap(userId)) return { kind: 'no-access' };
   const [input, erasRes, pinsRes, groupsRes, metricRes, layoutRes, nodeStates] = await Promise.all([
     loadMapUserInput(db, userId),
     db.from('taste_map_eras').select('artist_id, split_rg_ids').eq('user_id', userId),
@@ -103,9 +105,8 @@ export async function buildTasteMapPayload(db: SupabaseClient, userId: string, o
     loadNodeStates(db, userId),
   ]);
 
-  if (!opts.ignoreAccess && !canSeeTasteMap(input.username)) return { kind: 'no-access' };
   const ratedAlbums = input.artists.flatMap((a) => a.albums.filter((al) => al.rated));
-  const needed = opts.ignoreAccess ? 1 : requiredRatedAlbums(input.username);
+  const needed = opts.ignoreAccess ? 1 : requiredRatedAlbums(userId);
   if (ratedAlbums.length < needed) return { kind: 'too-few', needed, have: ratedAlbums.length };
 
   const overrides: EraOverride[] = (erasRes.data ?? []).map((r) => ({ artistId: r.artist_id, splitAlbumIds: r.split_rg_ids ?? [] }));

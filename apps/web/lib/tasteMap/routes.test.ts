@@ -15,6 +15,18 @@ vi.mock('../supabaseServer', () => ({ createServerClient: () => state.db }));
 vi.mock('../authGuard', () => ({ getAuthedUserId: async () => state.userId }));
 vi.mock('../rateLimit', () => ({ rateLimit: async () => null }));
 vi.mock('../cache', () => ({ cacheGet: async () => null, cacheSet: async () => undefined, cacheDel: async () => undefined }));
+// access.ts allowlists real profile ids; route tests run as USER, so stand in for it.
+const access = vi.hoisted(() => ({ open: false, allow: new Set<string>(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']) }));
+vi.mock('./access', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./access')>();
+  const allowed = (id: string | null | undefined) => !!id && access.allow.has(id);
+  return {
+    ...real,
+    isTasteMapAllowlisted: allowed,
+    canSeeTasteMap: (id: string | null | undefined) => access.open || allowed(id),
+    requiredRatedAlbums: (id: string | null | undefined) => (allowed(id) ? real.HARD_FLOOR_RATED_ALBUMS : real.MIN_RATED_ALBUMS),
+  };
+});
 
 import { PUT as putPins } from '../../app/api/taste/map/pins/route';
 import { PUT as putLayout } from '../../app/api/taste/map/layout/route';

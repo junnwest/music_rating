@@ -4,6 +4,7 @@ import { getAuthedUserId } from '../../../../../../../lib/authGuard';
 import { rateLimit } from '../../../../../../../lib/rateLimit';
 import { membershipOverflows, overflowError, parseMembersPut, type MemberRow } from '../../../../../../../lib/tasteMap/groupsLogic';
 import { isUuid, readJson } from '../../../../../../../lib/tasteMap/validatePhase4';
+import { canSeeTasteMap } from '../../../../../../../lib/tasteMap/access';
 
 // PUT /api/taste/map/groups/[id]/members — replace that group's members
 // (MembersPutBody → { ok: true, count }). 400 when any node's weights across ALL
@@ -16,6 +17,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (limited) return limited;
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
   const db = createServerClient();
   if (!db) return NextResponse.json({ error: 'not configured' }, { status: 503 });
   if (!isUuid(params.id)) return NextResponse.json({ error: 'invalid group id' }, { status: 400 });

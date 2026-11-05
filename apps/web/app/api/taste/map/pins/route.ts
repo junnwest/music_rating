@@ -5,6 +5,7 @@ import { rateLimit } from '../../../../../lib/rateLimit';
 import { readJsonBody, replacePins } from '../../../../../lib/tasteMap/store';
 import { validatePinsBody } from '../../../../../lib/tasteMap/validate';
 import type { OkResponse } from '../../../../../lib/tasteMap/apiTypes';
+import { canSeeTasteMap } from '../../../../../lib/tasteMap/access';
 
 // PUT /api/taste/map/pins (TASTE_MAP_PLAN.md Phase 3): replaces the user's whole
 // pin set (apiTypes.ts PinsPutBody). The client autosaves on a debounce. Pins are
@@ -21,6 +22,7 @@ export async function PUT(req: NextRequest) {
 
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
 
   const body = await readJsonBody(req, MAX_BODY_BYTES);
   if (!body.ok) return NextResponse.json({ error: body.error }, { status: body.status });

@@ -381,7 +381,7 @@ function ReportView({
       {graph && (
         <Section no={nextNo()} title={t('sj.taste.mapHeader')} lead={t('sj.taste.mapSub')}>
           <TasteGraph data={graph} />
-          {canSeeTasteMap(profile?.username) && (
+          {canSeeTasteMap(profile?.id) && (
             <Link
               href="/taste/map"
               className="mt-4 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent-soft/50 px-4 py-2 text-[13px] font-bold text-accent hover:bg-accent-soft transition-colors"

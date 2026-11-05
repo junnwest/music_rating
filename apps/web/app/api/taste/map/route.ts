@@ -5,6 +5,7 @@ import { rateLimit } from '../../../../lib/rateLimit';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
 import { buildTasteMapPayload } from '../../../../lib/tasteMap/payload';
 import type { TasteMapPayload } from '../../../../lib/tasteMap/types';
+import { canSeeTasteMap } from '../../../../lib/tasteMap/access';
 
 // The 3D/2D taste map (TASTE_MAP_PLAN.md, Phase 2). One payload for web and iOS,
 // built in lib/tasteMap/payload.ts (Node, Micro-instance rule). Cached per input
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
 
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
 
   const db = createServerClient();
   if (!db) return NextResponse.json({ error: 'not configured' }, { status: 503 });

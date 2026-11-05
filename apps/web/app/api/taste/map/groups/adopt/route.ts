@@ -6,6 +6,7 @@ import { rateLimit } from '../../../../../../lib/rateLimit';
 import { parseAdopt } from '../../../../../../lib/tasteMap/groupsLogic';
 import { readJson } from '../../../../../../lib/tasteMap/validatePhase4';
 import type { TasteMapGroup } from '../../../../../../lib/tasteMap/types';
+import { canSeeTasteMap } from '../../../../../../lib/tasteMap/access';
 
 // POST /api/taste/map/groups/adopt — materialize the seeded (world) groups
 // (GroupsAdoptBody → { groups, idMap }). 409 when the user already has stored
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
   const db = createServerClient();
   if (!db) return NextResponse.json({ error: 'not configured' }, { status: 503 });
 

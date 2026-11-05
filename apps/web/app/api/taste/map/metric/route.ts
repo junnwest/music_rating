@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
   if (limited) return limited;
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
   const db = createServerClient();
   if (!db) return NextResponse.json({ error: 'not configured' }, { status: 503 });
 
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
   const db = createServerClient();
   if (!db) return NextResponse.json({ error: 'not configured' }, { status: 503 });
 
@@ -60,9 +62,8 @@ export async function POST(req: NextRequest) {
   }
 
   const [input, state] = await Promise.all([loadMapUserInput(db, userId), loadStoredState(db, userId)]);
-  if (!canSeeTasteMap(input.username)) return NextResponse.json({ error: 'not available' }, { status: 403 });
-  // Same gate as the map route (access.ts).
-  const needed = requiredRatedAlbums(input.username);
+  // Same rating gate as the map route (access.ts).
+  const needed = requiredRatedAlbums(userId);
   const rated = input.artists.reduce((s, a) => s + a.albums.filter((al) => al.rated).length, 0);
   if (rated < needed) return NextResponse.json({ error: 'not enough ratings', needed, have: rated }, { status: 422 });
 

@@ -9,7 +9,7 @@ import { buildQuestions, isAnswerable } from '../../../../../lib/tasteMap/questi
 import { getNodeAnswer, setNodeAnswer } from '../../../../../lib/tasteMap/nodeState';
 import { loadArtistInputs } from '../../../../../lib/tasteMap/load';
 import { splitEras } from '../../../../../lib/tasteMap/eras';
-import { isTasteMapAllowlisted } from '../../../../../lib/tasteMap/access';
+import { canSeeTasteMap, isTasteMapAllowlisted } from '../../../../../lib/tasteMap/access';
 import { catalogTargets, readGenreSources, writeManualGenre } from '../../../../../lib/tasteMap/answerCatalog';
 import type { AnswerPostResponse, NodeAnswer, QuestionsResponse } from '../../../../../lib/tasteMap/ghostApi';
 
@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
   if (limited) return limited;
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
   const db = createServerClient();
   if (!db) return NextResponse.json({ error: 'not configured' }, { status: 503 });
 
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
 
   const body = await readJsonBody(req, MAX_BODY_BYTES);
   if (!body.ok) return NextResponse.json({ error: body.error }, { status: body.status });
@@ -68,8 +70,7 @@ export async function POST(req: NextRequest) {
 
   // The node must be on this user's map: its artist rated, the key one of its eras.
   const artistId = key.split(':')[1];
-  const [profileRes, artists, eraRes, prev] = await Promise.all([
-    db.from('profiles').select('username').eq('id', userId).maybeSingle(),
+  const [artists, eraRes, prev] = await Promise.all([
     loadArtistInputs(db, [artistId], { userId, embeddings: false }),
     db.from('taste_map_eras').select('split_rg_ids').eq('user_id', userId).eq('artist_id', artistId).maybeSingle(),
     getNodeAnswer(db, userId, key),
@@ -84,8 +85,8 @@ export async function POST(req: NextRequest) {
   if (!segment || !albums.some((a) => a.rated)) return NextResponse.json({ error: 'not a node on your map' }, { status: 404 });
 
   const at = new Date().toISOString();
-  const prevOwn = prev.answer && 'genreId' in prev.answer ? prev.answer.catalogRgIds ?? [] : [];
-  const allowlisted = isTasteMapAllowlisted((profileRes.data as { username: string | null } | null)?.username);
+  const prevOwn = prev.answer?.catalogRgIds ?? [];
+  const allowlisted = isTasteMapAllowlisted(userId);
 
   // Catalog targets first (read-only), so the stored answer remembers which albums it may later replace.
   let targets: string[] = [];
@@ -100,7 +101,7 @@ export async function POST(req: NextRequest) {
 
   const answer: NodeAnswer = genreId
     ? { genreId, at, ...([...new Set([...prevOwn, ...targets])].length ? { catalogRgIds: [...new Set([...prevOwn, ...targets])] } : {}) }
-    : { none: true, at };
+    : { none: true, at, ...(prevOwn.length ? { catalogRgIds: prevOwn } : {}) };
   const saved = await setNodeAnswer(db, userId, key, answer);
   if (!saved.ok) {
     if (saved.missing) return NextResponse.json({ error: 'ghost questions are not available yet' }, { status: 503 });

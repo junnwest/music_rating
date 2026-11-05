@@ -6,6 +6,7 @@ import { loadArtistInputs, loadMapUserInput } from '../../../../../lib/tasteMap/
 import { onMapKeys, placeArtist } from '../../../../../lib/tasteMap/place';
 import { loadStoredState, mapPositions } from '../../../../../lib/tasteMap/storedState';
 import { isUuid } from '../../../../../lib/tasteMap/validatePhase4';
+import { canSeeTasteMap } from '../../../../../lib/tasteMap/access';
 
 // GET /api/taste/map/place?artistId=<uuid> → PlaceResponse: where an artist the
 // user hasn't rated would land (kNN barycentre in the user's stored metric) and
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
   if (limited) return limited;
   const userId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!canSeeTasteMap(userId)) return NextResponse.json({ error: 'not available' }, { status: 403 });
   const db = createServerClient();
   if (!db) return NextResponse.json({ error: 'not configured' }, { status: 503 });
 

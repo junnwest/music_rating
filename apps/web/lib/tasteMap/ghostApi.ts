@@ -28,7 +28,8 @@ export type NodeAnswer =
       /** release_groups the catalog write put `manual` rows on (allowlisted users only), so a re-answer may replace them. */
       catalogRgIds?: string[];
     }
-  | { none: true; at: string };
+  /** catalogRgIds carries over from an earlier genre answer, so a later re-answer can still replace those rows. */
+  | { none: true; at: string; catalogRgIds?: string[] };
 
 export interface NodeState {
   state: NodeStateValue | null;
