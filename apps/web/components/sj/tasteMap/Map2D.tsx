@@ -4,9 +4,23 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { contourDensity, contours as gridContours } from 'd3-contour';
 import { depthLightness, distortionRgb, GRAY, hueMap, nodeRgb, oklabToRgb, rgbCss, type MapLens, type Rgb } from '../../../lib/tasteMap/color';
 import { colorField, spanningTree, tagGradients, type FieldPoint } from '../../../lib/tasteMap/fields';
+import { egoLayout, EGO_MODES, VEC_H, VEC_W, whatsHere, type EgoLayout, type EgoMode, type HereSummary } from '../../../lib/tasteMap/focus';
+import {
+  approach,
+  coverAmount,
+  coverHalf,
+  coverThumb,
+  labelBudget,
+  magnify,
+  parallaxShift,
+  separate,
+} from '../../../lib/tasteMap/lens2d';
 import { toPlane } from '../../../lib/tasteMap/plane';
 import { regionFields } from '../../../lib/tasteMap/regions';
+import { similarityLookup } from '../../../lib/tasteMap/similarity';
 import type { NodeKey, TasteMapPayloadNode, Vec2 } from '../../../lib/tasteMap/types';
+import { useLanguage } from '../../../lib/i18n';
+import { X } from 'lucide-react';
 import type { SceneGhost, SceneProps } from './TasteMapView';
 
 /**
@@ -50,10 +64,32 @@ import type { SceneGhost, SceneProps } from './TasteMapView';
  *   between its two positions. The graticule is a scale, so only to scale.
  *   Dragging is off in the schematic (the shell sets editable).
  *
- * Interaction is unchanged: pan by dragging the background, wheel / pinch to
- * zoom, drag a node to move + pin it (D5: x, y fixed, depth soft), pin badges
- * (filled = full pin, hollow = 2D pin). Draws on demand; an animation (focus,
- * lens fade, link draw-on) keeps requesting frames only while it runs.
+ * Interaction: pan by dragging the background, wheel / pinch to zoom, drag a
+ * node to move + pin it (D5: x, y fixed, depth soft), pin badges (filled =
+ * full pin, hollow = 2D pin). Draws on demand; an animation (focus, lens fade,
+ * link draw-on, refocus, cursor lenses) keeps requesting frames only while it runs.
+ *
+ * Interactive layer (2026-11-05; lib/tasteMap/lens2d.ts + focus.ts):
+ * - Cursor lenses (mouse only, off while dragging and under
+ *   prefers-reduced-motion): depth parallax (stars shift against the cursor by
+ *   their depth, the background stays, so the chart reads as a volume) and a
+ *   soft Gaussian fisheye that spreads and grows stars near the cursor. Both
+ *   ease in and out; positions are display-only, hit tests use what's drawn.
+ * - Proximity reveal: stars brighten and grow as the cursor nears; the nearest
+ *   gets its label, then a small card (era, albums, a depth bar), then its top
+ *   sound-mix chips.
+ * - Semantic zoom: a label budget that grows with zoom (shown labels keep their
+ *   place, so they don't flicker), then album covers as the stars themselves
+ *   (lazy, cached, thumbnails), with on-screen overlap removal.
+ * - Refocus on select (Distance / Vector / Depth, or In place): the others
+ *   animate, nearest first, into an ego view of the selected star; the color
+ *   field is recomputed on the ego layout and crossfades; contours, territories
+ *   and country names fade out; rings / axes / a horizon explain the new
+ *   space. Esc, an empty click or deselect animates back to the saved view.
+ * - What's here? (empty-space click with nothing selected): the field's
+ *   kernel-weighted sound mix at that point and the nearest three artists.
+ * - Ghost nodes (payload `ghost`): hollow, faint, dashed; never in the field,
+ *   contours, territories or constellation lines; `hidden` ones aren't drawn.
  */
 
 const GRID = 1000;
@@ -65,6 +101,97 @@ const LINK_MS = 550;
 const REGION_N = 120;
 const MORPH_MS = 900;
 const TAU = Math.PI * 2;
+/** Refocus: each star's move, and the spread of start times (nearest first). */
+const EGO_MS = 760;
+const EGO_STAGGER_MS = 260;
+/** Proximity reveal: stars within ~2σ brighten; the nearest within CARD px gets a card, within CHIPS px its sound mix. */
+const PROX_SIGMA = 55;
+const PROX_CARD = 72;
+const PROX_CHIPS = 28;
+/** Cursor-lens smoothing time constants (ms). */
+const TAU_PARALLAX = 260;
+const TAU_FISHEYE = 70;
+const TAU_STRENGTH = 180;
+const TAU_SEPARATE = 140;
+const EGO_KEY = 'tasteMap.egoMode';
+
+type EgoPick = EgoMode | 'off';
+
+const COPY2D = {
+  en: {
+    inPlace: 'In place',
+    distance: 'Distance',
+    vector: 'Vector',
+    depth: 'Depth',
+    inPlaceTip: 'Keep the map as it is',
+    distanceTip: 'Everything else at its true similarity: rings at 0.8 / 0.6 / 0.4 / 0.2 / 0.1, bearing kept from the map',
+    vectorTip: 'Left to right: less to more like the selection. Up and down: the strongest other difference among the rest',
+    depthTip: 'The map seen from the side: up is in front of the selection, down is behind it',
+    capDistance: (name: string) => `rings = true similarity to ${name}`,
+    capVector: (name: string) => `→ more like ${name}`,
+    capDepth: (name: string) => `↑ in front of ${name} · ↓ behind`,
+    lessLike: 'less alike',
+    more: (tag: string) => `more ${tag}`,
+    toward: (name: string) => `toward ${name}`,
+    inFront: (name: string) => `in front of ${name}`,
+    behind: 'behind',
+    front: 'front',
+    back: 'back',
+    mid: 'middle',
+    depthWord: 'depth',
+    albums: (n: number) => (n === 1 ? '1 rated album' : `${n} rated albums`),
+    avg: 'avg',
+    hereTitle: "What's here?",
+    hereEmpty: 'Empty sky: nothing you rated is close.',
+    hereSparse: 'Sparse: a few artists nearby',
+    hereDense: 'Dense: a lot of your listening',
+    hereNearest: 'Nearest',
+    close: 'Close',
+    viewModes: 'Refocus around the selection',
+  },
+  ko: {
+    inPlace: '그대로',
+    distance: '거리',
+    vector: '방향',
+    depth: '깊이',
+    inPlaceTip: '지도를 그대로 둬요',
+    distanceTip: '나머지를 실제 유사도로 배치해요: 0.8 / 0.6 / 0.4 / 0.2 / 0.1 고리, 방향은 지도 그대로',
+    vectorTip: '왼쪽에서 오른쪽: 선택한 아티스트와 덜 비슷한 → 더 비슷한. 위아래: 나머지 사이의 가장 큰 다른 차이',
+    depthTip: '지도를 옆에서 본 모습: 위는 선택한 아티스트보다 앞, 아래는 뒤',
+    capDistance: (name: string) => `고리 = ${name}와의 실제 유사도`,
+    capVector: (name: string) => `→ ${name}와 더 비슷함`,
+    capDepth: (name: string) => `↑ ${name}보다 앞 · ↓ 뒤`,
+    lessLike: '덜 비슷함',
+    more: (tag: string) => `${tag} 쪽`,
+    toward: (name: string) => `${name} 쪽`,
+    inFront: (name: string) => `${name}보다 앞`,
+    behind: '뒤',
+    front: '앞',
+    back: '뒤',
+    mid: '가운데',
+    depthWord: '깊이',
+    albums: (n: number) => `평가한 앨범 ${n}장`,
+    avg: '평균',
+    hereTitle: '여기엔 뭐가 있나요?',
+    hereEmpty: '빈 하늘: 가까이에 평가한 아티스트가 없어요.',
+    hereSparse: '드문 곳: 근처에 아티스트가 조금 있어요',
+    hereDense: '밀집한 곳: 많이 듣는 곳이에요',
+    hereNearest: '가장 가까운',
+    close: '닫기',
+    viewModes: '선택한 아티스트를 중심으로 다시 배치',
+  },
+};
+
+/**
+ * Hook for the "What's here?" card: unrated catalog albums near a point of the
+ * map need a server route (out of scope for the 2D pass). When one exists,
+ * set this to a fetcher; the card lists what it returns under the nearest artists.
+ */
+export type HereSuggest = (q: { pos2d: Vec2; mix: HereSummary['mix']; nearest: NodeKey[] }) => Promise<{ id: string; title: string; artist: string }[]>;
+const suggestNearby = (): HereSuggest | null => null;
+
+/** Album-cover images, shared across mounts. ok: null = loading, false = failed (the star is drawn instead). */
+const coverCache = new Map<string, { img: HTMLImageElement; ok: boolean | null }>();
 
 /** The sky. Fixed so the colors read the same in light and dark app themes. */
 const SKY = {
@@ -145,6 +272,66 @@ function niceStep(raw: number): number {
   return p * (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10);
 }
 
+/** A square field grid in plane units: its corner and cell size (GRID cells a side). */
+interface GridFrame {
+  gx0: number;
+  gy0: number;
+  gs: number;
+}
+
+/** A square grid over `pts` with a 25% margin for kernel falloff. */
+function gridFrameOf(pts: Iterable<Vec2>): GridFrame & { mx: number; my: number; spanX: number; spanY: number } {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of pts) {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  if (!Number.isFinite(minX)) {
+    minX = -1;
+    maxX = 1;
+    minY = -1;
+    maxY = 1;
+  }
+  const spanX = Math.max(maxX - minX, 0.2);
+  const spanY = Math.max(maxY - minY, 0.2);
+  const margin = Math.max(spanX, spanY) * 0.25;
+  const gs = (Math.max(spanX, spanY) + 2 * margin) / GRID;
+  const mx = (minX + maxX) / 2;
+  const my = (minY + maxY) / 2;
+  return { mx, my, spanX, spanY, gx0: mx - (GRID * gs) / 2, gy0: my - (GRID * gs) / 2, gs };
+}
+
+/** A ghost (payload `ghost`) never weighs on the density layers; a hidden one isn't on the map at all. */
+const isGhost = (n: TasteMapPayloadNode) => !!n.ghost;
+const isHidden = (n: TasteMapPayloadNode) => !!n.ghost?.hidden;
+
+/** Rounded-rect path (canvas roundRect is newer than some Safari versions). */
+function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  const q = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + q, y);
+  ctx.arcTo(x + w, y, x + w, y + h, q);
+  ctx.arcTo(x + w, y + h, x, y + h, q);
+  ctx.arcTo(x, y + h, x, y, q);
+  ctx.arcTo(x, y, x + w, y, q);
+  ctx.closePath();
+}
+
+function readEgoPick(): EgoPick {
+  try {
+    const v = window.localStorage.getItem(EGO_KEY);
+    if (v === 'off' || (EGO_MODES as readonly string[]).includes(v ?? '')) return v as EgoPick;
+  } catch {
+    // Storage blocked: the default.
+  }
+  return 'distance';
+}
+
 export default function Map2D(props: SceneProps) {
   const { payload, focus, layoutVersion, busy, lens, basis, visible, honesty, atlas, scale, schematic } = props;
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -152,6 +339,10 @@ export default function Map2D(props: SceneProps) {
   const propsRef = useRef(props);
   propsRef.current = props;
 
+  const { lang } = useLanguage();
+  const t2 = COPY2D[lang === 'ko' ? 'ko' : 'en'];
+  const t2Ref = useRef(t2);
+  t2Ref.current = t2;
   const size = useRef({ w: 0, h: 0, dpr: 1 });
   const view = useRef<View>({ k: 1, tx: 0, ty: 0 });
   const goal = useRef<View | null>(null);
@@ -180,6 +371,45 @@ export default function Map2D(props: SceneProps) {
   }
   // The morph as last drawn, for hit tests and drags between frames.
   const sNow = useRef(sTarget);
+
+  // ── Interactive layer (refs: read by draw and the pointer handlers between renders) ──
+  const reduced = useRef(false);
+  /** The mouse on the stage (touch never sets `inside`: no hover on phones). */
+  const cursor = useRef({ x: 0, y: 0, inside: false });
+  /** Smoothed cursor lenses: parallax tilt (ux, uy ∈ [−1, 1]), fisheye center and strength. */
+  const lensState = useRef({ ux: 0, uy: 0, fx: 0, fy: 0, str: 0 });
+  const lastT = useRef(0);
+  const pressing = useRef(false);
+  const draggingNode = useRef(false);
+  /** What was drawn last frame (after refocus and the lenses): hit tests use it. */
+  const drawn = useRef(new Map<NodeKey, { x: number; y: number; r: number }>());
+  /** Last frame's plane positions, refocus included: where a new refocus starts from. */
+  const lastPlane = useRef(new Map<NodeKey, Vec2>());
+  const sepOff = useRef(new Map<NodeKey, [number, number]>());
+  const labelShown = useRef(new Set<NodeKey>());
+  const [egoPick, setEgoPickState] = useState<EgoPick>(() => (typeof window === 'undefined' ? 'distance' : readEgoPick()));
+  const setEgoPick = (m: EgoPick) => {
+    setEgoPickState(m);
+    try {
+      window.localStorage.setItem(EGO_KEY, m);
+    } catch {
+      // Storage blocked: the pick lasts this visit.
+    }
+  };
+  /** Refocus transition: every star from `from` (plane snapshot) to `to` (null = back to the map). */
+  const ego = useRef<{
+    from: Map<NodeKey, Vec2> | null;
+    fromLayout: EgoLayout | null;
+    to: EgoLayout | null;
+    t0: number;
+    dur: number;
+    stagger: number;
+  }>({ from: null, fromLayout: null, to: null, t0: 0, dur: 0, stagger: 0 });
+  const preEgoView = useRef<View | null>(null);
+  const [here, setHere] = useState<{ at: Vec2; summary: HereSummary; sx: number; sy: number } | null>(null);
+  const hereRef = useRef(here);
+  hereRef.current = here;
+  const hereCard = useRef<HTMLDivElement>(null);
 
   /** A node's plane position at morph `s`: its true `pos2d`, its schematic one, or between. */
   const placeAt = (n: { key: NodeKey; pos2d: Vec2 }, s: number): Vec2 => {
@@ -210,38 +440,8 @@ export default function Map2D(props: SceneProps) {
   // toggles never move the map. Keyed on the node array, which keeps its
   // identity while positions change in place, so drags and re-arranges don't
   // re-fit the view either.
-  const frame = useMemo(() => {
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minY = Infinity;
-    let maxY = -Infinity;
-    for (const n of payload.nodes) {
-      minX = Math.min(minX, n.pos2d[0]);
-      maxX = Math.max(maxX, n.pos2d[0]);
-      minY = Math.min(minY, n.pos2d[1]);
-      maxY = Math.max(maxY, n.pos2d[1]);
-    }
-    if (!Number.isFinite(minX)) {
-      minX = -1;
-      maxX = 1;
-      minY = -1;
-      maxY = 1;
-    }
-    const spanX = Math.max(maxX - minX, 0.2);
-    const spanY = Math.max(maxY - minY, 0.2);
-    // Square grid cells over the bounds plus a margin for kernel falloff.
-    const margin = Math.max(spanX, spanY) * 0.25;
-    const gs = (Math.max(spanX, spanY) + 2 * margin) / GRID;
-    return {
-      mx: (minX + maxX) / 2,
-      my: (minY + maxY) / 2,
-      spanX,
-      spanY,
-      gx0: (minX + maxX) / 2 - (GRID * gs) / 2,
-      gy0: (minY + maxY) / 2 - (GRID * gs) / 2,
-      gs,
-    };
-  }, [payload.nodes]);
+  // Square grid cells over the bounds plus a margin for kernel falloff.
+  const frame = useMemo(() => gridFrameOf(payload.nodes.map((n) => n.pos2d)), [payload.nodes]);
 
   const rank = useMemo(() => {
     const order = [...payload.nodes].sort((a, b) => b.mass - a.mass);
@@ -252,10 +452,29 @@ export default function Map2D(props: SceneProps) {
 
   // Per-node color under both lenses. Genre lightness follows depth, which a
   // 3D drag or a re-arrange changes, so this follows the layout.
-  const colors = useMemo(() => {
+  const depth = useMemo(() => {
     const z = payload.nodes.map((n) => toPlane(n.pos, basis)[2]);
     const mean = z.reduce((s, x) => s + x, 0) / Math.max(1, z.length);
     const sigma = Math.sqrt(z.reduce((s, x) => s + (x - mean) ** 2, 0) / Math.max(1, z.length));
+    /** Depth in σ units (+ = in front), and the node's percentile front-to-back, 0…1. */
+    const norm = new Map<NodeKey, number>();
+    payload.nodes.forEach((n, i) => norm.set(n.key, sigma > 1e-9 ? (z[i] - mean) / sigma : 0));
+    const sorted = [...z].sort((a, b) => a - b);
+    const pct = new Map<NodeKey, number>();
+    payload.nodes.forEach((n, i) => {
+      let lo = 0;
+      while (lo < sorted.length && sorted[lo] < z[i]) lo++;
+      pct.set(n.key, sorted.length > 1 ? lo / (sorted.length - 1) : 0.5);
+    });
+    return { z, mean, sigma, norm, pct };
+    // layoutVersion stands in for the in-place position changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payload.nodes, basis, layoutVersion]);
+  const depthRef = useRef(depth);
+  depthRef.current = depth;
+
+  const colors = useMemo(() => {
+    const { z, mean, sigma } = depth;
     const out = new Map<NodeKey, Record<MapLens, Rgb>>();
     payload.nodes.forEach((n, i) => {
       out.set(n.key, {
@@ -265,9 +484,7 @@ export default function Map2D(props: SceneProps) {
       });
     });
     return out;
-    // layoutVersion stands in for the in-place position changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payload.nodes, hues, basis, layoutVersion, honesty]);
+  }, [payload.nodes, hues, depth, honesty]);
 
   // Expensive per-layout geometry is frozen while a drag or re-arrange runs
   // (a field + contour pass per frame is too slow), then caught up.
@@ -282,11 +499,11 @@ export default function Map2D(props: SceneProps) {
   const gridY = (y: number) => (y - frame.gy0) / frame.gs;
 
   // Color fields, one per lens, as offscreen canvases in grid space.
-  const makeFields = (at: At) => {
+  const makeFields = (at: At, fr: GridFrame = frame) => {
     if (typeof document === 'undefined') return null;
-    const shown = payload.nodes.filter((n) => visible.has(n.key));
-    const cell = (GRID * frame.gs) / FIELD_N;
-    const grid = { x0: frame.gx0 + cell / 2, y0: frame.gy0 + cell / 2, cell, nx: FIELD_N, ny: FIELD_N };
+    const shown = payload.nodes.filter((n) => visible.has(n.key) && !isGhost(n));
+    const cell = (GRID * fr.gs) / FIELD_N;
+    const grid = { x0: fr.gx0 + cell / 2, y0: fr.gy0 + cell / 2, cell, nx: FIELD_N, ny: FIELD_N };
     const bandwidth = 40 * frame.gs;
     const make = (l: MapLens) => {
       const pts: FieldPoint[] = shown.map((n) => {
@@ -300,7 +517,7 @@ export default function Map2D(props: SceneProps) {
       c.getContext('2d')?.putImageData(new ImageData(data, FIELD_N, FIELD_N), 0, 0);
       return c;
     };
-    return { genre: make('genre'), score: make('score'), distortion: make('distortion') };
+    return { genre: make('genre'), score: make('score'), distortion: make('distortion'), fr };
   };
 
   // Isodensity contours over every visible node, and one outline per group.
@@ -315,7 +532,7 @@ export default function Map2D(props: SceneProps) {
         }
       return p;
     };
-    const shown = payload.nodes.filter((n) => visible.has(n.key));
+    const shown = payload.nodes.filter((n) => visible.has(n.key) && !isGhost(n));
     const all = shown.length
       ? contourDensity<TasteMapPayloadNode>()
           .x((n) => gridX(at(n)[0]))
@@ -328,7 +545,7 @@ export default function Map2D(props: SceneProps) {
           .map((ct) => toPath(ct.coordinates))
       : [];
     const groups = payload.groups.map((g) => {
-      const members = payload.nodes.map((n) => ({ n, w: n.groups[g.id] ?? 0 })).filter((m) => m.w > 0.05);
+      const members = payload.nodes.filter((n) => !isGhost(n)).map((n) => ({ n, w: n.groups[g.id] ?? 0 })).filter((m) => m.w > 0.05);
       if (!members.length) return { id: g.id, color: g.color, path: null };
       const cs = contourDensity<{ n: TasteMapPayloadNode; w: number }>()
         .x((m) => gridX(at(m.n)[0]))
@@ -349,12 +566,12 @@ export default function Map2D(props: SceneProps) {
     const cell = (GRID * frame.gs) / REGION_N;
     const grid = { x0: frame.gx0 + cell / 2, y0: frame.gy0 + cell / 2, cell, nx: REGION_N, ny: REGION_N };
     const pts = payload.nodes
-      .filter((n) => visible.has(n.key))
+      .filter((n) => visible.has(n.key) && !isGhost(n))
       .map((n) => ({ x: at(n)[0], y: at(n)[1], w: 0.5 + 0.5 * Math.sqrt(Math.max(n.mass, 0)), country: atlas.countryOf.get(n.key) ?? -1 }));
     const fields = regionFields(pts, grid, 48 * frame.gs, atlas.countries.length);
     const scale = GRID / REGION_N;
     return atlas.countries.flatMap((country) => {
-      const ms = payload.nodes.filter((n) => visible.has(n.key) && atlas.countryOf.get(n.key) === country.id);
+      const ms = payload.nodes.filter((n) => visible.has(n.key) && !isGhost(n) && atlas.countryOf.get(n.key) === country.id);
       if (ms.length < 2) return [];
       const f = fields[country.id];
       const [ct] = gridContours().size([REGION_N, REGION_N]).thresholds([0])(Array.from(f));
@@ -408,13 +625,32 @@ export default function Map2D(props: SceneProps) {
   }, [atlas, payload.groups, payload.nodes, visible, frame, settled, hues, schematic]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
-  const tree = useMemo(() => spanningTree(payload.neighbors, visible), [payload.neighbors, visible]);
+  // The color field on a refocus layout, made once per layout (≈ a few ms) and
+  // crossfaded in. Contours and territories don't follow: the refocus draws its
+  // own guides (rings, axes, horizon) instead.
+  const egoFields = useRef(new WeakMap<EgoLayout, ReturnType<typeof makeFields>>());
+  const fieldsFor = (L: EgoLayout) => {
+    if (!egoFields.current.has(L)) {
+      const at: At = (n) => L.pos.get(n.key) ?? n.pos2d;
+      egoFields.current.set(L, makeFields(at, gridFrameOf(L.pos.values())));
+    }
+    return egoFields.current.get(L) ?? null;
+  };
+  // A new color set (lens colors, visibility) invalidates them.
+  useEffect(() => {
+    egoFields.current = new WeakMap();
+  }, [colors, visible, frame]);
+
+  // Constellation lines join solid stars only (a ghost's neighbor list is a suggestion, not a fact).
+  const solid = useMemo(() => new Set(payload.nodes.filter((n) => visible.has(n.key) && !isGhost(n)).map((n) => n.key)), [payload.nodes, visible]);
+  const tree = useMemo(() => spanningTree(payload.neighbors, solid), [payload.neighbors, solid]);
+  const sims = useMemo(() => similarityLookup(payload), [payload]);
 
   const compass = useMemo(() => {
     if (!payload.palette?.length) return [];
     // On the view being shown: in the schematic, the directions sounds fan out in.
     const pts = payload.nodes
-      .filter((n) => visible.has(n.key))
+      .filter((n) => visible.has(n.key) && !isGhost(n))
       .map((n) => {
         const [x, y] = (sTarget && schematic?.pos.get(n.key)) || n.pos2d;
         return { x, y, w: Math.max(n.mass, 0.3), mix: n.mix };
@@ -455,6 +691,26 @@ export default function Map2D(props: SceneProps) {
     const k = Math.max(MIN_K, Math.min(1.5, (w - 2 * padX) / F / Math.max(x1 - x0, 1e-6), (h - 2 * padY) / F / Math.max(y1 - y0, 1e-6)));
     return { k, tx: -((x0 + x1) / 2 - frame.mx) * F * k, ty: ((y0 + y1) / 2 - frame.my) * F * k };
   };
+  /** Frame plane bounds in the part of the stage not under controls (or the phone's bottom sheet). */
+  const fitView = (x0: number, x1: number, y0: number, y1: number, maxK: number, extra = { left: 0, bottom: 0 }): View => {
+    const { w, h } = size.current;
+    const F = fitScale();
+    const phone = w < 768;
+    const top = phone ? 84 : 92;
+    // Phone: the inspector sheet covers up to 58% of the stage; its top edge may overlap a little.
+    const bottom = (phone && propsRef.current.selectedKey ? h * 0.5 : 80) + (phone ? 0 : extra.bottom);
+    const side = Math.min(70, w * 0.08);
+    const left = side + extra.left;
+    const k = Math.max(
+      MIN_K,
+      Math.min(maxK, (w - side - left) / F / Math.max(x1 - x0, 1e-6), Math.max(80, h - top - bottom) / F / Math.max(y1 - y0, 1e-6)),
+    );
+    return {
+      k,
+      tx: (left - side) / 2 - ((x0 + x1) / 2 - frame.mx) * F * k,
+      ty: (top - bottom) / 2 + ((y0 + y1) / 2 - frame.my) * F * k,
+    };
+  };
   const toScreen = (x: number, y: number, v: View, F: number): [number, number] => {
     const { w, h } = size.current;
     return [w / 2 + v.tx + (x - frame.mx) * F * v.k, h / 2 + v.ty - (y - frame.my) * F * v.k];
@@ -492,6 +748,45 @@ export default function Map2D(props: SceneProps) {
     const v = view.current;
     const F = fitScale();
     const { theme } = p;
+    const t2 = t2Ref.current;
+
+    // Cursor lenses ease toward the mouse (and back to rest when it leaves).
+    const dt = lastT.current ? Math.min(100, now - lastT.current) : 16;
+    lastT.current = now;
+    const cur = cursor.current;
+    const ls = lensState.current;
+    const lensOn = cur.inside && !pressing.current && !draggingNode.current && !reduced.current;
+    const tux = lensOn ? Math.max(-1, Math.min(1, (cur.x - w / 2) / (w / 2))) : 0;
+    const tuy = lensOn ? Math.max(-1, Math.min(1, (cur.y - h / 2) / (h / 2))) : 0;
+    ls.ux = approach(ls.ux, tux, dt, TAU_PARALLAX);
+    ls.uy = approach(ls.uy, tuy, dt, TAU_PARALLAX);
+    if (cur.inside) {
+      // Jump to the cursor when the lens was off, so it doesn't sweep in from afar.
+      ls.fx = ls.str < 0.02 ? cur.x : approach(ls.fx, cur.x, dt, TAU_FISHEYE);
+      ls.fy = ls.str < 0.02 ? cur.y : approach(ls.fy, cur.y, dt, TAU_FISHEYE);
+    }
+    ls.str = approach(ls.str, lensOn ? 1 : 0, dt, TAU_STRENGTH);
+    if (!lensOn && ls.str < 0.01) ls.str = 0;
+    if (Math.abs(ls.ux - tux) > 0.002 || Math.abs(ls.uy - tuy) > 0.002) animating = true;
+    else {
+      ls.ux = tux;
+      ls.uy = tuy;
+    }
+    if ((lensOn && ls.str < 0.995) || (!lensOn && ls.str > 0)) animating = true;
+    if (cur.inside && (Math.abs(ls.fx - cur.x) > 0.4 || Math.abs(ls.fy - cur.y) > 0.4)) animating = true;
+
+    // Refocus: how far each layout is shown (from → to, or back to the map).
+    const e = ego.current;
+    const eSpan = e.dur + e.stagger;
+    const eu = eSpan > 0 ? smooth((now - e.t0) / eSpan) : 1;
+    if ((e.from || e.to) && eu < 1) animating = true;
+    if (!e.to && e.from && eu >= 1) {
+      e.from = null;
+      e.fromLayout = null;
+    }
+    const fromShare = e.fromLayout ? 1 - eu : 0;
+    const toShare = e.to ? eu : 0;
+    const baseShare = Math.max(0, 1 - fromShare - toShare);
 
     const la = lensAnim.current;
     const lensT = la.from === la.to ? 1 : smooth((now - la.t0) / LENS_MS);
@@ -537,21 +832,43 @@ export default function Map2D(props: SceneProps) {
     }
     ctx.stroke();
 
-    // Grid units → screen (y flipped).
-    const a = frame.gs * F * v.k;
-    const cx = w / 2 + v.tx + (frame.gx0 - frame.mx) * F * v.k;
-    const cy = h / 2 + v.ty - (frame.gy0 - frame.my) * F * v.k;
+    // Grid units → screen (y flipped), per layer: each field has its own grid frame.
+    const gridTransform = (fr: GridFrame) => {
+      const a = fr.gs * F * v.k;
+      const cx = w / 2 + v.tx + (fr.gx0 - frame.mx) * F * v.k;
+      const cy = h / 2 + v.ty - (fr.gy0 - frame.my) * F * v.k;
+      ctx.setTransform(dpr * a, 0, 0, -dpr * a, dpr * cx, dpr * cy);
+      return a;
+    };
+    let a = gridTransform(frame);
     ctx.save();
-    ctx.setTransform(dpr * a, 0, 0, -dpr * a, dpr * cx, dpr * cy);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     // Thinner as you zoom in, where the stars should carry the detail.
     const fieldA = 1 / (1 + 0.35 * Math.max(0, v.k - 1));
-    // Each scale's layers at its share of the morph.
-    for (const [geo, share] of [
+    // Refocus layouts: only their color field, crossfading with the map's layers.
+    for (const [L, share] of [
+      [e.fromLayout, fromShare],
+      [e.to, toShare],
+    ] as const) {
+      if (!L || share <= 0.002) continue;
+      const fields = fieldsFor(L);
+      if (!fields) continue;
+      gridTransform(fields.fr);
+      if (lensT < 1) {
+        ctx.globalAlpha = (1 - lensT) * fieldA * share;
+        ctx.drawImage(fields[la.from], 0, 0, GRID, GRID);
+      }
+      ctx.globalAlpha = lensT * fieldA * share;
+      ctx.drawImage(fields[la.to], 0, 0, GRID, GRID);
+    }
+    a = gridTransform(frame);
+    // Each scale's layers at its share of the morph (and of the refocus).
+    for (const [geo, shareS] of [
       [geoTrue, tTrue],
       [geoSch, s],
     ] as const) {
+      const share = shareS * baseShare;
       if (!geo || share <= 0.002) continue;
       const { fields } = geo;
       if (fields) {
@@ -591,10 +908,10 @@ export default function Map2D(props: SceneProps) {
     // You: the mark the schematic spreads around.
     const sch = p.schematic;
     const px = F * v.k;
-    if (sch?.nucleus && s > 0) {
+    if (sch?.nucleus && s * baseShare > 0) {
       const [nx, ny] = toScreen(sch.nucleus[0], sch.nucleus[1], v, F);
       ctx.save();
-      ctx.globalAlpha = s;
+      ctx.globalAlpha = s * baseShare;
       ctx.beginPath();
       ctx.arc(nx, ny, 5, 0, TAU);
       ctx.strokeStyle = `${SKY.line}0.5)`;
@@ -612,14 +929,89 @@ export default function Map2D(props: SceneProps) {
     };
 
     const nodes = p.payload.nodes;
-    const pos = new Map<NodeKey, [number, number]>();
-    for (const n of nodes)
-      if (p.visible.has(n.key)) {
-        const q = placeAt(n, s);
-        pos.set(n.key, toScreen(q[0], q[1], v, F));
-      }
-
     const sel = p.selectedKey;
+    const dz = depthRef.current;
+
+    // 1. Plane positions: the map (morphing between scales), blended into the refocus.
+    const plane = new Map<NodeKey, Vec2>();
+    for (const n of nodes) {
+      if (!p.visible.has(n.key) || isHidden(n)) continue;
+      const b = placeAt(n, s);
+      if (!e.from && !e.to) {
+        plane.set(n.key, b);
+        continue;
+      }
+      const f = e.from?.get(n.key) ?? b;
+      const tq = e.to?.pos.get(n.key) ?? b;
+      const ord = (e.to ?? e.fromLayout)?.order.get(n.key) ?? 0.5;
+      const u = e.dur > 0 ? smooth((now - e.t0 - ord * e.stagger) / e.dur) : 1;
+      plane.set(n.key, u >= 1 ? tq : [f[0] + (tq[0] - f[0]) * u, f[1] + (tq[1] - f[1]) * u]);
+    }
+    lastPlane.current = plane;
+
+    // 2. Screen positions, then on-screen overlap removal (eased, so zooming
+    // doesn't make stars jump), depth parallax and the fisheye. Display only.
+    const cf = coverAmount(v.k);
+    const baseR = (n: TasteMapPayloadNode) => {
+      const r = nodeRadius(n.mass, v.k);
+      return cf > 0 ? r + (coverHalf(n.mass, v.k) * 1.12 - r) * cf : r;
+    };
+    const raw: { n: TasteMapPayloadNode; x: number; y: number; r: number }[] = [];
+    for (const n of nodes) {
+      const q = plane.get(n.key);
+      if (!q) continue;
+      const [x, y] = toScreen(q[0], q[1], v, F);
+      raw.push({ n, x, y, r: baseR(n) });
+    }
+    const sepOn = !draggingNode.current;
+    const offs = sepOn ? separate(raw, 2 + 4 * cf, 3, 8 + 16 * cf) : null;
+    const sepMap = new Map<NodeKey, [number, number]>();
+    raw.forEach((q, i) => {
+      const prev = sepOff.current.get(q.n.key) ?? [0, 0];
+      const tx = q.n.key === sel || !offs ? 0 : offs[2 * i];
+      const ty = q.n.key === sel || !offs ? 0 : offs[2 * i + 1];
+      const nx = reduced.current ? tx : approach(prev[0], tx, dt, TAU_SEPARATE);
+      const ny = reduced.current ? ty : approach(prev[1], ty, dt, TAU_SEPARATE);
+      if (Math.abs(nx - tx) > 0.3 || Math.abs(ny - ty) > 0.3) animating = true;
+      sepMap.set(q.n.key, [nx, ny]);
+    });
+    sepOff.current = sepMap;
+    // Parallax pivots on the map's middle depth, or on the selection's once refocused.
+    const egoAmt = 1 - baseShare;
+    const zRef = sel ? (dz.norm.get(sel) ?? 0) * egoAmt : 0;
+    const pos = new Map<NodeKey, [number, number]>();
+    const grow = new Map<NodeKey, number>();
+    for (const q of raw) {
+      const o = sepMap.get(q.n.key) ?? [0, 0];
+      let x = q.x + o[0];
+      let y = q.y + o[1];
+      if (ls.ux || ls.uy) {
+        const [px2, py2] = parallaxShift((dz.norm.get(q.n.key) ?? 0) - zRef, ls.ux, ls.uy);
+        x += px2;
+        y += py2;
+      }
+      const m = magnify(x, y, ls.fx, ls.fy, ls.str);
+      pos.set(q.n.key, [m.x, m.y]);
+      grow.set(q.n.key, m.grow);
+    }
+
+    // 3. Proximity: how close the cursor is to each star (mouse only).
+    const proxOn = cur.inside && !pressing.current && !draggingNode.current;
+    const prox = new Map<NodeKey, number>();
+    let nearKey: NodeKey | null = null;
+    let nearD = Infinity;
+    if (proxOn) {
+      for (const [k, [x, y]] of pos) {
+        const d = Math.hypot(x - cur.x, y - cur.y);
+        if (d < 3 * PROX_SIGMA) prox.set(k, Math.exp(-(d * d) / (2 * PROX_SIGMA * PROX_SIGMA)));
+        if (d < nearD) {
+          nearD = d;
+          nearKey = k;
+        }
+      }
+      if (nearD > PROX_CARD) nearKey = null;
+    }
+
     const related = new Set<NodeKey>();
     if (sel) {
       related.add(sel);
@@ -658,7 +1050,7 @@ export default function Map2D(props: SceneProps) {
       setSpacing(`${(size * 0.32).toFixed(1)}px`);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.globalAlpha = nameA * (dimOthers ? 0.6 : 1) * (rt && rs ? 1 : wt + ws);
+      ctx.globalAlpha = nameA * (dimOthers ? 0.6 : 1) * (rt && rs ? 1 : wt + ws) * baseShare;
       ctx.fillStyle = country.hue == null ? SKY.ink : rgbCss(tintOf(country.hue, 0.86, 0.07));
       ctx.fillText(country.name.toUpperCase(), 0, 0);
       setSpacing('0px');
@@ -706,7 +1098,7 @@ export default function Map2D(props: SceneProps) {
         }
         ctx.lineCap = 'round';
         ctx.lineWidth = 1 + 5 * (l.w / maxW);
-        ctx.strokeStyle = `${SKY.line}${dimOthers ? 0.04 : 0.09})`;
+        ctx.strokeStyle = `${SKY.line}${((dimOthers ? 0.04 : 0.09) * baseShare).toFixed(3)})`;
         ctx.beginPath();
         ctx.moveTo(qa[0], qa[1]);
         ctx.quadraticCurveTo(cx2, cy2, qb[0], qb[1]);
@@ -715,6 +1107,149 @@ export default function Map2D(props: SceneProps) {
       }
     }
 
+    // Refocus guides: what the new space means, faded with its layout.
+    const guide = (L: EgoLayout | null, share: number) => {
+      if (!L || share <= 0.01) return;
+      const name = nodes.find((m) => m.key === L.key)?.label ?? '';
+      const [cx0, cy0] = toScreen(L.center[0], L.center[1], v, F);
+      const u = F * v.k;
+      ctx.save();
+      ctx.font = MATH_FONT;
+      ctx.lineJoin = 'round';
+      const label = (text: string, x: number, y: number, align: CanvasTextAlign, alpha: number, color = SKY.muted) => {
+        ctx.textAlign = align;
+        ctx.globalAlpha = share * alpha;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(8, 9, 14, 0.85)';
+        ctx.strokeText(text, x, y);
+        ctx.fillStyle = color;
+        ctx.fillText(text, x, y);
+      };
+      ctx.textBaseline = 'middle';
+      if (L.mode === 'distance') {
+        // Concentric true-similarity rings, labelled like a polar plot along the
+        // one bearing that keeps the labels clearest of stars.
+        const clear = (ang: number) => {
+          let score = 0;
+          for (const ring of L.rings) {
+            const rp = ring.r * u;
+            if (rp < 16) continue;
+            const lx = cx0 + rp * Math.cos(ang) + 10;
+            const ly = cy0 + rp * Math.sin(ang) - 7;
+            let dmin = 60;
+            for (const [x, y] of pos.values()) dmin = Math.min(dmin, Math.hypot(x - lx, y - ly));
+            score += dmin + (lx < 20 || lx > w - 40 || ly < 100 || ly > h - 20 ? -80 : 0);
+          }
+          return score;
+        };
+        const ang = [-0.25, -0.75, 0.25, 0.75, -0.5, 0.5, 0, 1].map((f) => f * Math.PI).reduce((best, a2) => (clear(a2) > clear(best) + 1 ? a2 : best));
+        L.rings.forEach((ring, i) => {
+          const rp = ring.r * u;
+          if (rp < 16) return;
+          ctx.globalAlpha = share;
+          ctx.beginPath();
+          ctx.arc(cx0, cy0, rp, 0, TAU);
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = `${SKY.line}${(0.2 - 0.025 * i).toFixed(3)})`;
+          ctx.stroke();
+          const lx = cx0 + rp * Math.cos(ang);
+          const ly = cy0 + rp * Math.sin(ang);
+          label(i === 0 || L.rings[i - 1].r * u < 16 ? `s = ${ring.sim}` : String(ring.sim), lx + 4, ly - 7, 'left', 0.95);
+        });
+        // The rim: similarity ≈ 0.
+        ctx.globalAlpha = share;
+        ctx.setLineDash([2, 5]);
+        ctx.beginPath();
+        ctx.arc(cx0, cy0, L.R * u, 0, TAU);
+        ctx.strokeStyle = `${SKY.line}0.1)`;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (L.mode === 'vector') {
+        const W = L.R * VEC_W * u;
+        const H = L.R * VEC_H * u;
+        const x0 = cx0 - W - 18;
+        // The x axis runs through the selection, a number line of similarity.
+        const yb = cy0;
+        ctx.globalAlpha = share;
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = `${SKY.line}0.32)`;
+        ctx.fillStyle = `${SKY.line}0.32)`;
+        const arrowHead = (x: number, y: number, dx: number, dy: number) => {
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x - 7 * dx + 3.5 * dy, y - 7 * dy - 3.5 * dx);
+          ctx.lineTo(x - 7 * dx - 3.5 * dy, y - 7 * dy + 3.5 * dx);
+          ctx.closePath();
+          ctx.fill();
+        };
+        // x: similarity to the selection, on the rings' log scale.
+        ctx.beginPath();
+        ctx.moveTo(x0, yb);
+        ctx.lineTo(cx0 + 14, yb);
+        ctx.stroke();
+        arrowHead(cx0 + 14, yb, 1, 0);
+        for (const ring of L.rings) {
+          const tx = cx0 - ring.r * u;
+          if (tx < x0 + 6) continue;
+          ctx.globalAlpha = share;
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = `${SKY.line}0.32)`;
+          ctx.beginPath();
+          ctx.moveTo(tx, yb - 3);
+          ctx.lineTo(tx, yb + 3);
+          ctx.stroke();
+          label(String(ring.sim), tx, yb + 12, 'center', 0.75);
+        }
+        label(`← ${t2.lessLike}`, x0 + 4, yb + 26, 'left', 0.85);
+        // y: the strongest other direction.
+        if (L.axis) {
+          ctx.globalAlpha = share;
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = `${SKY.line}0.32)`;
+          ctx.fillStyle = `${SKY.line}0.32)`;
+          ctx.beginPath();
+          ctx.moveTo(x0, cy0 + H + 4);
+          ctx.lineTo(x0, cy0 - H - 14);
+          ctx.stroke();
+          arrowHead(x0, cy0 - H - 14, 0, -1);
+          const tagColor = (id?: string) => {
+            const hue = id ? hues.get(id) : undefined;
+            return hue == null ? SKY.ink : rgbCss(tintOf(hue, 0.82, 0.12));
+          };
+          const words = (w: string) => (L.axis?.posId ? t2.more(w) : t2.toward(w));
+          label(words(L.axis.pos), x0 + 9, cy0 - H - 12, 'left', 0.95, tagColor(L.axis.posId));
+          if (L.axis.neg) label(`↓ ${words(L.axis.neg)}`, x0 + 8, cy0 + H, 'left', 0.85, tagColor(L.axis.negId));
+        }
+      } else {
+        // Depth: a horizon through the selection, and ±1σ lines.
+        ctx.globalAlpha = share;
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = `${SKY.line}0.3)`;
+        ctx.beginPath();
+        ctx.moveTo(0, cy0);
+        ctx.lineTo(w, cy0);
+        ctx.stroke();
+        ctx.setLineDash([2, 5]);
+        ctx.strokeStyle = `${SKY.line}0.13)`;
+        for (const k of [-2, -1, 1, 2]) {
+          const y = cy0 - k * L.zUnit * u;
+          if (y < 0 || y > h) continue;
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+          label(`${k > 0 ? '+' : '−'}${Math.abs(k)}σ`, w - 14, y - 7, 'right', 0.7);
+        }
+        ctx.setLineDash([]);
+        const lx = cy0 > h - 140 && w >= 320 ? 236 : 14;
+        label(`↑ ${t2.inFront(name)}`, lx, cy0 - 11, 'left', 0.95, SKY.ink);
+        label(`↓ ${t2.behind}`, lx, cy0 + 12, 'left', 0.85);
+      }
+      ctx.restore();
+    };
+    guide(e.fromLayout, fromShare);
+    guide(e.to, toShare);
+
     // Constellation lines.
     ctx.lineWidth = 1;
     for (const e of tree) {
@@ -722,7 +1257,7 @@ export default function Map2D(props: SceneProps) {
       const qb = pos.get(e.b);
       if (!qa || !qb) continue;
       const lit = focusKey != null && (e.a === focusKey || e.b === focusKey);
-      ctx.strokeStyle = `${SKY.line}${lit ? 0.5 : dimOthers ? 0.07 : 0.16})`;
+      ctx.strokeStyle = `${SKY.line}${((lit ? 0.5 : dimOthers ? 0.07 : 0.16) * (0.3 + 0.7 * baseShare)).toFixed(3)})`;
       ctx.beginPath();
       ctx.moveTo(qa[0], qa[1]);
       ctx.lineTo(qb[0], qb[1]);
@@ -792,29 +1327,141 @@ export default function Map2D(props: SceneProps) {
       }
     }
 
-    // Stars, small first so big ones sit on top. Glow is additive.
+    // Stars, small first so big ones sit on top. Glow is additive. Near the
+    // cursor they brighten and grow; zoomed in, they turn into album covers.
     const drawOrder = nodes.filter((n) => pos.has(n.key)).sort((x, y) => x.mass - y.mass);
+    const drawnNow = new Map<NodeKey, { x: number; y: number; r: number }>();
+    let coverLoads = 0;
+    /** A cached cover image, starting at most 6 new loads per frame. */
+    const cover = (src: string) => {
+      const hit = coverCache.get(src);
+      if (hit || coverLoads >= 6 || typeof Image === 'undefined') return hit ?? null;
+      coverLoads++;
+      const img = new Image();
+      img.decoding = 'async';
+      const rec = { img, ok: null as boolean | null };
+      coverCache.set(src, rec);
+      img.onload = () => {
+        rec.ok = true;
+        requestDrawRef.current();
+      };
+      img.onerror = () => {
+        rec.ok = false;
+      };
+      img.src = src;
+      return rec;
+    };
     for (const n of drawOrder) {
       const [x, y] = pos.get(n.key)!;
-      const r = nodeRadius(n.mass, v.k);
-      if (x < -4 * r || y < -4 * r || x > w + 4 * r || y > h + 4 * r) continue;
+      const b = prox.get(n.key) ?? 0;
+      const r = nodeRadius(n.mass, v.k) * (grow.get(n.key) ?? 1) * (1 + 0.3 * b);
+      const ch = cf > 0 ? coverHalf(n.mass, v.k) * (grow.get(n.key) ?? 1) * (1 + 0.12 * b) : 0;
+      drawnNow.set(n.key, { x, y, r: Math.max(r, ch * cf) });
+      if (x < -4 * r - ch || y < -4 * r - ch || x > w + 4 * r + ch || y > h + 4 * r + ch) continue;
       const c = colorOf(n.key);
       const dim = dimOthers && !related.has(n.key);
-      const alpha = dim ? 0.28 : 1;
+      const ghost = n.ghost;
+      const alpha = Math.max(dim ? 0.28 : 1, 0.28 + 0.72 * b) * (ghost ? 0.6 : 1);
+
+      // A ghost: evidence too thin (or too odd) to place for sure. Hollow and
+      // dashed, with only a breath of glow, so it reads as a suggestion.
+      if (ghost) {
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, TAU);
+        ctx.fillStyle = 'rgba(10, 12, 18, 0.7)';
+        ctx.fill();
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = rgbCss(lighten(c, 0.35), 0.85);
+        ctx.stroke();
+        ctx.setLineDash([2.5, 3]);
+        ctx.beginPath();
+        ctx.arc(x, y, r + 3.5, 0, TAU);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = rgbCss(lighten(c, 0.5), 0.55);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if (n.key === sel || n.key === p.hoveredKey) {
+          ctx.beginPath();
+          ctx.arc(x, y, r + 7, 0, TAU);
+          ctx.lineWidth = n.key === sel ? 1.6 : 1;
+          ctx.strokeStyle = SKY.ink;
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        continue;
+      }
+
       ctx.globalCompositeOperation = 'lighter';
       // Distortion lens: the less of its neighborhood the plane keeps, the wider
       // and fainter the halo, so torn stars read as out of focus.
       const fuzz = distA * (1 - (honestOf(n.key)?.recall ?? 1));
-      const haloR = r * (3.4 + 4.5 * fuzz);
+      const haloR = Math.max(r, ch * cf) * (3.4 + 4.5 * fuzz) * (cf > 0 ? 1 - 0.45 * cf : 1);
       const halo = ctx.createRadialGradient(x, y, r * 0.4, x, y, haloR);
-      halo.addColorStop(0, rgbCss(c, (0.42 - 0.12 * fuzz) * alpha));
+      halo.addColorStop(0, rgbCss(c, Math.min(0.75, (0.42 - 0.12 * fuzz) * (1 + 0.6 * b)) * alpha));
       halo.addColorStop(1, rgbCss(c, 0));
       ctx.fillStyle = halo;
       ctx.beginPath();
       ctx.arc(x, y, haloR, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = alpha;
+
+      // Semantic zoom: the album cover as the star (lazy, cached thumbnails; a
+      // pending or failed image leaves the star).
+      const coverUrls = cf > 0.01 ? n.covers.flatMap((cv) => (cv.coverUrl ? [coverThumb(cv.coverUrl)] : [])) : [];
+      const main = coverUrls.length ? cover(coverUrls[0]) : null;
+      if (coverUrls.length && main?.ok == null) animating = true;
+      let starA = 1;
+      if (main?.ok) {
+        try {
+          // Up to two more covers fan out behind once there's room.
+          if (v.k >= 5)
+            coverUrls.slice(1, 3).forEach((u, i) => {
+              const ex = cover(u);
+              if (!ex?.ok) return;
+              const side = ch * 0.85;
+              ctx.save();
+              ctx.translate(x + (i ? -1 : 1) * ch * 0.42, y - ch * 0.12);
+              ctx.rotate((i ? -1 : 1) * 0.16);
+              ctx.globalAlpha = cf * alpha * 0.85;
+              rrect(ctx, -side, -side, 2 * side, 2 * side, 3);
+              ctx.clip();
+              ctx.drawImage(ex.img, -side, -side, 2 * side, 2 * side);
+              ctx.fillStyle = 'rgba(8, 9, 14, 0.35)';
+              ctx.fillRect(-side, -side, 2 * side, 2 * side);
+              ctx.restore();
+            });
+          ctx.save();
+          ctx.globalAlpha = cf * alpha;
+          rrect(ctx, x - ch, y - ch, 2 * ch, 2 * ch, 3.5);
+          ctx.save();
+          ctx.clip();
+          ctx.drawImage(main.img, x - ch, y - ch, 2 * ch, 2 * ch);
+          ctx.restore();
+          // The lens color as a hairline frame, so covers still read as this map's stars.
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = rgbCss(lighten(c, 0.2), 0.95);
+          ctx.stroke();
+          ctx.restore();
+          starA = 1 - cf;
+        } catch {
+          // A cover that can't be drawn (decode / cross-origin quirks): keep the star.
+          main.ok = false;
+        }
+      }
+      if (starA <= 0.02) {
+        if (n.key === sel || n.key === p.hoveredKey) {
+          ctx.globalAlpha = 1;
+          rrect(ctx, x - ch - 4, y - ch - 4, 2 * ch + 8, 2 * ch + 8, 6);
+          ctx.lineWidth = n.key === sel ? 1.8 : 1.1;
+          ctx.strokeStyle = SKY.ink;
+          ctx.stroke();
+        }
+        const pinC = p.pins.get(n.key);
+        if (pinC) drawPinBadge(ctx, x + ch * 0.9, y - ch * 0.9, pinC.softZ);
+        continue;
+      }
+      ctx.globalAlpha = alpha * starA;
       const bridge = atlas.bridges.has(n.key);
       // A bridge is a diamond with an outline, so it reads as a crossing, not a star.
       const shape = (rr: number) => {
@@ -892,6 +1539,8 @@ export default function Map2D(props: SceneProps) {
       { x: w - 250, y: 0, w: 250, h: 46, key: null },
       { x: w - 345, y: h - 64, w: 345, h: 64, key: null },
       ...(compass.length && w >= 320 ? [{ x: 0, y: h - 116, w: 230, h: 116, key: null }] : []),
+      // The refocus switch under the top-left controls while something is selected.
+      ...(sel ? [{ x: 0, y: 44, w: 330, h: 52, key: null }] : []),
     ];
     const overlaps = (b: Box) =>
       boxes.some((o) => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y);
@@ -923,8 +1572,8 @@ export default function Map2D(props: SceneProps) {
       const font = `${weight} ${sizePx}px ${fontFamily}`;
       const tw = measure(font, text, spacing);
       const b: Box = { x: x - tw / 2 - 3, y: y - sizePx - 1, w: tw + 6, h: sizePx + 3, key };
-      if (b.x + b.w < 0 || b.x > w || b.y + b.h < 0 || b.y > h) return;
-      if (!force && overlaps(b)) return;
+      if (b.x + b.w < 0 || b.x > w || b.y + b.h < 0 || b.y > h) return false;
+      if (!force && overlaps(b)) return false;
       boxes.push(b);
       ctx.font = font;
       setSpacing(spacing);
@@ -939,21 +1588,33 @@ export default function Map2D(props: SceneProps) {
       ctx.fillText(text, x, y);
       ctx.globalAlpha = 1;
       setSpacing('0px');
+      return true;
     };
 
+    // Semantic zoom: a label budget that grows with zoom. Labels shown last
+    // frame go first among equals, so moving the cursor doesn't reshuffle them.
     const prio = (n: TasteMapPayloadNode) =>
-      n.key === sel ? 0 : n.key === p.hoveredKey ? 1 : related.has(n.key) ? 2 : 3;
+      n.key === sel ? 0 : n.key === p.hoveredKey || n.key === nearKey ? 1 : related.has(n.key) ? 2 : 3;
+    const was = labelShown.current;
     const labelOrder = nodes
       .filter((n) => pos.has(n.key))
-      .sort((x, y) => prio(x) - prio(y) || (rank.get(x.key) ?? 0) - (rank.get(y.key) ?? 0));
+      .sort(
+        (x, y) =>
+          prio(x) - prio(y) ||
+          Number(was.has(y.key)) - Number(was.has(x.key)) ||
+          Number(!!x.ghost) - Number(!!y.ghost) ||
+          (rank.get(x.key) ?? 0) - (rank.get(y.key) ?? 0),
+      );
+    let budget = labelBudget(v.k, labelOrder.length);
+    const shownNow = new Set<NodeKey>();
 
     if (gh && ghostXY) {
       placeText(gh.label, ghostXY[0], ghostXY[1] - ghostR - 4, 13, 800, SKY.ink, 1, null, true);
       placeText(gh.tag.toUpperCase(), ghostXY[0], ghostXY[1] + ghostR + 12, 9.5, 800, SKY.muted, 1, null, true);
     }
-    if (sch?.nucleus && s > 0.3) {
+    if (sch?.nucleus && s * baseShare > 0.3) {
       const [nx, ny] = toScreen(sch.nucleus[0], sch.nucleus[1], v, F);
-      placeText(p.nucleusLabel, nx, ny - 10, 9.5, 800, SKY.muted, s, null, true, '2px');
+      placeText(p.nucleusLabel, nx, ny - 10, 9.5, 800, SKY.muted, s * baseShare, null, true, '2px');
     }
 
     let groupLabelsDone = false;
@@ -978,22 +1639,164 @@ export default function Map2D(props: SceneProps) {
           sw += wgt * n.mass;
         }
         if (!sw) continue;
-        placeText(g.name.toUpperCase(), sx / sw, top - 22, 11.5, 700, hexAlpha(g.color, 1), 0.9 * ga, null, false, '2.5px');
+        placeText(g.name.toUpperCase(), sx / sw, top - 22, 11.5, 700, hexAlpha(g.color, 1), 0.9 * ga * baseShare, null, false, '2.5px');
       }
     };
 
     for (const n of labelOrder) {
       const pr = prio(n);
       if (pr === 3 && !groupLabelsDone) drawGroupLabels();
+      if (pr === 3 && budget <= 0) break;
       const [x, y] = pos.get(n.key)!;
-      const r = nodeRadius(n.mass, v.k);
+      const dr = drawnNow.get(n.key)?.r ?? nodeRadius(n.mass, v.k);
       const sizePx = Math.round(Math.min(15, 9.5 + 1.2 * Math.sqrt(n.mass)) * Math.min(1.15, 0.9 + 0.1 * v.k));
       const text = n.eraLabel ? `${n.label} · ${n.eraLabel}` : n.label;
       const dim = dimOthers && !related.has(n.key);
-      placeText(text, x, y - r - 5, sizePx, pr <= 1 ? 750 : 550, pr <= 1 ? SKY.ink : 'rgb(205, 211, 226)', dim ? 0.35 : 1, n.key, pr <= 1);
+      const b = prox.get(n.key) ?? 0;
+      const lit = pr <= 1;
+      const color = lit ? SKY.ink : n.ghost ? SKY.muted : 'rgb(205, 211, 226)';
+      const alpha = Math.max(dim ? 0.35 : 1, b) * (n.ghost && !lit ? 0.8 : 1);
+      if (placeText(text, x, y - dr - (n.ghost ? 8 : 5), sizePx, lit ? 750 : 550, color, alpha, n.key, lit)) {
+        shownNow.add(n.key);
+        if (pr === 3) budget--;
+      }
     }
     if (!groupLabelsDone) drawGroupLabels();
+    labelShown.current = shownNow;
     labelBoxes.current = boxes;
+    drawn.current = drawnNow;
+
+    // Proximity card: the nearest star's era, albums and depth, then (closer
+    // still) its top sounds. In-canvas, star-chart style, beside the star.
+    const nearNode = nearKey ? nodes.find((m) => m.key === nearKey) : null;
+    const nearXY = nearNode ? pos.get(nearNode.key) : undefined;
+    if (nearNode && nearXY && nearXY[0] >= 0 && nearXY[0] <= w && nearXY[1] >= 0 && nearXY[1] <= h && !((e.from || e.to) && eu < 1)) {
+      const rv = smooth((PROX_CARD - nearD) / (PROX_CARD * 0.45));
+      const hit = nearKey === p.hoveredKey;
+      const rc = hit ? 1 : smooth((PROX_CHIPS - nearD) / (PROX_CHIPS * 0.5));
+      if (rv > 0.02) {
+        const [sx, sy] = pos.get(nearNode.key)!;
+        const sr = drawnNow.get(nearNode.key)?.r ?? 6;
+        const font = theme.font;
+        const pad = 8;
+        const lines: string[] = [];
+        if (nearNode.eraLabel) lines.push(nearNode.eraLabel);
+        lines.push(t2.albums(nearNode.mass) + (nearNode.avgScore != null ? ` · ${t2.avg} ${nearNode.avgScore.toFixed(1)}` : ''));
+        const pct = dz.pct.get(nearNode.key) ?? 0.5;
+        const zn = dz.norm.get(nearNode.key) ?? 0;
+        const depthWord = zn > 0.5 ? t2.front : zn < -0.5 ? t2.back : t2.mid;
+        const palette = p.payload.palette;
+        const chips = (palette && nearNode.mix
+          ? palette.map((pt) => ({ ...pt, share: nearNode.mix?.[pt.id] ?? 0 })).filter((pt) => pt.share >= 0.05)
+          : []
+        )
+          .sort((x1, y1) => y1.share - x1.share)
+          .slice(0, 3);
+        ctx.font = `600 11px ${font}`;
+        const textW = Math.max(...lines.map((l) => measure(`600 11px ${font}`, l, '0px')));
+        const chipW = chips.map((cp) => measure(`600 10.5px ${font}`, `${cp.label} ${Math.round(cp.share * 100)}%`, '0px') + 18);
+        const chipsW = chipW.reduce((x1, y1) => x1 + y1, 0) + Math.max(0, chips.length - 1) * 4;
+        const cw = Math.max(150, textW, rc > 0 ? chipsW : 0) + 2 * pad;
+        const lineH = 15;
+        const baseH = pad + lines.length * lineH + 20 + pad;
+        const chH = chips.length ? 22 * rc : 0;
+        const chh = baseH + chH;
+        let cx1 = sx + sr + 14;
+        if (cx1 + cw > w - 8) cx1 = sx - sr - 14 - cw;
+        cx1 = Math.max(8, Math.min(w - cw - 8, cx1));
+        let cy1 = sy - 16;
+        cy1 = Math.max(8, Math.min(h - chh - 8, cy1));
+        ctx.save();
+        ctx.globalAlpha = rv;
+        rrect(ctx, cx1, cy1, cw, chh, 8);
+        ctx.fillStyle = 'rgba(12, 14, 22, 0.96)';
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = `${SKY.line}0.16)`;
+        ctx.stroke();
+        ctx.clip();
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        let ty = cy1 + pad + lineH / 2;
+        lines.forEach((l, i) => {
+          ctx.font = `${i === 0 && nearNode.eraLabel ? 700 : 600} 11px ${font}`;
+          ctx.fillStyle = i === 0 && nearNode.eraLabel ? SKY.ink : SKY.muted;
+          ctx.fillText(l, cx1 + pad, ty);
+          ty += lineH;
+        });
+        // Depth: where it sits front-to-back among your stars.
+        const barX = cx1 + pad + measure(MATH_FONT, t2.depthWord, '0px') + 8;
+        const barW = cw - (barX - cx1) - pad - measure(`600 10.5px ${font}`, depthWord, '0px') - 8;
+        const by = ty + 3;
+        ctx.font = MATH_FONT;
+        ctx.fillStyle = SKY.muted;
+        ctx.fillText(t2.depthWord, cx1 + pad, by);
+        ctx.fillStyle = `${SKY.line}0.16)`;
+        rrect(ctx, barX, by - 2, barW, 4, 2);
+        ctx.fill();
+        const c = colorOf(nearNode.key);
+        ctx.beginPath();
+        ctx.arc(barX + pct * barW, by, 3.6, 0, TAU);
+        ctx.fillStyle = rgbCss(c);
+        ctx.fill();
+        ctx.font = `600 10.5px ${font}`;
+        ctx.fillStyle = SKY.ink;
+        ctx.textAlign = 'right';
+        ctx.fillText(depthWord, cx1 + cw - pad, by);
+        ctx.textAlign = 'left';
+        if (chips.length && rc > 0.01) {
+          ctx.globalAlpha = rv * rc;
+          let chx = cx1 + pad;
+          const chy = by + 20;
+          chips.forEach((cp, i) => {
+            const col = tintOf(cp.hue, 0.78, 0.14);
+            rrect(ctx, chx, chy - 8, chipW[i], 16, 8);
+            ctx.fillStyle = rgbCss(col, 0.16);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(chx + 8, chy, 3, 0, TAU);
+            ctx.fillStyle = rgbCss(col);
+            ctx.fill();
+            ctx.fillStyle = SKY.ink;
+            ctx.fillText(`${cp.label} ${Math.round(cp.share * 100)}%`, chx + 14, chy + 0.5);
+            chx += chipW[i] + 4;
+          });
+        }
+        ctx.restore();
+      }
+    }
+
+    // What's here?: the sampled point and the kernel's reach (one bandwidth).
+    const hr = hereRef.current;
+    if (hr) {
+      const [hx, hy] = toScreen(hr.at[0], hr.at[1], v, F);
+      const bw = 40 * frame.gs * F * v.k;
+      ctx.save();
+      ctx.setLineDash([3, 4]);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = `${SKY.line}0.45)`;
+      ctx.beginPath();
+      ctx.arc(hx, hy, bw, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = SKY.ink;
+      ctx.beginPath();
+      ctx.moveTo(hx - 6, hy);
+      ctx.lineTo(hx + 6, hy);
+      ctx.moveTo(hx, hy - 6);
+      ctx.lineTo(hx, hy + 6);
+      ctx.stroke();
+      ctx.restore();
+      const card = hereCard.current;
+      if (card) {
+        const cw = card.offsetWidth || 230;
+        const chh = card.offsetHeight || 160;
+        let x = hx + 14;
+        if (x + cw > w - 8) x = hx - 14 - cw;
+        const y = Math.max(8, Math.min(h - chh - 8, hy - 20));
+        card.style.transform = `translate(${Math.round(Math.max(8, x))}px, ${Math.round(y)}px)`;
+      }
+    }
 
     // Compass: which way each defining tag grows across the map.
     if (compass.length && w >= 320) {
@@ -1055,8 +1858,11 @@ export default function Map2D(props: SceneProps) {
       ctx.textBaseline = 'alphabetic';
     }
 
+    drawStats.current.push(performance.now() - now);
+    if (drawStats.current.length > 400) drawStats.current.splice(0, 200);
     if (animating) raf.current = requestAnimationFrame(() => drawRef.current());
   };
+  const drawStats = useRef<number[]>([]);
 
   const drawRef = useRef(draw);
   drawRef.current = draw;
@@ -1103,6 +1909,140 @@ export default function Map2D(props: SceneProps) {
     // fitScale / placeAt / homeView read refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sTarget, frame]);
+
+  // ── Refocus on select: animate the others into an ego view of the selection ──
+  const egoMode: EgoMode | null = props.selectedKey && egoPick !== 'off' && visible.has(props.selectedKey) ? egoPick : null;
+  const egoSel = egoMode ? props.selectedKey : null;
+  useEffect(() => {
+    const p = propsRef.current;
+    const now = performance.now();
+    const e = ego.current;
+    const dur = reduced.current ? 0 : EGO_MS;
+    const stagger = reduced.current ? 0 : EGO_STAGGER_MS;
+    // Every star starts from where it is drawn now (mid-transition included).
+    const from = lastPlane.current.size ? new Map(lastPlane.current) : null;
+    if (!egoMode || !egoSel) {
+      if (!e.to) return;
+      ego.current = { from, fromLayout: e.to, to: null, t0: now, dur, stagger };
+      if (preEgoView.current) goal.current = preEgoView.current;
+      preEgoView.current = null;
+      requestDrawRef.current();
+      return;
+    }
+    const t0 = performance.now();
+    // Bearings and in-plane offsets come from the map (not a previous refocus),
+    // translated so the selection stays exactly where it is drawn now.
+    const base = new Map<NodeKey, Vec2>();
+    for (const n of p.payload.nodes) if (p.visible.has(n.key) && !isHidden(n)) base.set(n.key, placeAt(n, sTarget));
+    const selBase = base.get(egoSel);
+    if (!selBase) return;
+    const selNow = lastPlane.current.get(egoSel) ?? selBase;
+    const sx = selNow[0] - selBase[0];
+    const sy = selNow[1] - selBase[1];
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (const [x, y] of base.values()) {
+      x0 = Math.min(x0, x);
+      x1 = Math.max(x1, x);
+      y0 = Math.min(y0, y);
+      y1 = Math.max(y1, y);
+    }
+    const R = 0.5 * Math.max(x1 - x0, y1 - y0, 1e-3);
+    const W = size.current.w || 800;
+    const H = size.current.h || 600;
+    // Stars ≥ 20 px apart once the layout is framed.
+    const pxPerUnit = Math.max(60, Math.min(W - 140, H * (W < 768 ? 0.42 : 1) - 150)) / (2 * R);
+    const byKey = new Map(p.payload.nodes.map((n) => [n.key, n]));
+    const dzs = depthRef.current;
+    const L = egoLayout({
+      nodes: [...base].map(([key, q]) => {
+        const n = byKey.get(key)!;
+        return { key, x: q[0] + sx, y: q[1] + sy, z: dzs.norm.get(key) ?? 0, mass: n.mass, mix: n.mix };
+      }),
+      selected: egoSel,
+      sim: sims.row(egoSel),
+      simOf: (a, b) => sims.get(a, b),
+      mode: egoMode,
+      R,
+      minSep: 20 / pxPerUnit,
+      palette: p.payload.palette,
+      labelOf: (k) => byKey.get(k)?.label ?? k,
+    });
+    if (!e.to) preEgoView.current = goal.current ? { ...goal.current } : { ...view.current };
+    ego.current = { from, fromLayout: e.to, to: L, t0: now, dur, stagger };
+    // Frame the new layout (with room for its axes in the vector view).
+    if (size.current.w > 0) {
+      let bx0 = Infinity;
+      let bx1 = -Infinity;
+      let by0 = Infinity;
+      let by1 = -Infinity;
+      for (const [x, y] of L.pos.values()) {
+        bx0 = Math.min(bx0, x);
+        bx1 = Math.max(bx1, x);
+        by0 = Math.min(by0, y);
+        by1 = Math.max(by1, y);
+      }
+      if (L.mode === 'distance') {
+        bx0 = Math.min(bx0, L.center[0] - R * 0.6);
+        bx1 = Math.max(bx1, L.center[0] + R * 0.6);
+        by0 = Math.min(by0, L.center[1] - R * 0.6);
+        by1 = Math.max(by1, L.center[1] + R * 0.6);
+      }
+      const m = 0.04 * R;
+      goal.current = fitView(bx0 - m, bx1 + m, by0 - m, by1 + m, 2.2, L.mode === 'vector' ? { left: 30, bottom: 80 } : undefined);
+    }
+    egoMs.current = performance.now() - t0;
+    requestDrawRef.current();
+    // placeAt / fitView read refs; settled stands in for in-place position changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [egoSel, egoMode, sTarget, visible, settled, sims]);
+  const egoMs = useRef(0);
+
+  // What's here? closes when a star gets selected, and on Esc.
+  const selectedKey = props.selectedKey;
+  useEffect(() => {
+    if (selectedKey) setHere(null);
+  }, [selectedKey]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setHere(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Dev-only probes for screenshot / perf scripts: drawn star positions and draw timings.
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    const w = window as unknown as Record<string, unknown>;
+    w.__map2d = () =>
+      [...drawn.current].map(([key, q]) => {
+        const n = propsRef.current.payload.nodes.find((m) => m.key === key);
+        return { key, label: n?.label, mass: n?.mass, x: q.x, y: q.y, r: q.r };
+      });
+    w.__map2dStats = () => {
+      const d = [...drawStats.current].sort((a, b) => a - b);
+      return { draws: d.length, medianDrawMs: d[d.length >> 1], p95DrawMs: d[Math.floor(d.length * 0.95)], egoLayoutMs: egoMs.current };
+    };
+    return () => {
+      delete w.__map2d;
+      delete w.__map2dStats;
+    };
+  }, []);
+
+  // prefers-reduced-motion: no cursor lenses, refocus and overlap removal jump instead of easing.
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => {
+      reduced.current = mq.matches;
+      requestDrawRef.current();
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
 
   // Size + DPR tracking.
   useEffect(() => {
@@ -1161,6 +2101,7 @@ export default function Map2D(props: SceneProps) {
     const endDrag = () => {
       const d = drag;
       drag = null;
+      draggingNode.current = false;
       if (!d?.started) return;
       const n = propsRef.current.payload.nodes.find((m) => m.key === d.key);
       if (n) propsRef.current.onDragNode(d.key, 'end', { pos2d: [n.pos2d[0], n.pos2d[1]] });
@@ -1178,37 +2119,45 @@ export default function Map2D(props: SceneProps) {
       const uy = (py - h / 2 - v.ty) / v.k;
       view.current = { k, tx: px - w / 2 - ux * k, ty: py - h / 2 - uy * k };
     };
+    // Hit tests use what was drawn last frame: refocus, lenses and covers included.
     const hitTest = (x: number, y: number): NodeKey | null => {
       for (const b of labelBoxes.current) {
         if (b.key && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b.key;
       }
-      const p = propsRef.current;
-      const F = fitScale();
       let best: NodeKey | null = null;
       let bestD = Infinity;
-      for (const n of p.payload.nodes) {
-        if (!p.visible.has(n.key)) continue;
-        const q = placeAt(n, sNow.current);
-        const [sx, sy] = toScreen(q[0], q[1], view.current, F);
-        const d = Math.hypot(sx - x, sy - y);
-        if (d <= nodeRadius(n.mass, view.current.k) + 6 && d < bestD) {
+      for (const [key, q] of drawn.current) {
+        const d = Math.hypot(q.x - x, q.y - y);
+        if (d <= q.r + 6 && d < bestD) {
           bestD = d;
-          best = n.key;
+          best = key;
         }
       }
       return best;
+    };
+    /** "What's here?" at a screen point: the field's kernel mix there, and the nearest stars. */
+    const openHere = (sx: number, sy: number) => {
+      const p = propsRef.current;
+      const at = toPlaneXY(sx, sy, view.current, fitScale());
+      const pts = p.payload.nodes.flatMap((n) => {
+        const q = lastPlane.current.get(n.key);
+        return q && !n.ghost ? [{ key: n.key, x: q[0], y: q[1], mass: n.mass, mix: n.mix }] : [];
+      });
+      setHere({ at, summary: whatsHere(pts, at, 40 * frame.gs), sx, sy });
     };
 
     const onDown = (e: PointerEvent) => {
       canvas.setPointerCapture(e.pointerId);
       const q = local(e);
       pointers.set(e.pointerId, q);
+      pressing.current = true;
       goal.current = null;
       if (pointers.size === 1) {
         down = q;
         moved = false;
         const p = propsRef.current;
-        const hit = p.editable && sNow.current === 0 ? hitTest(q.x, q.y) : null;
+        // No dragging in a refocus: those positions aren't places on the map.
+        const hit = p.editable && sNow.current === 0 && !ego.current.to ? hitTest(q.x, q.y) : null;
         const n = hit ? p.payload.nodes.find((m) => m.key === hit) : null;
         if (n) {
           const [wx, wy] = toPlaneXY(q.x, q.y, view.current, fitScale());
@@ -1225,6 +2174,10 @@ export default function Map2D(props: SceneProps) {
     const onMove = (e: PointerEvent) => {
       const q = local(e);
       const prev = pointers.get(e.pointerId);
+      if (e.pointerType === 'mouse') {
+        cursor.current = { x: q.x, y: q.y, inside: true };
+        if (!prev) requestDrawRef.current();
+      }
       if (!prev) {
         if (e.pointerType === 'mouse') {
           const hit = hitTest(q.x, q.y);
@@ -1240,6 +2193,7 @@ export default function Map2D(props: SceneProps) {
           const p = propsRef.current;
           if (!drag.started) {
             drag.started = true;
+            draggingNode.current = true;
             p.onDragNode(drag.key, 'start', {});
           }
           const [wx, wy] = toPlaneXY(q.x, q.y, view.current, fitScale());
@@ -1267,12 +2221,25 @@ export default function Map2D(props: SceneProps) {
       if (wasSingle && drag) endDrag();
       if (wasSingle && !moved && e.type === 'pointerup') {
         const q = local(e);
-        propsRef.current.onSelect(hitTest(q.x, q.y));
+        const hit = hitTest(q.x, q.y);
+        const p = propsRef.current;
+        if (hit) {
+          setHere(null);
+          p.onSelect(hit);
+        } else if (p.selectedKey) p.onSelect(null);
+        // Empty sky with nothing selected: what's here?
+        else openHere(q.x, q.y);
       }
       if (pointers.size < 2) pinchDist = 0;
-      if (pointers.size === 0) down = null;
+      if (pointers.size === 0) {
+        down = null;
+        pressing.current = false;
+        requestDrawRef.current();
+      }
     };
     const onLeave = () => {
+      cursor.current = { ...cursor.current, inside: false };
+      requestDrawRef.current();
       if (pointers.size === 0 && propsRef.current.hoveredKey) propsRef.current.onHover(null);
     };
     const onWheel = (e: WheelEvent) => {
@@ -1302,9 +2269,120 @@ export default function Map2D(props: SceneProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frame]);
 
+  const selNode = props.selectedKey && visible.has(props.selectedKey) ? payload.nodes.find((n) => n.key === props.selectedKey) ?? null : null;
+  const palette = payload.palette;
+  const hereSwatch = (id: string) => {
+    const hue = hues.get(id);
+    return hue == null ? 'rgb(140, 148, 168)' : rgbCss(tintOf(hue, 0.72, 0.13));
+  };
+  const hereLabel = (id: string) => palette?.find((pt) => pt.id === id)?.label ?? id;
+  const egoTips: Record<EgoPick, [string, string]> = {
+    off: [t2.inPlace, t2.inPlaceTip],
+    distance: [t2.distance, t2.distanceTip],
+    vector: [t2.vector, t2.vectorTip],
+    depth: [t2.depth, t2.depthTip],
+  };
+  const caption = selNode
+    ? egoPick === 'distance'
+      ? t2.capDistance(selNode.label)
+      : egoPick === 'vector'
+        ? t2.capVector(selNode.label)
+        : egoPick === 'depth'
+          ? t2.capDepth(selNode.label)
+          : null
+    : null;
   return (
     <div ref={wrapRef} className="absolute inset-0" style={{ background: SKY.bg }}>
       <canvas ref={canvasRef} className="block touch-none select-none" style={{ cursor: 'grab' }} aria-label="Taste map (2D)" role="img" />
+
+      {/* Refocus switch: how the others re-arrange around the selection. */}
+      {selNode && (
+        <div className="pointer-events-none absolute left-2.5 top-[48px] flex max-w-[calc(100%-1.25rem)] flex-col items-start gap-1">
+          <div
+            role="group"
+            aria-label={t2.viewModes}
+            className="pointer-events-auto inline-flex rounded-full border border-divider bg-surface/85 p-0.5 text-[11.5px] font-semibold backdrop-blur"
+          >
+            {(['off', ...EGO_MODES] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={egoPick === m}
+                title={egoTips[m][1]}
+                onClick={() => setEgoPick(m)}
+                className={`rounded-full px-2.5 py-1 transition ${egoPick === m ? 'bg-ink text-page' : 'text-muted hover:text-ink'}`}
+              >
+                {egoTips[m][0]}
+              </button>
+            ))}
+          </div>
+          {caption && (
+            <p className="hidden max-w-full truncate rounded-full border border-divider/60 bg-surface/80 px-2 py-0.5 text-[10px] leading-snug text-muted backdrop-blur md:block">
+              {caption}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* What's here?: the smoothed sound mix at an empty spot, and who's nearest. */}
+      {here && (
+        <div
+          ref={hereCard}
+          className="absolute left-0 top-0 z-[6] w-[230px] rounded-xl border border-divider bg-surface/95 p-3 text-ink shadow-[0_8px_24px_rgba(0,0,0,0.25)] backdrop-blur-md"
+          style={{ transform: `translate(${Math.round(here.sx + 14)}px, ${Math.round(Math.max(8, here.sy - 20))}px)` }}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted">{t2.hereTitle}</p>
+            <button type="button" aria-label={t2.close} onClick={() => setHere(null)} className="-m-1 rounded-full p-1 text-muted hover:text-ink">
+              <X size={13} />
+            </button>
+          </div>
+          <p className="mt-0.5 text-[11.5px] leading-snug text-muted">
+            {here.summary.density < 0.05 ? t2.hereEmpty : here.summary.density < 1.4 ? t2.hereSparse : t2.hereDense}
+          </p>
+          {here.summary.density >= 0.05 && here.summary.mix.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {here.summary.mix.slice(0, 4).map((m) => (
+                <li key={m.id} className="flex items-center gap-1.5 text-[11.5px]">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: hereSwatch(m.id) }} />
+                  <span className="min-w-0 flex-1 truncate font-semibold">{hereLabel(m.id)}</span>
+                  <span className="h-[5px] w-14 overflow-hidden rounded-full bg-divider">
+                    <span className="block h-full rounded-full" style={{ width: `${Math.round(m.share * 100)}%`, background: hereSwatch(m.id) }} />
+                  </span>
+                  <span className="w-8 text-right tabular-nums text-muted">{Math.round(m.share * 100)}%</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {here.summary.nearest.length > 0 && (
+            <>
+              <p className="mt-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-muted">{t2.hereNearest}</p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {here.summary.nearest.map((nb) => {
+                  const n = payload.nodes.find((m) => m.key === nb.key);
+                  if (!n) return null;
+                  return (
+                    <button
+                      key={nb.key}
+                      type="button"
+                      onClick={() => {
+                        setHere(null);
+                        props.onSelect(nb.key);
+                      }}
+                      className="max-w-full truncate rounded-full border border-divider px-2 py-0.5 text-[11px] font-semibold text-ink transition hover:bg-ink hover:text-page"
+                    >
+                      {n.label}
+                      {n.eraLabel ? <span className="font-normal text-muted"> · {n.eraLabel}</span> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          {/* Unrated catalog albums near this spot plug in here (suggestNearby, needs a server route). */}
+          {suggestNearby() && null}
+        </div>
+      )}
     </div>
   );
 }

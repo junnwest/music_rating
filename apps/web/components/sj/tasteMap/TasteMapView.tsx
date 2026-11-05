@@ -565,9 +565,11 @@ export default function TasteMapView({
   }, [work, hiddenGroups, edits.version]);
 
   // Countries and bridges over what's visible (the graph, not positions: no layoutVersion).
+  // Ghosts (payload `ghost`) are suggestions, not territory: they stay out of countries and honesty.
+  const solidVisible = useMemo(() => new Set(work.filter((n) => visible.has(n.key) && !n.ghost).map((n) => n.key)), [work, visible]);
   const atlas = useMemo(
-    () => buildAtlas(work, payload.neighbors, visible, payload.palette, Object.fromEntries(edits.groups.map((g) => [g.id, g.name]))),
-    [work, payload.neighbors, visible, payload.palette, edits.groups],
+    () => buildAtlas(work, payload.neighbors, solidVisible, payload.palette, Object.fromEntries(edits.groups.map((g) => [g.id, g.name]))),
+    [work, payload.neighbors, solidVisible, payload.palette, edits.groups],
   );
 
   // 2D schematic: an exaggeration of the true plane over what's visible, so it follows the layout.
@@ -583,7 +585,7 @@ export default function TasteMapView({
   const honesty = useMemo(
     () =>
       neighborHonesty(
-        new Map(work.map((n) => [n.key, mode === '3d' ? n.pos : (schematicOn && schematic?.pos.get(n.key)) || n.pos2d])),
+        new Map(work.filter((n) => !n.ghost).map((n) => [n.key, mode === '3d' ? n.pos : (schematicOn && schematic?.pos.get(n.key)) || n.pos2d])),
         payload.neighbors,
       ),
     // layoutVersion stands in for the in-place position changes.
