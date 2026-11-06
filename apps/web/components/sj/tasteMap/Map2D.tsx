@@ -20,6 +20,7 @@ import {
 import { dragImpact, type DragImpact } from '../../../lib/tasteMap/dragImpact';
 import { toPlane } from '../../../lib/tasteMap/plane';
 import { regionFields } from '../../../lib/tasteMap/regions';
+import { fitName, labelRoom, LINE_HEIGHT } from '../../../lib/tasteMap/labelFit';
 import { similarityLookup } from '../../../lib/tasteMap/similarity';
 import type { NodeKey, TasteMapPayloadNode, Vec2 } from '../../../lib/tasteMap/types';
 import { useLanguage } from '../../../lib/i18n';
@@ -48,12 +49,15 @@ import type { SceneGhost, SceneProps } from './TasteMapView';
  *   spaced capitals at far zoom ("constellations").
  * - Compass (fields tagGradients): the directions the palette tags grow in.
  * - Countries (lib/tasteMap/regions.ts): kNN communities as density-clipped
- *   territories with a faint tint and a border, named in spaced italic
- *   capitals along each country's long axis, sized by area, under the stars.
+ *   territories with a faint tint and a border. Countries sharing a genre
+ *   name form one realm: one territory and one name, its countries drawn as
+ *   provinces (dashed inner borders, small names of their central artists).
+ *   Names are spaced italic capitals along the long axis, fitted into the
+ *   territory (lib/tasteMap/labelFit.ts: tracking, then two lines, then size).
  *   Bundled arcs join countries (one per pair, width = summed link weight),
  *   bent through the bridge artist when there is one; bridges are diamonds.
  * - Labels never go under the stage's overlay controls (reserved boxes). Group
- *   names are drawn only when there are fewer than two countries.
+ *   names are drawn only when there are fewer than two realms.
  * - Distortion lens (honest map, lib/tasteMap/honesty.ts): stars colored by how
  *   much of their real neighborhood the plane keeps, with a fuzzy halo that
  *   widens as it tears; on select, links to torn neighbors are dashed and
@@ -638,55 +642,90 @@ export default function Map2D(props: SceneProps) {
     return { all, groups };
   };
 
-  // Country territories (grid-unit paths) and label geometry (world units).
+  // Country territories (grid-unit paths) and label geometry (world units), per
+  // country (province) and per realm (countries sharing a genre name).
   const makeRegions = (at: At) => {
-    if (typeof Path2D === 'undefined') return [];
+    if (typeof Path2D === 'undefined') return { countries: [], realms: [] };
     const cell = (GRID * frame.gs) / REGION_N;
     const grid = { x0: frame.gx0 + cell / 2, y0: frame.gy0 + cell / 2, cell, nx: REGION_N, ny: REGION_N };
-    const pts = payload.nodes
-      .filter((n) => visible.has(n.key) && !isGhost(n))
-      .map((n) => ({ x: at(n)[0], y: at(n)[1], w: 0.5 + 0.5 * Math.sqrt(Math.max(n.mass, 0)), country: atlas.countryOf.get(n.key) ?? -1 }));
-    const fields = regionFields(pts, grid, 48 * frame.gs, atlas.countries.length);
+    const solid = payload.nodes.filter((n) => visible.has(n.key) && !isGhost(n) && atlas.countryOf.has(n.key));
     const scale = GRID / REGION_N;
-    return atlas.countries.flatMap((country) => {
-      const ms = payload.nodes.filter((n) => visible.has(n.key) && !isGhost(n) && atlas.countryOf.get(n.key) === country.id);
-      if (ms.length < 2) return [];
-      const f = fields[country.id];
-      const [ct] = gridContours().size([REGION_N, REGION_N]).thresholds([0])(Array.from(f));
-      const path = new Path2D();
-      for (const poly of ct?.coordinates ?? [])
-        for (const ring of poly) {
-          ring.forEach(([x, y], i) => (i === 0 ? path.moveTo(x * scale, y * scale) : path.lineTo(x * scale, y * scale)));
-          path.closePath();
+    const territories = (unitOf: (k: NodeKey) => number, units: { id: number; hue: number | null }[]) => {
+      const pts = solid.map((n) => ({ x: at(n)[0], y: at(n)[1], w: 0.5 + 0.5 * Math.sqrt(Math.max(n.mass, 0)), country: unitOf(n.key) }));
+      const fields = regionFields(pts, grid, 48 * frame.gs, units.length);
+      return units.flatMap((unit) => {
+        const ms = solid.filter((n) => unitOf(n.key) === unit.id);
+        if (ms.length < 2) return [];
+        const f = fields[unit.id];
+        const [ct] = gridContours().size([REGION_N, REGION_N]).thresholds([0])(Array.from(f));
+        const path = new Path2D();
+        const edge: [number, number][] = [];
+        for (const poly of ct?.coordinates ?? [])
+          for (const ring of poly) {
+            ring.forEach(([x, y], i) => {
+              if (i === 0) path.moveTo(x * scale, y * scale);
+              else path.lineTo(x * scale, y * scale);
+              edge.push([frame.gx0 + x * scale * frame.gs, frame.gy0 + y * scale * frame.gs]);
+            });
+            path.closePath();
+          }
+        let land = 0;
+        for (let i = 0; i < f.length; i++) if (f[i] > 0) land++;
+        const inside = (x: number, y: number) => {
+          const i = Math.round((x - grid.x0) / cell);
+          const j = Math.round((y - grid.y0) / cell);
+          return i >= 0 && j >= 0 && i < REGION_N && j < REGION_N && f[j * REGION_N + i] > 0;
+        };
+        // Mass-weighted centroid and long axis of the members; when the centroid
+        // falls outside the land (a realm in pieces), the heaviest piece's.
+        const centroid = (ns: typeof ms) => {
+          let sw = 0;
+          let mx = 0;
+          let my = 0;
+          for (const n of ns) {
+            sw += n.mass;
+            mx += n.mass * at(n)[0];
+            my += n.mass * at(n)[1];
+          }
+          return [mx / sw, my / sw] as const;
+        };
+        let [mx, my] = centroid(ms);
+        let core = ms;
+        if (!inside(mx, my)) {
+          const byCountry = new Map<number, typeof ms>();
+          for (const n of ms) {
+            const c = atlas.countryOf.get(n.key)!;
+            byCountry.set(c, [...(byCountry.get(c) ?? []), n]);
+          }
+          const heavy = [...byCountry.values()].sort((a, b) => b.reduce((t, n) => t + n.mass, 0) - a.reduce((t, n) => t + n.mass, 0))[0];
+          const [hx, hy] = centroid(heavy);
+          if (inside(hx, hy)) {
+            [mx, my] = [hx, hy];
+            core = heavy;
+          }
         }
-      let land = 0;
-      for (let i = 0; i < f.length; i++) if (f[i] > 0) land++;
-      // Mass-weighted centroid and long axis of the members.
-      let sw = 0;
-      let mx = 0;
-      let my = 0;
-      for (const n of ms) {
-        sw += n.mass;
-        mx += n.mass * at(n)[0];
-        my += n.mass * at(n)[1];
-      }
-      mx /= sw;
-      my /= sw;
-      let sxx = 0;
-      let syy = 0;
-      let sxy = 0;
-      for (const n of ms) {
-        const dx = at(n)[0] - mx;
-        const dy = at(n)[1] - my;
-        sxx += n.mass * dx * dx;
-        syy += n.mass * dy * dy;
-        sxy += n.mass * dx * dy;
-      }
-      let axis = 0.5 * Math.atan2(2 * sxy, sxx - syy);
-      if (axis > Math.PI / 2) axis -= Math.PI;
-      if (axis < -Math.PI / 2) axis += Math.PI;
-      return [{ ...country, path, x: mx, y: my, axis: Math.max(-0.45, Math.min(0.45, axis)), area: land * cell * cell }];
-    });
+        let sxx = 0;
+        let syy = 0;
+        let sxy = 0;
+        for (const n of core) {
+          const dx = at(n)[0] - mx;
+          const dy = at(n)[1] - my;
+          sxx += n.mass * dx * dx;
+          syy += n.mass * dy * dy;
+          sxy += n.mass * dx * dy;
+        }
+        let axis = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+        if (axis > Math.PI / 2) axis -= Math.PI;
+        if (axis < -Math.PI / 2) axis += Math.PI;
+        axis = Math.max(-0.45, Math.min(0.45, axis));
+        const room = labelRoom(edge, mx, my, axis, 1.5 * cell);
+        return [{ id: unit.id, hue: unit.hue, path, x: mx, y: my, axis, area: land * cell * cell, ...room }];
+      });
+    };
+    return {
+      countries: territories((k) => atlas.countryOf.get(k) ?? -1, atlas.countries),
+      realms: territories((k) => atlas.countries[atlas.countryOf.get(k) ?? -1]?.realm ?? -1, atlas.realms),
+    };
   };
 
   // The true plane's layers, and the same layers on the schematic positions.
@@ -967,7 +1006,8 @@ export default function Map2D(props: SceneProps) {
         ctx.strokeStyle = `${SKY.line}${(0.05 + 0.012 * i).toFixed(3)})`;
         ctx.stroke(path);
       });
-      for (const r of geo.regions) {
+      // Realms are the land; provinces inside a realm only get a faint dashed border.
+      for (const r of geo.regions.realms) {
         const tint = tintOf(r.hue, 0.72, 0.12);
         ctx.fillStyle = rgbCss(tint, 0.05);
         ctx.fill(r.path);
@@ -975,6 +1015,14 @@ export default function Map2D(props: SceneProps) {
         ctx.strokeStyle = rgbCss(tint, 0.3);
         ctx.stroke(r.path);
       }
+      ctx.lineWidth = 0.9 / a;
+      ctx.setLineDash([2 / a, 3.5 / a]);
+      for (const r of geo.regions.countries) {
+        if (!atlas.countries[r.id]?.sub) continue;
+        ctx.strokeStyle = rgbCss(tintOf(r.hue, 0.72, 0.12), 0.22);
+        ctx.stroke(r.path);
+      }
+      ctx.setLineDash([]);
       ctx.lineWidth = 1.25 / a;
       ctx.setLineDash([5 / a, 4 / a]);
       for (const g of geo.contours.groups) {
@@ -1135,40 +1183,98 @@ export default function Map2D(props: SceneProps) {
     const dimOthers = sel != null;
     const focusKey = p.hoveredKey ?? sel;
 
-    // Country names: the map's background lettering, under every star, along
-    // each territory's long axis. Between scales a name slides from one
-    // territory to the other (or fades, when a scale has no territory for it).
+    // Names: the map's background lettering, under every star. Each realm (a
+    // genre) is named once, fitted into its land along its long axis
+    // (lib/tasteMap/labelFit.ts); a realm of several provinces names them too,
+    // small, where they don't collide with the realm's name. Between scales a
+    // name slides from one territory to the other (or fades, when a scale has
+    // no territory for it).
     const nameA = Math.max(0.3, Math.min(0.62, (3.2 - v.k) / 2.5));
-    const regionOf = new Map(geoTrue.regions.map((r) => [r.id, r]));
-    const schRegionOf = new Map((geoSch?.regions ?? []).map((r) => [r.id, r]));
-    let names = 0;
-    for (const country of atlas.countries) {
-      const rt = regionOf.get(country.id);
-      const rs = schRegionOf.get(country.id);
+    const regionOf = new Map(geoTrue.regions.countries.map((r) => [r.id, r]));
+    const schRegionOf = new Map((geoSch?.regions.countries ?? []).map((r) => [r.id, r]));
+    const realmTrue = new Map(geoTrue.regions.realms.map((r) => [r.id, r]));
+    const realmSch = new Map((geoSch?.regions.realms ?? []).map((r) => [r.id, r]));
+    type Geo = (typeof geoTrue.regions.countries)[number];
+    const serif = '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif';
+    const realmFont = (size: number) => `italic 600 ${size.toFixed(1)}px ${serif}`;
+    const provinceFont = (size: number) => `italic 500 ${size.toFixed(1)}px ${serif}`;
+    // Width at size 1: measured at 20px, tracking scaled with it.
+    const widthAt1 = (fontOf: (size: number) => string) => (line: string, t: number) => {
+      const key = `${fontOf(20)}|${t}|${line}`;
+      let m = measureCache.current.get(key);
+      if (m == null) {
+        ctx.font = fontOf(20);
+        setSpacing(`${(20 * t).toFixed(1)}px`);
+        m = ctx.measureText(line).width / 20;
+        setSpacing('0px');
+        measureCache.current.set(key, m);
+      }
+      return m;
+    };
+    const nameBoxes: Box[] = [];
+    const drawName = (
+      text: string,
+      rt: Geo | undefined,
+      rs: Geo | undefined,
+      opts: { max: number; min: number; fill: number; font: (size: number) => string; color: string; alpha: number; avoid: boolean },
+    ) => {
       const wt = rt ? tTrue : 0;
       const ws = rs ? s : 0;
-      if (wt + ws < 0.02) continue;
-      if (wt + ws >= 0.5) names++;
-      const place = (r: NonNullable<typeof rt>) => {
+      if (wt + ws < 0.02) return false;
+      const place = (r: Geo) => {
         const [x, y] = toScreen(r.x, r.y, v, F);
-        return { x, y, rot: -r.axis, size: Math.max(11, Math.min(24, Math.sqrt(r.area) * px * 0.085)) };
+        const cap = Math.max(opts.min, Math.min(opts.max, Math.sqrt(r.area) * px * 0.085));
+        const fit = fitName(text, r.len * px * opts.fill, r.thick * px * 0.8, cap, opts.min, widthAt1(opts.font));
+        return { x, y, rot: -r.axis, ...fit };
       };
       const A = place((rt ?? rs)!);
       const B = rs ? place(rs) : A;
       const u = rt && rs ? s : 0;
-      ctx.save();
-      ctx.translate(A.x + (B.x - A.x) * u, A.y + (B.y - A.y) * u);
-      ctx.rotate(A.rot + (B.rot - A.rot) * u);
+      const L = u < 0.5 ? A : B;
+      const x = A.x + (B.x - A.x) * u;
+      const y = A.y + (B.y - A.y) * u;
+      const rot = A.rot + (B.rot - A.rot) * u;
       const size = A.size + (B.size - A.size) * u;
-      ctx.font = `italic 600 ${size.toFixed(1)}px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`;
-      setSpacing(`${(size * 0.32).toFixed(1)}px`);
+      const spacing = A.spacing + (B.spacing - A.spacing) * u;
+      const lh = size * LINE_HEIGHT;
+      // Screen box of the rotated block, for collisions.
+      const bw = Math.max(...L.lines.map((l) => widthAt1(opts.font)(l, spacing / Math.max(size, 1e-9)))) * size;
+      const bh = lh * L.lines.length;
+      const c = Math.abs(Math.cos(rot));
+      const sn = Math.abs(Math.sin(rot));
+      const box: Box = { x: x - (bw * c + bh * sn) / 2, y: y - (bw * sn + bh * c) / 2, w: bw * c + bh * sn, h: bw * sn + bh * c, key: null };
+      if (opts.avoid && nameBoxes.some((o) => box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y)) return false;
+      nameBoxes.push(box);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.font = opts.font(size);
+      setSpacing(`${spacing.toFixed(1)}px`);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.globalAlpha = nameA * (dimOthers ? 0.6 : 1) * (rt && rs ? 1 : wt + ws) * baseShare;
-      ctx.fillStyle = country.hue == null ? SKY.ink : rgbCss(tintOf(country.hue, 0.86, 0.07));
-      ctx.fillText(country.name.toUpperCase(), 0, 0);
+      ctx.globalAlpha = opts.alpha * (rt && rs ? 1 : wt + ws);
+      ctx.fillStyle = opts.color;
+      L.lines.forEach((line, i) => ctx.fillText(line, 0, (i - (L.lines.length - 1) / 2) * lh));
       setSpacing('0px');
       ctx.restore();
+      return wt + ws >= 0.5;
+    };
+    let names = 0;
+    const realmAlpha = nameA * (dimOthers ? 0.6 : 1) * baseShare;
+    for (const realm of [...atlas.realms].sort((a, b) => b.mass - a.mass)) {
+      const color = realm.hue == null ? SKY.ink : rgbCss(tintOf(realm.hue, 0.86, 0.07));
+      const big = { max: 24, min: 10, fill: 0.92, font: realmFont, color, alpha: realmAlpha, avoid: false };
+      if (drawName(realm.name.toUpperCase(), realmTrue.get(realm.id), realmSch.get(realm.id), big)) names++;
+    }
+    for (const realm of atlas.realms) {
+      if (realm.countries.length < 2) continue;
+      const color = realm.hue == null ? SKY.muted : rgbCss(tintOf(realm.hue, 0.8, 0.06));
+      for (const id of realm.countries) {
+        const sub = atlas.countries[id]?.sub;
+        if (!sub) continue;
+        const small = { max: 13, min: 9, fill: 0.85, font: provinceFont, color, alpha: realmAlpha * 0.85, avoid: true };
+        drawName(sub, regionOf.get(id), schRegionOf.get(id), small);
+      }
     }
 
     // Bundled links between countries, bent through the bridge between them,

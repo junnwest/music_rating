@@ -53,6 +53,11 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-11-05 (Windows, afternoon) — Taste map 2D: one name per genre (realms + provinces), names fitted to their territory, plus schematic style prototypes. Pushed; live for the three allowlisted accounts only (the whole taste map is still behind `TASTE_MAP_OPEN = false`). Jun to compare.** Details in SESSIONS.
+> - **To try:** junnwest's 2D map (Schematic and To scale). It should show **one** KOREAN HIP-HOP, with four small province names inside (창모, Kid Milli, Beenzino, YUMDDA) and faint dashed borders between them. Long names should break onto two lines or tighten their letter spacing instead of spilling out of small territories.
+> - **Checked visually** on junnwest's and zero's fixtures (Playwright). Offline check: `scripts/dump-taste-map-layout.ts --user=junnwest --out=<file>`, then `/taste/map?fixture=<url>` in dev.
+> - **Schematic style prototypes (5 fingerprint, 3 contour ink, 1 tile map, 6 similarity tree):** in 2D press **Styles** (or open `?compare=1`) to see all four side by side under the map, drawn from your own map. Jun picks a direction, then it gets built into Map2D properly. These are English-only and static (hover shows the artist). Checked visually on junnwest and zero with fixture screenshots.
+
 > **2026-11-05 (Windows, morning) — Taste map 2D: cursor focus, drag HUD, undo/reset for moves, (i) tips. Pushed (`15644a5`); Jun to try it.** Details in SESSIONS.
 > - **To try:** in 2D, rest the cursor on a star (it should hold still and glow while the sky turns around it). Switch to To scale and drag a star (watch the HUD), then Ctrl+Z, Ctrl+Shift+Z and Reset.
 > - **Open:** the drag HUD is 2D only (undo covers 3D). Dragging in Schematic is still off; you get a hint instead.

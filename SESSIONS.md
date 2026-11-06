@@ -4,6 +4,20 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-11-05 (Windows, afternoon) — Taste map 2D: realms + provinces, fitted names, schematic style prototypes (pushed; allowlisted accounts only).** Jun saw several KOREAN HIP-HOP labels on junnwest's map.
+- **Cause:** Louvain at resolution 2 splits junnwest's hip-hop scene into 4 communities. The palette has one hip-hop hue, so all 4 were named "Korean Hip-Hop". The old clash rule only appended a second tag, and these had none.
+- **Fix** (`lib/tasteMap/regions.ts`): countries with the same name form a **realm** (`Atlas.realms`). Each country in a shared realm is a **province** (`Country.sub`), named after its most central artist (intra-country weighted degree × mass), with a second artist added when two provinces would otherwise share a name. junnwest now has one Korean Hip-Hop realm with 4 provinces: 창모 / Kid Milli / Beenzino / YUMDDA.
+- **2D** (`Map2D.tsx`): territories are computed per realm and per province. The realm is filled and outlined. Provinces get faint dashed inner borders and small italic names that skip any spot where they would collide. Each realm name is drawn once. When a split realm's centroid falls outside its land, the name moves to its heaviest piece.
+- **Flexible names** (`lib/tasteMap/labelFit.ts`, 5 tests): `labelRoom` measures the distance to the territory border along the name's axis and across it. `fitName` fits the name into that room, giving way in this order: tighter tracking (0.32 → 0.2 → 0.1 em), then a balanced two-line break, then a smaller size (floor 10px for realms, 9px for provinces).
+- Panel: the Country line shows the province, and the "bridge to" targets are deduped (a province inside your own realm is listed by its own name). The 3D overlay already deduped names.
+- Checks: tsc clean, eslint clean, vitest lib/tasteMap 361 passed + 1 expected fail (+1 realm test, +5 labelFit, +7 styles).
+- **Schematic style prototypes** (Jun asked to compare ideas 5, 3, 1 and 6 from the brainstorm). The math is in `lib/tasteMap/styles.ts` (7 tests); `SchematicCompare.tsx` draws the four as static SVG in the site's print look, under the 2D map behind a **Styles** toggle or `?compare=1`.
+  - **Tile map:** median nearest-neighbor distance becomes one hex cell, then a Hungarian assignment that minimizes total squared displacement. Edges are drawn as coast, realm or province (dashed). Shade = rating.
+  - **Contour ink:** a Gaussian KDE drawn as 9 isolines only, with a ▲ summit at each realm's own density peak.
+  - **Fingerprint:** Fejér-summed Fourier series of the mass × rating-weighted bearings around you, for K = 1, 2, 4, 8 (Fejér keeps r ≥ 0). Rug ticks per star, realm arcs, and |c₁| / |c₂| printed (junnwest |c₂| = 0.34, zero 0.62: two-sided tastes).
+  - **Similarity tree:** UPGMA on the true all-pairs similarity. Each join is oriented so its most similar ends sit side by side. Branches take their realm's color when every leaf below shares that realm.
+  - Rendered on junnwest and zero through the dev fixture and Playwright (the local headless shell is build 1248, so pass `executablePath`). The realm fix shows on the main map too: one KOREAN HIP-HOP.
+
 **2026-11-05 (Windows, morning) — Taste map 2D: cursor focus, drag HUD, move undo/reset, (i) tips (pushed, `15644a5`).** Jun's feedback on the overnight 2D run.
 - **Cursor focus** (`lens2d.ts` `pickFocus`, `Map2D.tsx`): the star nearest the cursor (edge distance ≤ 64px, held to 96px, a rival must be < 0.6× as far) is focused. The parallax pivots on its depth (eased, τ 220ms), the fisheye centers on it, and it draws a bloom + ring instead of growing. Measured in Playwright: the focused star moves 0.06px while the cursor moves around it. In empty sky the pivot keeps the last focus's depth, so the sky doesn't slide.
 - **Drag HUD** (`lib/tasteMap/dragImpact.ts`, 3 tests): moved % of the map, sound-mix shift around the star (`whatsHere` at start vs now), neighbors joined and left, true-neighbor recall@5 and mean true similarity, start vs now. Recomputed once per frame. 2D only.

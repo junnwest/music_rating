@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Atom, Box, ChevronUp, Download, Map as MapIcon, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, PinOff, Redo2, RotateCcw, Scissors, Shuffle, Ruler, SlidersHorizontal, Square, Undo2, Upload, UserPlus, X } from 'lucide-react';
+import { Atom, Box, ChevronUp, Download, LayoutGrid, Map as MapIcon, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, PinOff, Redo2, RotateCcw, Scissors, Shuffle, Ruler, SlidersHorizontal, Square, Undo2, Upload, UserPlus, X } from 'lucide-react';
 import Cover from '../Cover';
 import { FlowerSpinner } from '../Loading';
 import { useLanguage } from '../../../lib/i18n';
@@ -22,6 +22,7 @@ import EraEditor from './EraEditor';
 import GhostTray from './GhostTray';
 import GroupEditor from './GroupEditor';
 import Map2D from './Map2D';
+import SchematicCompare from './SchematicCompare';
 import MembershipEditor from './MembershipEditor';
 import MetricPanel from './MetricPanel';
 import { useGroupEdits } from './useGroupEdits';
@@ -439,6 +440,11 @@ export default function TasteMapView({
 
   const [mode, setMode] = useState<MapMode>('2d');
   const [scale, setScale] = useState<MapScale>('schematic');
+  // Prototype: four schematic styles side by side under the map (SchematicCompare). `?compare=1` opens it.
+  const [compare, setCompare] = useState(false);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('compare') === '1') setCompare(true);
+  }, []);
   const genreOk = hasGenreLens(payload.palette);
   const [lensPick, setLens] = useState<MapLens>('genre');
   // Older cached payloads and fixtures have no palette: score is all they can show.
@@ -1475,7 +1481,12 @@ export default function TasteMapView({
             full ? 'h-full flex-1' : 'h-[calc(100svh-8.5rem)] max-h-[720px] min-h-[380px] md:h-[68vh] md:flex-1'
           }`}
         >
-          {sceneProps && (mode === '3d' ? <Scene3D {...sceneProps} /> : <Map2D {...sceneProps} />)}
+          {sceneProps &&
+            (mode === '3d' ? (
+              <Scene3D {...sceneProps} />
+            ) : (
+              <Map2D {...sceneProps} />
+            ))}
 
           <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5">
             <button
@@ -1530,6 +1541,20 @@ export default function TasteMapView({
               <span className="hidden rounded-full border border-divider bg-surface/85 backdrop-blur md:inline-flex">
                 <InfoTip label={c.info} text={c.scaleInfo} />
               </span>
+            )}
+            {mode === '2d' && (
+              <button
+                type="button"
+                aria-pressed={compare}
+                onClick={() => setCompare((v) => !v)}
+                title="Compare schematic styles (prototype)"
+                className={`inline-flex items-center gap-1 rounded-full border border-divider px-2.5 py-1 text-[11.5px] font-semibold backdrop-blur transition ${
+                  compare ? 'bg-ink text-page' : 'bg-surface/85 text-muted hover:text-ink'
+                }`}
+              >
+                <LayoutGrid size={12} className="my-[1.5px]" />
+                <span className="hidden md:inline">Styles</span>
+              </button>
             )}
             {(hist.undo > 0 || hist.redo > 0) && (
               <div role="group" className="inline-flex items-center rounded-full border border-divider bg-surface/85 p-0.5 backdrop-blur">
@@ -1730,6 +1755,11 @@ export default function TasteMapView({
           ))}
         </aside>
       </div>
+      {compare && mode === '2d' && !full && (
+        <div className="mt-3">
+          <SchematicCompare payload={{ ...payload, nodes: work }} atlas={atlas} visible={visible} />
+        </div>
+      )}
     </div>
   );
 }
@@ -2024,6 +2054,7 @@ function Citizenship({ nodeKey, atlas, c }: { nodeKey: NodeKey; atlas: Atlas; c:
         {dot(home.hue)}
         <span>
           {c.country} <span className="font-semibold text-ink">{home.name}</span>
+          {home.sub && <span> · {home.sub}</span>}
         </span>
       </p>
       {bridge && (
@@ -2032,10 +2063,16 @@ function Citizenship({ nodeKey, atlas, c }: { nodeKey: NodeKey; atlas: Atlas; c:
           <span>
             {c.bridgeTo}{' '}
             <span className="font-semibold text-ink">
-              {bridge.countries
-                .slice(1, 3)
-                .map((id) => atlas.countries[id]?.name)
-                .filter(Boolean)
+              {[
+                ...new Set(
+                  bridge.countries
+                    .slice(1)
+                    .map((id) => atlas.countries[id])
+                    .filter((o) => o != null)
+                    .map((o) => (o.realm === home.realm ? (o.sub ?? o.name) : o.name)),
+                ),
+              ]
+                .slice(0, 2)
                 .join(', ')}
             </span>
           </span>

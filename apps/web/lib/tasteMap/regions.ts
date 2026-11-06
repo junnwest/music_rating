@@ -240,7 +240,12 @@ export interface Bridge {
 
 export interface Country {
   id: number;
+  /** Its genre's name, shared by every country in the same realm. */
   name: string;
+  /** Province name (its most central artists) when its realm has other countries too; else null. */
+  sub: string | null;
+  /** Index into `Atlas.realms`. */
+  realm: number;
   /** Hue of the palette tag it is named after, null when named another way. */
   hue: number | null;
   members: NodeKey[];
@@ -253,9 +258,20 @@ export interface CountryLink {
   w: number;
 }
 
+/** Countries that share a genre name: one name on the map, provinces inside. */
+export interface Realm {
+  id: number;
+  name: string;
+  hue: number | null;
+  /** Country ids, heaviest first. */
+  countries: number[];
+  mass: number;
+}
+
 export interface Atlas {
   countryOf: Map<NodeKey, number>;
   countries: Country[];
+  realms: Realm[];
   bridges: Map<NodeKey, Bridge>;
   links: CountryLink[];
 }
@@ -271,8 +287,9 @@ export interface AtlasNode {
 /**
  * Countries, bridges and bundled links for the visible nodes. Names: the
  * palette tag with the most mass-weighted mix among members; when the palette
- * explains little of it, the dominant group; else the heaviest artist. Two
- * countries with one name get their second tag appended.
+ * explains little of it, the dominant group; else the heaviest artist.
+ * Countries with one name form a realm (named once on the map); each is then a
+ * province named by its most central artist.
  */
 export function buildAtlas(
   nodes: AtlasNode[],
@@ -306,16 +323,61 @@ export function buildAtlas(
     const t = byShare(tags);
     const hueOf = (id: string) => palette?.find((p) => p.id === id);
     const top = t[0] && colored >= 0.4 * mass ? hueOf(t[0][0]) : undefined;
-    const second = t[1] && t[1][1] >= 0.25 * t[0][1] ? hueOf(t[1][0]) : undefined;
     const grp = byShare(groups)[0];
     const heaviest = [...ks].sort((a, b) => byKey.get(b)!.mass - byKey.get(a)!.mass || (a < b ? -1 : 1))[0];
     const name = top?.label ?? (grp ? groupNames[grp[0]] : undefined) ?? byKey.get(heaviest)!.label;
-    return { name, hue: top?.hue ?? null, second: second?.label ?? null, mass, members: ks };
+    return { name, hue: top?.hue ?? null, mass, members: ks };
   });
-  const countries: Country[] = named.map((c, id) => {
-    const clash = named.some((o, j) => j !== id && o.name === c.name);
-    return { id, name: clash && c.second ? `${c.name} · ${c.second}` : c.name, hue: c.hue, members: c.members, mass: c.mass };
+  // Realms: countries with one genre name share it (Louvain splits a big scene
+  // into several communities; the map names the scene once). Each country in a
+  // shared realm is a province, named by its most central artists.
+  const realmOfName = new Map<string, number>();
+  const realms: Realm[] = [];
+  named.forEach((c, id) => {
+    let r = realmOfName.get(c.name);
+    if (r == null) {
+      r = realms.length;
+      realmOfName.set(c.name, r);
+      realms.push({ id: r, name: c.name, hue: c.hue, countries: [], mass: 0 });
+    }
+    realms[r].countries.push(id);
+    realms[r].mass += c.mass;
   });
+  const central = (ks: NodeKey[]) => {
+    const own = new Set(ks);
+    const score = (k: NodeKey) => {
+      let d = 0;
+      for (const [o, w] of g.get(k) ?? []) if (own.has(o)) d += w;
+      return d * (0.5 + Math.sqrt(byKey.get(k)!.mass));
+    };
+    const labels: string[] = [];
+    for (const k of [...ks].sort((a, b) => score(b) - score(a) || byKey.get(b)!.mass - byKey.get(a)!.mass || (a < b ? -1 : 1))) {
+      const l = byKey.get(k)!.label;
+      if (!labels.includes(l)) labels.push(l);
+    }
+    return labels;
+  };
+  const sub = new Array<string | null>(named.length).fill(null);
+  for (const r of realms) {
+    if (r.countries.length < 2) continue;
+    const ranked = r.countries.map((id) => central(named[id].members));
+    // One artist each, a second where two provinces would otherwise share a name.
+    r.countries.forEach((id, i) => {
+      const first = ranked[i][0];
+      const clash = ranked.some((o, j) => j !== i && o[0] === first);
+      sub[id] = clash && ranked[i][1] ? `${first} · ${ranked[i][1]}` : first;
+    });
+    r.countries.sort((a, b) => named[b].mass - named[a].mass || a - b);
+  }
+  const countries: Country[] = named.map((c, id) => ({
+    id,
+    name: c.name,
+    sub: sub[id],
+    realm: realmOfName.get(c.name)!,
+    hue: c.hue,
+    members: c.members,
+    mass: c.mass,
+  }));
 
   // Bundled links.
   const linkW = new Map<string, number>();
@@ -352,7 +414,7 @@ export function buildAtlas(
       bridges.set(k, { key: k, score, countries: [own, ...others] });
     });
 
-  return { countryOf, countries, bridges, links };
+  return { countryOf, countries, realms, bridges, links };
 }
 
 export interface RegionPoint {

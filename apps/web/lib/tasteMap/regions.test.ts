@@ -104,3 +104,38 @@ describe('regionFields', () => {
     expect(f1[10]).toBeLessThan(0);
   });
 });
+
+describe('buildAtlas realms', () => {
+  // Two rap communities (a–c, x–z) joined by one weak edge, plus a rock one.
+  const keys = ['a', 'b', 'c', 'x', 'y', 'z', 'p', 'q', 'r'];
+  const tri = (ks: string[], s: number) =>
+    Object.fromEntries(ks.map((k) => [k, ks.filter((o) => o !== k).map((o) => ({ key: o, sim: s, why: [] }))]));
+  const nb: Record<string, { key: string; sim: number; why: never[] }[]> = { ...tri(['a', 'b', 'c'], 0.9), ...tri(['x', 'y', 'z'], 0.9), ...tri(['p', 'q', 'r'], 0.9) };
+  nb.c = [...nb.c, { key: 'x', sim: 0.1, why: [] }];
+  nb.r = [...nb.r, { key: 'z', sim: 0.1, why: [] }];
+  const nodes = keys.map((key): AtlasNode => ({
+    key,
+    label: key === 'b' ? 'B-Star' : key.toUpperCase(),
+    mass: key === 'b' ? 3 : 1,
+    mix: 'pqr'.includes(key) ? { rock: 1 } : { rap: 1 },
+    groups: {},
+  }));
+  const palette = [
+    { id: 'rock', label: 'Rock', hue: 20 },
+    { id: 'rap', label: 'Rap', hue: 200 },
+  ];
+  const atlas = buildAtlas(nodes, nb as never, new Set(keys), palette, {});
+
+  it('names a genre once and its communities as provinces', () => {
+    const rap = atlas.realms.filter((r) => r.name === 'Rap');
+    expect(rap).toHaveLength(1);
+    expect(rap[0].countries).toHaveLength(2);
+    const subs = rap[0].countries.map((id) => atlas.countries[id].sub);
+    expect(subs).toContain('B-Star');
+    expect(subs.every((x) => x)).toBe(true);
+    expect(new Set(subs).size).toBe(2);
+    const rock = atlas.realms.find((r) => r.name === 'Rock')!;
+    expect(atlas.countries[rock.countries[0]].sub).toBeNull();
+    for (const c of atlas.countries) expect(atlas.realms[c.realm].countries).toContain(c.id);
+  });
+});
