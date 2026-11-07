@@ -119,6 +119,11 @@ struct sillajukuApp: App {
                     // intercept a DIRECT user tap on a matching https:// link,
                     // never a page merely reached via a redirect chain. A
                     // custom scheme has no such restriction.
+                    // sillajuku://open -- the website's "open the app if installed"
+                    // redirect (web components/IosAppRedirect.tsx). Just bringing
+                    // the app forward is the whole job; not an auth callback, so
+                    // it must not reach session(from:) below and log a Sentry error.
+                    if url.host == "open" { return }
                     if url.host == "auth", url.path == "/confirmed" {
                         NotificationCenter.default.post(name: .sjEmailConfirmed, object: nil)
                         return
