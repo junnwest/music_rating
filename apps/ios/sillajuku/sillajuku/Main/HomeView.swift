@@ -546,6 +546,8 @@ struct HomeView: View {
     // actually reaches the button.
     let ratingStep: Double
     let onOwnProfileTap: () -> Void
+    /// Owned by MainTabView so opened sillajuku.com links can push onto it.
+    @Binding var path: NavigationPath
 
     @State private var activeTab: FeedTab = .explore
     @State private var exploreScrollTrigger   = UUID()
@@ -554,7 +556,7 @@ struct HomeView: View {
     @State private var topSafeAreaInset: CGFloat = 0
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             feedContent
                 .overlay(alignment: .top) { floatingHeader }
                 .background(Color.sjCream.ignoresSafeArea())
@@ -566,10 +568,12 @@ struct HomeView: View {
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
             .navigationDestination(for: UserProfileDestination.self) { dest in
-                UserProfileView(userId: dest.userId, initialHandle: dest.handle)
+                UserProfileView(userId: dest.userId, initialHandle: dest.handle,
+                                focusRatingId: dest.focusRatingId)
             }
             .navigationDestination(for: FindPeopleDestination.self) { _ in FindPeopleView() }
-            .navigationDestination(for: AlbumPostDestination.self) { AlbumPostDetailView(ratingId: $0.ratingId) }
+            // Only reached from an opened /mix/<id> link (MainTabView.open).
+            .navigationDestination(for: Mix.self) { MixDetailView(mix: $0) }
             // Value-based push (not `.navigationDestination(isPresented:)`) --
             // isPresented mixed with the for:-based pushes above left this
             // NavigationStack in a broken state where NotificationsView's own
@@ -1097,7 +1101,9 @@ private enum CardSheet: Identifiable {
 /// album detail page -- when set, FeedCard's ellipsis menu shows these instead
 /// of the feed actions (Add/Save/Share-link), which don't make sense there.
 struct OwnRatingMenuActions {
-    let onShare: () -> Void
+    /// Opens the Instagram story card (SharePreviewSheet). The plain link share
+    /// ("Share") is a ShareLink in the menu itself.
+    let onShareToInstagram: () -> Void
     let onEdit: () -> Void
     let onAddToMix: () -> Void
     let onEditComment: () -> Void
@@ -1262,7 +1268,19 @@ struct FeedCard: View {
 
             Menu {
                 if let own = ownRatingActions {
-                    Button { own.onShare() } label: { Label("Share", image: "icon-share") }
+                    // Two kinds of share, kept apart: a link (system share
+                    // sheet) and the Instagram story card.
+                    Section {
+                        ShareLink(
+                            item: URL(string: "https://sillajuku.com/post/\(item.id.uuidString.lowercased())")!,
+                            subject: Text(item.releases.displayTitle + " · " + item.releases.displayArtist)
+                        ) {
+                            Label("Share", image: "icon-share")
+                        }
+                        Button { own.onShareToInstagram() } label: {
+                            Label("Share to Instagram Story", image: "icon-camera")
+                        }
+                    }
                     Button { own.onEdit() } label: { Label("Edit", image: "icon-square-pen") }
                     Button { own.onAddToMix() } label: { Label("Add to Mix", image: "icon-bookmark") }
                     Button { own.onEditComment() } label: { Label("Edit Comment", image: "icon-message-square") }
@@ -1289,7 +1307,7 @@ struct FeedCard: View {
                         }
                     }
                     ShareLink(
-                        item: URL(string: "https://sillajuku.com/r/\(item.id)")!,
+                        item: URL(string: "https://sillajuku.com/post/\(item.id.uuidString.lowercased())")!,
                         subject: Text(item.releases.displayTitle + " · " + item.releases.displayArtist),
                         message: Text("Check out this rating on sillajuku")
                     ) {
@@ -1717,5 +1735,5 @@ private struct ReportSheet: View {
 }
 
 #Preview {
-    HomeView(viewModel: HomeViewModel(), scrollToTopTrigger: UUID(), ratingStep: 0.5, onOwnProfileTap: {})
+    HomeView(viewModel: HomeViewModel(), scrollToTopTrigger: UUID(), ratingStep: 0.5, onOwnProfileTap: {}, path: .constant(NavigationPath()))
 }

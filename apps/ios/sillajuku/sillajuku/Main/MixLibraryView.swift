@@ -643,16 +643,28 @@ struct MixDetailView: View {
                 .buttonStyle(.plain)
 
                 Menu {
-                    // Sharing to the in-app feed requires the mix to be public (it'd
-                    // otherwise leak a private mix's contents); the Instagram export is
+                    // Posting to the in-app feed and sharing a link both need the mix
+                    // to be public (a private mix's page shows nothing to anyone else,
+                    // and a feed post would leak its contents); the Instagram card is
                     // just your own external image, so it's available regardless.
                     if mix.isPublic {
-                        Button { showShareComposer = true } label: {
-                            Label("Post to Feed", image: "icon-users")
+                        Section {
+                            Button { showShareComposer = true } label: {
+                                Label("Post to Feed", image: "icon-users")
+                            }
                         }
                     }
-                    Button { Task { await prepareShare() } } label: {
-                        Label("Share to Instagram", image: "icon-camera")
+                    // Two kinds of outside share, kept apart: a link (system share
+                    // sheet) and the Instagram story card.
+                    Section {
+                        if mix.isPublic {
+                            ShareLink(item: URL(string: "https://sillajuku.com/mix/\(mix.id.uuidString.lowercased())")!) {
+                                Label("Share", image: "icon-share")
+                            }
+                        }
+                        Button { Task { await prepareShare() } } label: {
+                            Label("Share to Instagram Story", image: "icon-camera")
+                        }
                     }
                 } label: {
                     HStack(spacing: 5) {

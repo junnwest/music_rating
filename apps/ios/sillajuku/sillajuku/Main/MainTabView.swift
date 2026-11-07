@@ -25,6 +25,12 @@ struct MainTabView: View {
     @State private var questVM = QuestChecklistViewModel()
 
     @State private var selectedTab: AppTab = .home
+    @Environment(AppState.self) private var appState
+    // Home's NavigationStack path, held here so an opened sillajuku.com link
+    // (appState.pendingDeepLink) can push its page onto Home.
+    @State private var homePath = NavigationPath()
+    // One of your own posts to locate on the Profile tab (ProfileView clears it).
+    @State private var profileFocusRatingId: UUID? = nil
     @State private var homeScrollTrigger   = UUID()
     @State private var showBadgeRedeem     = false
     // Set true by the Add tab's Connect Spotify/Apple Music rows (onGoToSettings); ProfileView
@@ -124,7 +130,8 @@ struct MainTabView: View {
                         viewModel: homeVM,
                         scrollToTopTrigger: homeScrollTrigger,
                         ratingStep: profileVM.profile?.ratingStep ?? 0.5,
-                        onOwnProfileTap: { goTo(.profile) }
+                        onOwnProfileTap: { goTo(.profile) },
+                        path: $homePath
                     )
                     .tabItem {
                         Image("icon-home").renderingMode(.template)
@@ -182,7 +189,7 @@ struct MainTabView: View {
                     // Profile's own nav bar (small, size fully under our control there).
                     Group {
                         if visitedTabs.contains(.profile) {
-                            ProfileView(viewModel: profileVM, questVM: questVM, onGoToAdd: { goTo(.add) }, openSettingsTrigger: $pendingOpenSettings)
+                            ProfileView(viewModel: profileVM, questVM: questVM, onGoToAdd: { goTo(.add) }, openSettingsTrigger: $pendingOpenSettings, focusRatingId: $profileFocusRatingId)
                         } else {
                             Color.clear
                         }
@@ -246,6 +253,30 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .mixShared)) { _ in
             goTo(.profile)
         }
+        // initial: true picks up a link that arrived before this view existed
+        // (cold launch from the link, or opened while signed out).
+        .onChange(of: appState.pendingDeepLink, initial: true) { _, link in
+            guard let link else { return }
+            appState.pendingDeepLink = nil
+            Task { await open(link) }
+        }
+    }
+
+    /// Opens a sillajuku.com page link (or a post notification) on the Home
+    /// tab, on top of whatever Home was showing (Back returns there). Your own
+    /// profile and your own posts go to the Profile tab instead. A link to
+    /// something missing or hidden opens nothing.
+    private func open(_ link: DeepLink) async {
+        guard let target = await link.resolve() else { return }
+        switch target {
+        case .ownProfile:        goTo(.profile); return
+        case .ownPost(let id):   profileFocusRatingId = id; goTo(.profile); return
+        case .release(let r):    homePath.append(r)
+        case .artist(let a):     homePath.append(a)
+        case .user(let u):       homePath.append(u)
+        case .mix(let m):        homePath.append(m)
+        }
+        goTo(.home)
     }
 
     private func refreshNotificationStatus() async {

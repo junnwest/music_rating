@@ -617,6 +617,21 @@ class ProfileViewModel {
         }
     }
 
+    /// One of your posts to focus, adding it to `ratings` if it's older than
+    /// the 60 loaded. nil if it isn't yours or no longer exists.
+    func ensureAlbumRating(_ ratingId: UUID) async -> UserRating? {
+        if let loaded = ratings.first(where: { $0.id == ratingId }) { return loaded }
+        guard let me = supabase.auth.currentUser?.id,
+              let rating = await PostLocator.fetchRating(ratingId, ownedBy: me) else { return nil }
+        // Older than everything loaded, so it goes at the end of "Recent".
+        ratings.append(rating)
+        let social = await PostLocator.social(for: ratingId)
+        likeCounts[ratingId] = social.likes
+        commentCounts[ratingId] = social.comments
+        if social.likedByMe { likedRatingIds.insert(ratingId) }
+        return rating
+    }
+
     func reload() async {
         hasLoaded = false
         await load()
@@ -796,6 +811,12 @@ struct ProfileView: View {
     // MainTabView where the tab switch to .profile also happens. Watched below to
     // auto-open the existing showSettings sheet, then reset to false.
     @Binding var openSettingsTrigger: Bool
+    // Set by MainTabView when a post notification or /post/<id> link is one of
+    // your own posts: open it here (Rated tab, post view, scrolled to it),
+    // then reset to nil. See PostLocator.
+    @Binding var focusRatingId: UUID?
+    @State private var scrollToRatingId: UUID? = nil
+    @State private var highlightedRatingId: UUID? = nil
     @State private var activeTab: ProfileTab = .rated
     // Lists/Stats tabs are often shorter than the screen (e.g. 2 mixes) --
     // without a height floor, tabContent's hit-test area (contentShape +
@@ -917,6 +938,25 @@ struct ProfileView: View {
             ratingSortOrder = .recent
             Task { await viewModel.reload() }
         }
+        // A focus can arrive before the first load finishes (first visit to
+        // this tab), while already loaded, or before this view existed.
+        .onChange(of: focusRatingId) { _, _ in Task { await applyFocusIfReady() } }
+        .onChange(of: viewModel.isLoading) { _, _ in Task { await applyFocusIfReady() } }
+        .onAppear { Task { await applyFocusIfReady() } }
+    }
+
+    private func applyFocusIfReady() async {
+        guard let id = focusRatingId, !viewModel.isLoading else { return }
+        focusRatingId = nil
+        navPath = NavigationPath()
+        guard let rating = await viewModel.ensureAlbumRating(id) else { return }
+        activeTab = .rated
+        ratingDisplayMode = .posts
+        ratingSortOrder = .recent
+        ratingTypeFilter = RatingTypeFilter.of(rating.releases.releaseType)
+        // Next run loop, so the post list has been rebuilt with these settings.
+        try? await Task.sleep(for: .milliseconds(50))
+        scrollToRatingId = id
     }
 
     private var profileURL: URL {
@@ -936,6 +976,7 @@ struct ProfileView: View {
     // nothing; dragging over the grid/list/stats area below switches tabs.
     private var profileContent: some View {
         GeometryReader { outerGeo in
+          ScrollViewReader { scroller in
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     heroContent
@@ -963,6 +1004,19 @@ struct ProfileView: View {
             .onChange(of: heroHeight) { _, newValue in
                 tabMinHeight = max(0, outerGeo.size.height - newValue)
             }
+            .onChange(of: scrollToRatingId) { _, target in
+                guard let target else { return }
+                scrollToRatingId = nil
+                Task {
+                    await PostLocator.scroll(scroller, to: target)
+                    highlightedRatingId = target
+                    try? await Task.sleep(for: PostLocator.highlightDuration)
+                    if highlightedRatingId == target {
+                        withAnimation(.easeOut(duration: 0.6)) { highlightedRatingId = nil }
+                    }
+                }
+            }
+          }
         }
     }
 
@@ -1502,7 +1556,7 @@ struct ProfileView: View {
             // Edit/Add to Mix/Edit Comment/Delete) -- see ProfilePostCard's own
             // doc comment on `ownActions`.
             ownActions: OwnRatingMenuActions(
-                onShare: { Task { await prepareShare(for: .album(rating)) } },
+                onShareToInstagram: { Task { await prepareShare(for: .album(rating)) } },
                 onEdit: { editRatingTarget = .album(rating) },
                 onAddToMix: { mixPickerTarget = rating },
                 onEditComment: { editCommentTarget = .album(rating) },
@@ -1510,8 +1564,10 @@ struct ProfileView: View {
             ),
             authorId: supabase.auth.currentUser?.id
         )
+        .postFocusOutline(highlightedRatingId == rating.id)
         .padding(.horizontal, 12)
         .padding(.top, 8)
+        .id(rating.id)
     }
 
     private func mixShareCard(_ share: MixSharePost) -> some View {
@@ -2426,7 +2482,16 @@ struct ProfilePostCard: View {
                     if onNotInterested != nil || ownActions != nil {
                         Menu {
                             if let own = ownActions {
-                                Button { own.onShare() } label: { Label("Share", image: "icon-share") }
+                                // Two kinds of share, kept apart: a link (system share
+                                // sheet) and the Instagram story card.
+                                Section {
+                                    ShareLink(item: URL(string: "https://sillajuku.com/post/\(rating.id.uuidString.lowercased())")!) {
+                                        Label("Share", image: "icon-share")
+                                    }
+                                    Button { own.onShareToInstagram() } label: {
+                                        Label("Share to Instagram Story", image: "icon-camera")
+                                    }
+                                }
                                 Button { own.onEdit() } label: { Label("Edit", image: "icon-square-pen") }
                                 Button { own.onAddToMix() } label: { Label("Add to Mix", image: "icon-bookmark") }
                                 Button { own.onEditComment() } label: { Label("Edit Comment", image: "icon-message-square") }
@@ -2569,5 +2634,5 @@ struct ProfilePostCard: View {
 }
 
 #Preview {
-    ProfileView(viewModel: ProfileViewModel(), questVM: QuestChecklistViewModel(), onGoToAdd: {}, openSettingsTrigger: .constant(false))
+    ProfileView(viewModel: ProfileViewModel(), questVM: QuestChecklistViewModel(), onGoToAdd: {}, openSettingsTrigger: .constant(false), focusRatingId: .constant(nil))
 }

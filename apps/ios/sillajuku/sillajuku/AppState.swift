@@ -4,6 +4,9 @@ import Observation
 @Observable
 class AppState {
     var authState: AppAuthState = .loading
+    /// A sillajuku.com page link the app was opened with. Kept until
+    /// MainTabView exists (signed in, onboarded) and opens it there.
+    var pendingDeepLink: DeepLink? = nil
 }
 
 enum AppAuthState: Equatable {

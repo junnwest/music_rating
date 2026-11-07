@@ -125,13 +125,17 @@ struct AlbumContextMenu<ExtraItems: View>: ViewModifier {
                 } label: {
                     Label("Add to Mix", image: "icon-bookmark")
                 }
-                ShareLink(item: shareURL, subject: Text(release.displayTitle + " · " + release.displayArtist)) {
-                    Label("Share", image: "icon-share")
-                }
-                Button {
-                    Task { await prepareShare() }
-                } label: {
-                    Label("Share to Instagram", image: "icon-camera")
+                // Two kinds of share, kept apart: a link (system share sheet)
+                // and the Instagram story card.
+                Section {
+                    ShareLink(item: shareURL, subject: Text(release.displayTitle + " · " + release.displayArtist)) {
+                        Label("Share", image: "icon-share")
+                    }
+                    Button {
+                        Task { await prepareShare() }
+                    } label: {
+                        Label("Share to Instagram Story", image: "icon-camera")
+                    }
                 }
                 Button {
                     artistDestination = ArtistDestination(artistId: nil, name: release.displayArtist)

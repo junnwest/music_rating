@@ -10,15 +10,27 @@ import { NextResponse } from 'next/server';
 // flow (see BetaInviteLink.swift); /auth/confirmed is the post-email-
 // verification landing page (see app/auth/confirmed/page.tsx) — routes a
 // Supabase email confirmation straight back into the app instead of a plain
-// web onboarding flow. All listed explicitly rather than a catch-all, since
-// these are the only universal-link consumers built so far.
+// web onboarding flow. The page paths (album, artist, profile, post, Mix, and
+// the legacy /r/ rating link) open the same page in the app; the iOS side is
+// DeepLink.swift. Listed explicitly rather than a catch-all, so every other
+// page (settings, charts, auth...) stays on the web.
 const AASA = {
   applinks: {
     apps: [],
     details: [
       {
         appID: 'GGJ5HX3A4M.com.sillajuku.app',
-        paths: ['/i/*', '/beta/*', '/auth/confirmed'],
+        paths: [
+          '/i/*',
+          '/beta/*',
+          '/auth/confirmed',
+          '/album/*',
+          '/artist/*',
+          '/profile/*',
+          '/post/*',
+          '/mix/*',
+          '/r/*',
+        ],
       },
     ],
   },

@@ -147,9 +147,9 @@ struct sillajukuApp: App {
                     // the RPC to key on), a direct attempt would just throw and be
                     // lost. Persisting it lets observeAuth() retry once a real
                     // session shows up, rather than silently dropping a genuine
-                    // link tap. The three path shapes (/i/<code>, /beta/<token>,
-                    // /auth/confirmed) are mutually exclusive, so only one of
-                    // these ever matches.
+                    // link tap. The path shapes (/i/<code>, /beta/<token>,
+                    // /auth/confirmed, then the page links DeepLink parses) are
+                    // mutually exclusive, so only one of these ever matches.
                     guard let url = activity.webpageURL else { return }
                     if let code = InviteLink.code(from: url) {
                         PendingReferralStore.save(code)
@@ -168,6 +168,10 @@ struct sillajukuApp: App {
                         // verified, continue below" banner instead of a bare,
                         // unexplained sign-in screen.
                         NotificationCenter.default.post(name: .sjEmailConfirmed, object: nil)
+                    } else if let link = DeepLink.parse(url) {
+                        // Album/artist/profile/post/Mix page link: MainTabView
+                        // opens it once the user is signed in.
+                        appState.pendingDeepLink = link
                     }
                 }
         }

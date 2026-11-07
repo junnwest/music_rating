@@ -834,7 +834,6 @@ struct AlbumDetailView: View {
     @State private var showMixPicker = false
     @State private var showEditCommentSheet = false
     @State private var showDeleteConfirm = false
-    @State private var trackRatingTarget: TrackEntry? = nil
     /// A track to scroll to (the initial `focusRecordingId`, or one picked in
     /// a rating's "Rated N tracks" list); cleared once scrolled.
     @State private var scrollToTrackId: UUID? = nil
@@ -1016,20 +1015,6 @@ struct AlbumDetailView: View {
             SharePreviewSheet(pending: pending)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
-        }
-        .sheet(item: $trackRatingTarget) { track in
-            TrackRatingSheet(
-                track: track,
-                release: release,
-                existingScore: track.trackId.flatMap { viewModel.trackRatings[$0] },
-                ratingStep: viewModel.ratingStep
-            ) { t, score in
-                Task {
-                    if let recordingId = t.trackId {
-                        await viewModel.rateTrack(recordingId: recordingId, score: score)
-                    }
-                }
-            }
         }
         // No Release/ArtistDestination navigationDestination here -- every stack that hosts
         // this view (Home/Rankings/Profile/Search) declares both at its own root. A second
@@ -1277,7 +1262,7 @@ struct AlbumDetailView: View {
                     onNotInterested: {},
                     onOwnProfileTap: {},
                     ownRatingActions: OwnRatingMenuActions(
-                        onShare: { Task { await prepareShare(score: score) } },
+                        onShareToInstagram: { Task { await prepareShare(score: score) } },
                         onEdit: { openRatingSheet() },
                         onAddToMix: { showMixPicker = true },
                         onEditComment: { showEditCommentSheet = true },
@@ -1334,12 +1319,11 @@ struct AlbumDetailView: View {
                 if isMultiDisc && (i == 0 || viewModel.tracks[i - 1].discNumber != track.discNumber) {
                     discHeader(track.discNumber, isFirst: i == 0)
                 }
-                // No song pages: tapping a title opens the precise rating sheet.
+                // Track titles aren't tappable (no song pages); rate via the flower.
                 TrackRow(
                     track: track,
                     release: release,
                     score: trackScoreBinding(track.trackId),
-                    onTap: track.trackId != nil ? { trackRatingTarget = track } : nil,
                     ratingStep: viewModel.ratingStep,
                     isHighlighted: track.trackId != nil && track.trackId == highlightedTrackId
                 )
@@ -1811,7 +1795,6 @@ private struct TrackRow: View {
     /// The album page's per-recording score (viewModel.trackRatings), so the
     /// flower shows and edits the same value everywhere on this page.
     var score: Binding<Double?> = .constant(nil)
-    var onTap: (() -> Void)? = nil
     var ratingStep: Double = 0.5
     /// Landed on from a song link (or picked in a "Rated N tracks" list).
     var isHighlighted: Bool = false
@@ -1831,16 +1814,8 @@ private struct TrackRow: View {
                 .font(.jakarta(13)).foregroundStyle(Color.sjMuted)
                 .frame(width: 24, alignment: .trailing)
 
-            if let onTap {
-                Button(action: onTap) {
-                    Text(track.title)
-                        .font(.jakarta(14)).foregroundStyle(Color.sjInk).lineLimit(1)
-                }
-                .buttonStyle(.plain)
-            } else {
-                Text(track.title)
-                    .font(.jakarta(14)).foregroundStyle(Color.sjInk).lineLimit(1)
-            }
+            Text(track.title)
+                .font(.jakarta(14)).foregroundStyle(Color.sjInk).lineLimit(1)
 
             Spacer()
             if !formattedDuration.isEmpty {

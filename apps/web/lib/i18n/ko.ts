@@ -802,7 +802,7 @@ const ko: Translations = {
       notYourThingSub: '꾸준히 내 평균 아래에 머무는 장르들이에요.',
       canonInCanon: '명반 리스트 안',
       activityHeader: '최근 12개월',
-      countryHeader: '어디에서 온 음악인가요',
+      countryHeader: '국가별 분포',
       countryLeadText: '가장 큰 비중은 {country} — 평가한 음악의 {pct}%예요.',
       countryOther: '기타 ({n}개국)',
       countryUnknown: '알 수 없음',

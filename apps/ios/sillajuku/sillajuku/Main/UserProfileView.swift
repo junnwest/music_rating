@@ -5,6 +5,9 @@ import Supabase
 struct UserProfileDestination: Hashable {
     let userId: UUID
     let handle: String
+    /// Open on this post (Rated tab, post view, scrolled to it). Set by post
+    /// notifications and /post/<id> links, via MainTabView.open.
+    var focusRatingId: UUID? = nil
 }
 
 // MARK: - Access status
@@ -350,6 +353,22 @@ final class UserProfileViewModel {
         notifyPosts = await FollowService.setSubscribed(next, to: userId)
     }
 
+    /// The post to focus, adding it to the Rated list if it's older than the
+    /// 60 the catalog RPC returns. nil if it isn't this user's, or their
+    /// catalog is hidden from you.
+    func ensureAlbumRating(_ ratingId: UUID) async -> UserRating? {
+        if let loaded = catalogAlbums.first(where: { $0.id == ratingId }) { return loaded }
+        guard access.catalogVisible,
+              let rating = await PostLocator.fetchRating(ratingId, ownedBy: userId) else { return nil }
+        // Older than everything loaded, so it goes at the end of "Recent".
+        catalogAlbums.append(rating)
+        let social = await PostLocator.social(for: ratingId)
+        likeCounts[ratingId] = social.likes
+        commentCounts[ratingId] = social.comments
+        if social.likedByMe { likedRatingIds.insert(ratingId) }
+        return rating
+    }
+
     func toggleLike(ratingId: UUID) async {
         guard let userId = currentUserId else { return }
         let wasLiked = likedRatingIds.contains(ratingId)
@@ -386,6 +405,11 @@ final class UserProfileViewModel {
 struct UserProfileView: View {
     let userId: UUID
     let initialHandle: String
+    /// A post to open on (see PostLocator). Applied once, after the first load.
+    let focusRatingId: UUID?
+    @State private var didApplyFocus = false
+    @State private var scrollToRatingId: UUID? = nil
+    @State private var highlightedRatingId: UUID? = nil
 
     @State private var vm: UserProfileViewModel
     @State private var activeTab: ProfileTab = .rated
@@ -403,9 +427,10 @@ struct UserProfileView: View {
     // (same reason as ProfileView.emptyStateMinHeight).
     @State private var viewportHeight: CGFloat = 0
 
-    init(userId: UUID, initialHandle: String) {
+    init(userId: UUID, initialHandle: String, focusRatingId: UUID? = nil) {
         self.userId = userId
         self.initialHandle = initialHandle
+        self.focusRatingId = focusRatingId
         _vm = State(initialValue: UserProfileViewModel(userId: userId))
     }
 
@@ -445,6 +470,7 @@ struct UserProfileView: View {
                 }
             } else {
                 GeometryReader { outerGeo in
+                  ScrollViewReader { scroller in
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 0) {
                             VStack(spacing: 0) {
@@ -475,6 +501,19 @@ struct UserProfileView: View {
                     .onChange(of: heroHeight) { _, newValue in
                         tabMinHeight = max(0, outerGeo.size.height - newValue)
                     }
+                    .onChange(of: scrollToRatingId) { _, target in
+                        guard let target else { return }
+                        scrollToRatingId = nil
+                        Task {
+                            await PostLocator.scroll(scroller, to: target)
+                            highlightedRatingId = target
+                            try? await Task.sleep(for: PostLocator.highlightDuration)
+                            if highlightedRatingId == target {
+                                withAnimation(.easeOut(duration: 0.6)) { highlightedRatingId = nil }
+                            }
+                        }
+                    }
+                  }
                 }
             }
         }
@@ -493,7 +532,26 @@ struct UserProfileView: View {
         } message: {
             Text("Their ratings and Mixes will be hidden until they approve a new request.")
         }
-        .task { await vm.load() }
+        .task {
+            await vm.load()
+            await applyFocusIfNeeded()
+        }
+    }
+
+    /// Opens the Rated tab in post view on `focusRatingId`'s section and scrolls
+    /// to it. Once only: .task re-runs when this page reappears (Back from an
+    /// album), and that shouldn't jump the scroll again.
+    private func applyFocusIfNeeded() async {
+        guard let focusRatingId, !didApplyFocus else { return }
+        didApplyFocus = true
+        guard let rating = await vm.ensureAlbumRating(focusRatingId) else { return }
+        activeTab = .rated
+        ratingDisplayMode = .posts
+        ratingSortOrder = .recent
+        ratingTypeFilter = RatingTypeFilter.of(rating.releases.releaseType)
+        // Next run loop, so the post list has been rebuilt with these settings.
+        try? await Task.sleep(for: .milliseconds(50))
+        scrollToRatingId = focusRatingId
     }
 
     // MARK: Header
@@ -902,8 +960,10 @@ struct UserProfileView: View {
                                     onNotInterested: { Task { await vm.notInterested(rating: rating) } },
                                     authorId: userId
                                 )
+                                .postFocusOutline(highlightedRatingId == rating.id)
                                 .padding(.horizontal, 12)
                                 .padding(.top, 8)
+                                .id(rating.id)
                             }
                         }
                         .padding(.bottom, 8)

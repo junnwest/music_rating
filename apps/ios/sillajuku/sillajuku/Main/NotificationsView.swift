@@ -92,11 +92,12 @@ struct AppNotification: Codable, Identifiable {
     // A like/comment notification is about a specific post (the rating, with its own review
     // text/like-comment thread) -- linking to the bare release page loses that entirely
     // (AlbumDetailView only shows aggregate community stats, never individual posts). These
-    // route to a real single-post screen instead.
-    var albumPostDestination: AlbumPostDestination? {
+    // open the post's author's profile, scrolled to the post (DeepLink.post → PostLocator).
+    // following_comment's post can belong to a third person, so the author is looked up.
+    var postRatingId: UUID? {
         guard ["like", "comment", "following_rating", "following_comment"].contains(type),
               !isRatingGroup, let ratingId else { return nil }
-        return AlbumPostDestination(ratingId: ratingId)
+        return ratingId
     }
 
     var actorDestination: UserProfileDestination? {
@@ -189,6 +190,7 @@ struct AppNotification: Codable, Identifiable {
 // MARK: - View
 
 struct NotificationsView: View {
+    @Environment(AppState.self) private var appState
     @State private var notifications: [AppNotification] = []
     @State private var isLoading = true
 
@@ -212,10 +214,22 @@ struct NotificationsView: View {
             } else {
                 List(notifications) { notif in
                     Group {
-                        if let dest = notif.albumPostDestination {
-                            NavigationLink(value: dest) {
-                                NotificationRow(notif: notif)
+                        if let ratingId = notif.postRatingId {
+                            // Same route as a /post/<id> link: MainTabView pushes the
+                            // author's profile onto this stack (or, for your own post,
+                            // switches to the Profile tab).
+                            Button { appState.pendingDeepLink = .post(ratingId: ratingId) } label: {
+                                HStack(spacing: 0) {
+                                    NotificationRow(notif: notif)
+                                    // Stands in for the disclosure chevron the
+                                    // NavigationLink rows around it get.
+                                    Image(systemName: "chevron.right")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                         } else if let dest = notif.actorDestination {
                             NavigationLink(value: dest) {
                                 NotificationRow(notif: notif, onRespond: respondHandler(for: notif))
@@ -392,168 +406,5 @@ private struct NotificationRow: View {
             }
         }
         .padding(.vertical, 10)
-    }
-}
-
-// MARK: - Single-post destinations
-
-// A notification's rating_id always belongs to the CURRENT signed-in user --
-// the notify triggers explicitly set the recipient to the rating's owner and exclude self-
-// notifications (owner_id <> actor), so "the post this notification is about" is always one of
-// my own ratings, never someone else's. That's what makes a plain ratingId-keyed fetch safe here
-// without an extra ownership check.
-struct AlbumPostDestination: Hashable {
-    let ratingId: UUID
-}
-
-// MARK: - Album post detail
-
-// Single-post screen for an album-rating like/comment notification -- reuses ProfilePostCard
-// exactly (Main/ProfileView.swift), just fed by a fresh fetch keyed on one rating id instead of
-// the owning ProfileViewModel's whole in-memory list, since a notification can point at a rating
-// from well before whatever page ProfileViewModel currently has loaded.
-struct AlbumPostDetailView: View {
-    let ratingId: UUID
-
-    @State private var rating: UserRating?
-    @State private var isLoading = true
-    @State private var totalRatingsCount = 0
-    @State private var likesCount = 0
-    @State private var commentsCount = 0
-    @State private var isLiked = false
-    @State private var myHandle: String? = nil
-    @State private var myVerified = false
-    @State private var myBadgeColor: String? = nil
-    @State private var myFoundingNumber: Int? = nil
-    @State private var myAvatarUrl: String? = nil
-    @State private var myFeaturedBadge: String? = nil
-
-    var body: some View {
-        Group {
-            if isLoading {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let rating {
-                ScrollView(showsIndicators: false) {
-                    ProfilePostCard(
-                        rating: rating,
-                        likesCount: likesCount,
-                        commentsCount: commentsCount,
-                        isLiked: isLiked,
-                        onLike: toggleLike,
-                        headerHandle: myHandle,
-                        headerVerified: myVerified,
-                        headerBadgeColor: myBadgeColor,
-                        headerFoundingNumber: myFoundingNumber,
-                        headerAvatarUrl: myAvatarUrl,
-                        headerFeaturedBadge: myFeaturedBadge,
-                        // A notification's post is always the signed-in user's own.
-                        authorId: supabase.auth.currentUser?.id
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
-                }
-            } else {
-                VStack(spacing: 12) {
-                    Image("icon-alert-circle")
-                        .renderingMode(.template)
-                        .resizable().scaledToFit()
-                        .frame(width: 36, height: 36)
-                        .foregroundStyle(Color.sjBorder)
-                    Text("This rating is no longer available")
-                        .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .background(Color.sjCream.ignoresSafeArea())
-        .navigationTitle("Post")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
-    }
-
-    private func load() async {
-        guard let userId = supabase.auth.currentUser?.id else { isLoading = false; return }
-
-        rating = try? await supabase
-            .from("ratings")
-            .select("id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
-            .eq("id", value: ratingId)
-            .single()
-            .execute()
-            .value
-
-        // These single-post screens always show one of the signed-in user's own
-        // ratings (see the comment on AlbumPostDestination), so the card header
-        // is the user's own handle.
-        struct MyProfile: Decodable {
-            let username: String?
-            let isVerified: Bool?
-            let badgeColor: String?
-            let foundingNumber: Int?
-            let avatarUrl: String?
-            let featuredBadge: String?
-            enum CodingKeys: String, CodingKey {
-                case username; case isVerified = "is_verified"
-                case badgeColor = "badge_color"; case foundingNumber = "founding_number"
-                case avatarUrl = "avatar_url"; case featuredBadge = "featured_badge"
-            }
-        }
-        if let p: MyProfile = try? await supabase.from("profiles")
-            .select("username, is_verified, badge_color, founding_number, avatar_url, featured_badge").eq("id", value: userId)
-            .single().execute().value {
-            myHandle = p.username
-            myVerified = p.isVerified == true
-            myBadgeColor = p.badgeColor
-            myFoundingNumber = p.foundingNumber
-            myAvatarUrl = p.avatarUrl
-            myFeaturedBadge = p.featuredBadge
-        }
-
-        if let r = try? await supabase.from("ratings").select("*", count: .exact)
-            .eq("user_id", value: userId).execute() {
-            totalRatingsCount = r.count ?? 0
-        }
-        if let r = try? await supabase.from("rating_likes").select("*", count: .exact)
-            .eq("rating_id", value: ratingId).execute() {
-            likesCount = r.count ?? 0
-        }
-        if let r = try? await supabase.from("rating_comments").select("*", count: .exact)
-            .eq("rating_id", value: ratingId).execute() {
-            commentsCount = r.count ?? 0
-        }
-        struct IdRow: Decodable {
-            let ratingId: UUID
-            enum CodingKeys: String, CodingKey { case ratingId = "rating_id" }
-        }
-        if let rows: [IdRow] = try? await supabase
-            .from("rating_likes").select("rating_id")
-            .eq("user_id", value: userId).eq("rating_id", value: ratingId)
-            .execute().value {
-            isLiked = !rows.isEmpty
-        }
-        isLoading = false
-    }
-
-    private func toggleLike() async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-        let wasLiked = isLiked
-        isLiked.toggle()
-        likesCount = max(0, likesCount + (wasLiked ? -1 : 1))
-        do {
-            if wasLiked {
-                try await supabase.from("rating_likes").delete()
-                    .eq("user_id", value: userId).eq("rating_id", value: ratingId).execute()
-            } else {
-                struct Payload: Encodable {
-                    let userId: UUID; let ratingId: UUID
-                    enum CodingKeys: String, CodingKey { case userId = "user_id"; case ratingId = "rating_id" }
-                }
-                try await supabase.from("rating_likes")
-                    .insert(Payload(userId: userId, ratingId: ratingId)).execute()
-            }
-        } catch {
-            isLiked = wasLiked
-            likesCount = max(0, likesCount + (wasLiked ? 1 : -1))
-        }
     }
 }

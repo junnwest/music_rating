@@ -49,6 +49,8 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/@:username', destination: '/profile/:username', permanent: true },
+      // iOS feed "Share" linked ratings as /r/<id> until 2026-11-06.
+      { source: '/r/:id', destination: '/post/:id', permanent: true },
       // Legacy IA (pre-reconstruction, 2026-07) → current surfaces
       { source: '/rankings/:path*', destination: '/charts', permanent: false },
       { source: '/leaderboard/:path*', destination: '/charts', permanent: false },

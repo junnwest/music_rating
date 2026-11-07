@@ -53,6 +53,15 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-11-06 (Mac) — Shared page links now open in the app (Universal Links); app-shared rating links fixed on web; post notifications open the author's profile at the post. Not committed.** Details in SESSIONS.
+> - **Before it works:** deploy the web (the AASA file is what lets iOS open these links in the app; Apple's CDN can take up to ~a day to pick it up, or delete and reinstall the app), then install the new iOS build on the iPhone.
+> - **To try on the iPhone:** tap an album, artist, profile, post and Mix link (e.g. from Messages/Notes). Each should open that page on Home. Your own profile link goes to the Profile tab. An old `sillajuku.com/r/<id>` link should open the post too, in the app and on the web (it redirects to `/post/<id>`).
+> - **Also to try:** tap a like/comment notification. It should open your Profile tab scrolled to that post, outlined for a moment. Tap a "rated"/"commented" notification from someone you follow: their profile should open at the post. Try one on a post older than your newest 60 ratings; it gets added at the bottom.
+> - **Also to try:** the ⋯ menu on your own post, an album long-press and a Mix page's Share menu. Each should show "Share" (link) and "Share to Instagram Story" (card) as two separate items in their own group.
+> - **Known limit, not fixed:** both profile screens show only the 60 newest album ratings (no "load more").
+> - **Also:** album-page track titles no longer open the big-flower rating sheet.
+> - **Mac `apps/web`:** `tsc` fails on today's pulled taste-map code (`d3-contour`, `playwright` not installed here). Probably just needs `npm install`; not related to this change.
+
 > **2026-11-05 (Windows, afternoon) — Taste map 2D: one name per genre (realms + provinces), names fitted to their territory, plus schematic style prototypes. Pushed; live for the three allowlisted accounts only (the whole taste map is still behind `TASTE_MAP_OPEN = false`). Jun to compare.** Details in SESSIONS.
 > - **To try:** junnwest's 2D map (Schematic and To scale). It should show **one** KOREAN HIP-HOP, with four small province names inside (창모, Kid Milli, Beenzino, YUMDDA) and faint dashed borders between them. Long names should break onto two lines or tighten their letter spacing instead of spilling out of small territories.
 > - **Checked visually** on junnwest's and zero's fixtures (Playwright). Offline check: `scripts/dump-taste-map-layout.ts --user=junnwest --out=<file>`, then `/taste/map?fixture=<url>` in dev.
