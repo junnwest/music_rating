@@ -7,7 +7,7 @@
 import { randomUUID } from 'crypto';
 import {
   searchArtists, getArtist, browseReleaseGroups, browseArtistReleases, browseArtistReleasesDetailed,
-  countArtistReleaseGroups,
+  countArtistReleaseGroups, browseReleaseGroupEditions,
   type MbArtistCandidate, type MbArtistDetail, type MbReleaseGroup, type MbArtistRelease, type MbTrack,
   type MbCredit,
 } from './mb-client';
@@ -411,10 +411,47 @@ async function findOrCreateRecording(db: DB, t: MbTrack, primaryArtistId: string
   return data.id;
 }
 
+/**
+ * The same rows the per-track loop in ingestEditionFromPrefetched writes, in three statements
+ * instead of three per track. Measured on the repair run, with the database a continent away: a
+ * 16-track album took ~35s track by track, which put 2,978 groups at over a day. Used by the repair
+ * path only; the pipeline's ingest loop is unchanged.
+ */
+async function writeTracksBatched(db: DB, releaseDbId: string, tracks: MbTrack[], primaryArtistId: string): Promise<number> {
+  const seenRec = new Set<string>();   // a recording appears once per release (UNIQUE(release_id, recording_id))
+  const uniq = tracks.filter(t => t.recordingId && !seenRec.has(t.recordingId) && seenRec.add(t.recordingId));
+  if (!uniq.length) return 0;
+  const { error: upErr } = await db.from('recordings').upsert(uniq.map(t => ({
+    id: randomUUID(),
+    mb_recording_id: t.recordingId,
+    primary_artist_id: primaryArtistId,
+    artist_display: t.artistCredit || '(unknown)',
+    title: t.recordingTitle || t.title || '(untitled)',
+    isrc: t.isrcs[0] ?? null,
+    duration_ms: t.lengthMs,
+    source: 'musicbrainz',
+  })), { onConflict: 'mb_recording_id', ignoreDuplicates: true });
+  if (upErr) throw new Error(`recordings upsert (release ${releaseDbId}): ${upErr.message}`);
+  const idByMbid = new Map<string, string>();
+  for (let i = 0; i < uniq.length; i += 80) {
+    const { data, error } = await db.from('recordings').select('id, mb_recording_id')
+      .in('mb_recording_id', uniq.slice(i, i + 80).map(t => t.recordingId));
+    if (error) throw new Error(`recordings resolve (release ${releaseDbId}): ${error.message}`);
+    for (const r of (data ?? []) as any[]) idByMbid.set(r.mb_recording_id, r.id);
+  }
+  const rows = uniq.filter(t => idByMbid.has(t.recordingId))
+    .map(t => ({ release_id: releaseDbId, recording_id: idByMbid.get(t.recordingId)!, position: t.position, disc_number: t.discNumber }));
+  const { error: rtErr } = await db.from('release_tracks')
+    .upsert(rows, { onConflict: 'release_id,disc_number,position', ignoreDuplicates: true });
+  if (rtErr) throw new Error(`release_tracks upsert (release ${releaseDbId}): ${rtErr.message}`);
+  return rows.length;
+}
+
 // Insert the representative edition + its recordings/release_tracks from PRE-FETCHED
 // editions (no per-RG MB calls — tracks already came with the bulk artist-releases fetch).
 async function ingestEditionFromPrefetched(
   db: DB, rgId: string, rg: MbReleaseGroup, primaryArtistId: string, editions: MbArtistRelease[],
+  batched = false,
 ): Promise<number> {
   if (editions.length === 0) return 0;
   const rep = pickRepresentative(editions);
@@ -471,6 +508,7 @@ async function ingestEditionFromPrefetched(
   if (coverUrl) await db.from('release_groups').update({ cover_url: coverUrl }).eq('id', rgId);
 
   const tracks = rep.tracks;           // already fetched in the bulk artist-releases call
+  if (batched) return writeTracksBatched(db, releaseDbId, tracks, primaryArtistId);
   const seenRec = new Set<string>();   // a recording appears once per release (UNIQUE(release_id, recording_id))
   let n = 0;
   for (const t of tracks) {
@@ -484,6 +522,55 @@ async function ingestEditionFromPrefetched(
     n++;
   }
   return n;
+}
+
+/**
+ * Give an EXISTING release group its editions, asked for by release group rather than by artist.
+ *
+ * ingestArtist keeps a group that came back with no editions whenever the artist's edition listing
+ * was truncated (see the TRUNCATION note there), because absence from a cut-off list proves
+ * nothing. That is right, but it leaves the group as a shell with no release row and no tracks, and
+ * re-polling the artist truncates identically, so it never heals. Hackney Diamonds and The Rising
+ * sat like that. The same official-edition gate applies: a group whose editions are all unofficial
+ * is reported, not filled.
+ *
+ * HELD ELSEWHERE IS A DIFFERENT DEFECT, AND FILLING WOULD HIDE IT. The first eight repairs reported
+ * eight fills and four groups were still empty: releases upsert on mb_release_id, so when the
+ * group's edition already hangs off ANOTHER row of ours the write lands there and this one stays a
+ * shell. That happens when MusicBrainz moves a release to a different release group after we
+ * ingested it -- "Legrand Jazz" sits under a Michel Legrand row while the Miles Davis & Michel
+ * Legrand group that now owns it is empty; BoA's "Rock With You" likewise. Such a shell is the
+ * other row's duplicate, not a gap, so it is reported with the row that holds its editions.
+ */
+export type RepairOutcome = 'filled' | 'would_fill' | 'no_editions' | 'no_official' | 'truncated_no_official' | 'held_elsewhere';
+export async function repairReleaseGroupEditions(
+  db: DB,
+  g: { id: string; mbid: string; title: string; artistDisplay: string | null; type: string | null; primaryArtistId: string },
+  write: boolean,
+): Promise<{ outcome: RepairOutcome; editions: number; tracks: number; heldBy?: string }> {
+  const { releases: eds, truncated } = await browseReleaseGroupEditions(g.mbid);
+  if (eds.length === 0) return { outcome: 'no_editions', editions: 0, tracks: 0 };
+  for (let i = 0; i < eds.length; i += 80) {
+    const { data: held, error } = await db.from('releases')
+      .select('release_group_id').in('mb_release_id', eds.slice(i, i + 80).map(e => e.id)).neq('release_group_id', g.id).limit(1);
+    if (error) throw new Error(`held-elsewhere check ${g.mbid}: ${error.message}`);
+    if (held?.length) return { outcome: 'held_elsewhere', editions: eds.length, tracks: 0, heldBy: (held[0] as any).release_group_id };
+  }
+  if (!eds.some(e => e.status === 'Official')) {
+    return { outcome: truncated ? 'truncated_no_official' : 'no_official', editions: eds.length, tracks: 0 };
+  }
+  const rep = pickRepresentative(eds);
+  if (!write) return { outcome: 'would_fill', editions: eds.length, tracks: rep.tracks.length };
+  // Only title, credit and type are read downstream. The stored group type is turned back into
+  // the MusicBrainz pair that mbTypeToGroupType maps to it, so release_type comes out the same.
+  const t = (g.type ?? 'album').toLowerCase();
+  const rg = {
+    id: g.mbid, title: g.title, artistCredit: g.artistDisplay ?? '',
+    primaryType: t === 'ep' ? 'EP' : t === 'single' ? 'Single' : 'Album',
+    secondaryTypes: t === 'compilation' ? ['Compilation'] : t === 'soundtrack' ? ['Soundtrack'] : t === 'live' ? ['Live'] : [],
+  } as MbReleaseGroup;
+  const tracks = await ingestEditionFromPrefetched(db, g.id, rg, g.primaryArtistId, eds, true);
+  return { outcome: 'filled', editions: eds.length, tracks };
 }
 
 // Composition filter (decided 2026-06-26): trim to core types. Keep the artist's OWN
@@ -502,6 +589,39 @@ const SKIP_SECONDARY = new Set(['live', 'remix', 'dj-mix', 'interview', 'audiobo
  * place when a curated list already judged it canonical. Loaded once per ingest from
  * external_scores, so it costs one query rather than one per release group.
  */
+/**
+ * MusicBrainz release groups that were merged into another row and must not be ingested again.
+ *
+ * findOrCreateReleaseGroup upserts on mb_release_group_id, so deleting a duplicate group only
+ * removes it until this artist's next full re-ingest. That was tolerable while the duplicates were
+ * iTunes/MusicBrainz twins, but MusicBrainz also holds duplicates of its own -- two groups, two
+ * MBIDs, the same recordings -- and it will serve both forever. dedup-by-duration records each
+ * MBID it removes in release_group_mbid_aliases (migration 20261012000001).
+ *
+ * Loaded per ingest, not cached for the process: the pipeline runs for days and a merge applied
+ * while it is up must take effect on the next re-poll. The table is small.
+ */
+let mbidAliasesMissing = false;
+export async function loadAliasedMbids(db: DB): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (mbidAliasesMissing) return out;
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from('release_group_mbid_aliases')
+      .select('mb_release_group_id').order('mb_release_group_id').range(from, from + 999);
+    if (error) {
+      if (/release_group_mbid_aliases/.test(error.message)) {
+        mbidAliasesMissing = true;
+        console.warn('  [aliases] release_group_mbid_aliases missing — merged groups can regenerate (apply migration 20261012000001)');
+      } else console.warn(`  [aliases] ${error.message}`);
+      break;
+    }
+    if (!data?.length) break;
+    for (const r of data as any[]) out.add(r.mb_release_group_id);
+    if (data.length < 1000) break;
+  }
+  return out;
+}
+
 let curatedLiveMbids: Set<string> | null = null;
 export async function loadCuratedMbids(db: DB): Promise<Set<string>> {
   if (curatedLiveMbids) return curatedLiveMbids;
@@ -649,10 +769,12 @@ export async function ingestArtist(db: DB, mbid: string, coreOnly = false): Prom
   }
 
   const curated = await loadCuratedMbids(db);
-  let recCount = 0, kept = 0, skippedUnofficial = 0, skippedEmpty = 0;
+  const aliased = await loadAliasedMbids(db);
+  let recCount = 0, kept = 0, skippedUnofficial = 0, skippedEmpty = 0, skippedAliased = 0;
   const genreInputs: SourceGenreInput[] = [];
   for (const rg of rgs) {
     if (!shouldIngestRG(rg, mbid, curated)) continue;  // composition filter (trim to core)
+    if (aliased.has(rg.id)) { skippedAliased++; continue; }  // merged into another row; see loadAliasedMbids
     // OFFICIAL-EDITION GATE. MusicBrainz statuses each RELEASE (Official / Promotion / Bootleg /
     // Pseudo-Release / Cancelled / Withdrawn); release GROUPS carry no status, which is why this
     // cannot live in shouldIngestRG. We already hold every edition here from browseArtistReleases,
@@ -736,6 +858,7 @@ export async function ingestArtist(db: DB, mbid: string, coreOnly = false): Prom
     })
     .eq('id', artistId);
 
+  if (skippedAliased) console.log(`  [aliases] ${detail.name}: ${skippedAliased} merged group(s) not re-ingested`);
   // skippedUnofficial is surfaced so the caller can log it: a silent filter is how the old
   // type-only filter hid the bootleg problem for months.
   return { artistId, isNew, rgCount: kept, recCount, skippedUnofficial, skippedEmpty };

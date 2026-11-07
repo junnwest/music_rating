@@ -38,6 +38,15 @@
  * because the loser's Korean title survives in native_title, while an English title dropped with its
  * row has nowhere to go - there is no latin_title column. Merging 별책 into "appendix" without that
  * step would destroy the only Korean spelling held, which is what Korean search matches on.
+ * Between rows in the same script the MUSICBRAINZ row wins: mb-ingest upserts on the MusicBrainz id,
+ * so dropping that row and keeping its iTunes twin means the next full re-ingest inserts it again.
+ * Measured on 112 same-title cross-source twins, the id tie-break alone kept the iTunes row in 54.
+ *
+ * A REMOVED MUSICBRAINZ ID IS REMEMBERED. Whenever a dropped row carries an MBID the survivor does
+ * not, it is written to release_group_mbid_aliases, which mb-ingest consults before creating a
+ * group. Without that a merge of two MusicBrainz groups - MB holds real duplicates of its own - or
+ * of a Korean MusicBrainz row into its Latin iTunes twin lasts only until the artist is re-polled.
+ * The survivor also inherits a cover if it has none and a dropped row does.
  *
  * REPORT-ONLY unless --apply.
  *
@@ -236,6 +245,7 @@ async function main() {
     }
     const ranked = [...group].sort((a, b) =>
       Number(isNonLatin(a.title ?? '')) - Number(isNonLatin(b.title ?? ''))
+      || Number(a.source !== 'musicbrainz') - Number(b.source !== 'musicbrainz')
       || Number(b.editions) - Number(a.editions)
       || Number(b.tracks) - Number(a.tracks)
       || String(a.date ?? '9999').localeCompare(String(b.date ?? '9999'))
@@ -360,6 +370,33 @@ async function applyPlans(plans: { keep: Row; drop: Row[] }[]) {
   }
   if (migrated) console.log(`  migrated ${migrated} rating(s) onto survivors`);
 
+  /* BEFORE THE ROWS GO: keep what only they hold. Both statements read the rows about to be
+     deleted, so they must run first, and a failure here aborts with nothing removed - a
+     MusicBrainz row we cannot remember is a row that comes back. */
+  let covers = 0, aliases = 0;
+  for (const p of plans) {
+    const dropIds = p.drop.map(d => `'${d.id}'`).join(',');
+    const c = await query<{ id: string }>(`update release_groups k
+         set cover_url = (select d.cover_url from release_groups d
+                           where d.id in (${dropIds}) and d.cover_url is not null limit 1)
+       where k.id = '${p.keep.id}' and k.cover_url is null
+         and exists (select 1 from release_groups d where d.id in (${dropIds}) and d.cover_url is not null)
+       returning k.id`);
+    covers += c.length;
+    // Aliases already pointing at a row being removed follow it to the survivor, or the cascade
+    // would forget them.
+    await query(`update release_group_mbid_aliases set release_group_id = '${p.keep.id}'
+                  where release_group_id in (${dropIds})`);
+    const a = await query<{ mb_release_group_id: string }>(`insert into release_group_mbid_aliases (mb_release_group_id, release_group_id)
+       select d.mb_release_group_id, '${p.keep.id}'::uuid from release_groups d
+        where d.id in (${dropIds}) and d.mb_release_group_id is not null
+       on conflict (mb_release_group_id) do update set release_group_id = excluded.release_group_id
+       returning mb_release_group_id`);
+    aliases += a.length;
+  }
+  if (covers) console.log(`  carried a cover onto ${covers} survivor(s)`);
+  if (aliases) console.log(`  recorded ${aliases} removed MusicBrainz id(s) as aliases`);
+
   console.log(`  deleting ${ids.length} duplicate row(s)...`);
   for (let i = 0; i < ids.length; i += 100) {
     const batch = ids.slice(i, i + 100).map(x => `'${x}'`).join(',');
@@ -397,6 +434,7 @@ async function mergeSpecific(ids: string[]) {
 
   const ranked = [...rows].sort((a, b) =>
     Number(isNonLatin(a.title ?? '')) - Number(isNonLatin(b.title ?? ''))
+    || Number(a.source !== 'musicbrainz') - Number(b.source !== 'musicbrainz')
     || Number(b.editions) - Number(a.editions)
     || Number(b.tracks) - Number(a.tracks)
     || String(a.date ?? '9999').localeCompare(String(b.date ?? '9999'))

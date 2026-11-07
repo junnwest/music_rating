@@ -102,6 +102,99 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-11-05 (Windows) — iPhone visitors to the website are sent to the app.** New `components/IosAppRedirect.tsx`
+(in the root layout): on an iPhone it tries `sillajuku://open` and, if the page is still visible after 2.5 s,
+goes to the App Store (id6785741603). A browser cannot ask whether an app is installed, so this is the standard
+try-then-fall-back. Once per browser session; `?web=1` opts out permanently; skipped on /i, /beta, /auth, /login,
+/admin, /privacy, /terms, /help, /api. Also added Safari's Smart App Banner (`itunes.appId` in layout metadata).
+iOS: `onOpenURL` now returns early for `sillajuku://open` so it no longer reaches the Supabase callback parser
+(would have logged a Sentry error per open) — needs the next app build. Untested on a real iPhone yet.
+
+**2026-11-04 (Windows) — a missing album exposed a dead pipeline.** Reported: 彼はきっと魔法を使う。 is not in the
+catalog. Its artist, めありー (JP, MB `caf3161c-40e6-43f5-adbe-5b90ebe0723b`), had never been discovered, so none of
+her work was held; ingested with `mb-ingest-one --mbid=…` (6 release groups, 32 recordings; search finds the album).
+Checking that turned up the bigger problem: the pipeline had been dead since ~2026-10-14 02:28 (killed with its
+launching shell, nothing logged). Restarted. See PIPELINE_CHECKS.md.
+
+---
+
+**2026-10-12 (Windows, evening) — the duplicate candidates, arbitrated: most are not duplicates.**
+Nothing was deleted or merged this session; every number below is from read-only queries.
+
+- **Same title/type/date (1,542 sets, 3,187 rows).** Arbitrated on track durations AND on whether
+  the rows share recording rows, since 367 of the duration matches are one-track singles:
+  - **112 cross-source twins** (iTunes/Spotify + MusicBrainz, identical durations) — ours, safe to
+    merge. 27 are Korean. Caveat: dedup-by-duration's survivor ranking is source-blind and would
+    keep the NON-MusicBrainz row in 54 of them, which the next full re-ingest then re-creates.
+  - **97 MusicBrainz-internal duplicates** — two MB release groups holding the very same
+    recordings. Probed 16 MBIDs live: none redirect, so MB itself holds both. Deleting one is
+    undone the next time that artist is fully re-ingested (`findOrCreateReleaseGroup` upserts on
+    `mb_release_group_id`), so these need a "this MBID is an alias of that row" mechanism first.
+  - **293 unproven**: same durations, different recordings, mostly 1–2 track singles. Left alone.
+  - **711 different tracklists, 60 subset/expanded editions, 257 with no timings, 6 mixed** — not
+    duplicates or not arbitrable. **Alan Menken's Pocahontas ×7 is seven language dubs** (Polish,
+    Spanish, Portuguese, Italian, Swedish, Danish, English), not one album seven times; Hercules
+    likewise. List of the 209 confirmed sets: `scripts/data/dup-same-title-confirmed.json`.
+- **Duplicate artist names (1,552 sets).** 1,549 carry DISTINCT MusicBrainz artist ids — homonyms,
+  not split discographies. 시온 ×6 is SATURDAY / tripleS / ONEUS / Geenius / ZioN / a vocalist;
+  "gray" ×6 is six different acts. Merging any of them would fuse different people. Only 3 sets
+  pair an MB row with a non-MB row: **woshi** (MB 4 groups + Deezer 45), **SYSTEM SEOUL** (3 + 2),
+  **Bulin 47** (an empty stub). The audit check keys on name+country and cannot see this.
+- **Release groups without releases (3,345).** 2,992 MusicBrainz + 349 iTunes; 70 artists hold
+  3,204 of them (Handel 311, Stravinsky 167, Ella Fitzgerald 150, Miles Davis 120). They are the
+  "edition listing truncated — empty groups KEPT" branch of `ingestArtist`, so re-polling the
+  artist reproduces them, and **gapfill cannot repair them**: `gapfillGroups` only fills tracks
+  onto an existing canonical release and these have none. They need a per-release-group MB browse
+  (~2 requests each, a 2–3h MB window). No such script exists yet.
+- **Kanye West** — resolved, no fix needed. The row is "Ye" with a `Kanye West` alias and
+  `name_native`; `search_artists('kanye west')` and `('kanye')` both return him first. Still odd:
+  MB counts 307 album/EP/single groups and we hold 105.
+- **audit-sample-vs-sources.ts** — iTunes NAME-SEARCH fallback added (exact normalized match on
+  name / native name / alias; `resolved_by` recorded; unmatched reported as `no_itunes_match`).
+  First run exposed a bug in the fallback itself: iTunes was 403-throttling this IP and a throttled
+  search was reported as "no match" (Vaundy). Fixed — throttled is `itunes_unavailable`, and three
+  in a row stops the run. **Re-run still owed**; stopped at 3/100.
+- **backfill-rg-covers-kr.ts** — three defects fixed before any cover run: it still had the loose
+  substring/first-word matchers retired from backfill-fast-covers on 10-11; a DRY RUN recorded
+  every row as processed, so the following `--write` skipped them; and the write had no
+  `cover_url is null` guard. **No covers written** (iTunes throttled; Spotify left off on purpose).
+  KR null covers now 1,132: 308 albums, 126 EPs, 553 singles; 148 already gapfill-checked.
+- Pipeline restarted 16:50 with `--no-embed --no-qc`, paused ~1 min for the 16 MB lookups.
+  New in the log: `[recency-spotify] ERROR: release_tracks insert … duplicate key … release_tracks_pkey`.
+
+**Later the same evening — acting on it (approved: merge the 112, build the alias mechanism, write the repair script).**
+
+- **dedup-by-duration.ts** now (1) prefers the MusicBrainz row between rows in the same script
+  (after the Latin-title rule, which is unchanged), (2) carries a cover onto a survivor that has
+  none, (3) records every removed MusicBrainz id in the new alias table, re-pointing aliases that
+  referenced a removed row first. A failure in (2)/(3) aborts before anything is deleted.
+- **`release_group_mbid_aliases`** (migration `20261012000001`, applied live, RLS on, service-role
+  only). `ingestArtist` loads it per artist and skips aliased MBIDs, so a merged MusicBrainz group
+  is not re-inserted. Loaded per ingest, not per process, so a merge takes effect without a
+  pipeline restart — but the pipeline has to be on this code, i.e. restarted once.
+- **The 112 cross-source twins: merged** via `--ids=… --apply`. Verified against the database:
+  112 rows deleted, the 112 survivors are all MusicBrainz rows, 0 aborted, 0 ratings involved, 25
+  survivors inherited a cover, 1 removed MBID recorded as an alias.
+- **scripts/repair-empty-release-groups.ts** (new; report-only unless `--write`; refuses to start
+  while a pipeline MB lane has a fresh heartbeat). Asks MusicBrainz for one group's editions
+  (`browseReleaseGroupEditions`, new in mb-client) and writes the representative edition through
+  the normal ingest path. **The first eight "fills" taught the important thing: four were still
+  empty.** `releases` upserts on `mb_release_id`, so when a group's edition already hangs off
+  ANOTHER row of ours the write lands there. That is MusicBrainz having moved a release to a
+  different release group after we ingested it: "Legrand Jazz" sits under a Michel Legrand row
+  while the Miles Davis & Michel Legrand group that now owns it is empty; BoA "Rock With You",
+  "메리-크리", "Double", SEVENTEEN "Always Yours" likewise. So the release-less groups are THREE
+  classes, not one: truncation gaps (fill), `held_elsewhere` (a duplicate of the holding row — a
+  merge, and the same thing regenerates in normal ingest), and `no_official`/`no_editions`
+  (shells). In a 40-group sample: 30 fill, 7 held elsewhere, 3 no official edition. The script
+  reports the last two classes with ids in `scripts/data/repair-empty-release-groups.json` and
+  touches neither.
+- **woshi / SYSTEM SEOUL / Bulin 47 (read-only).** SYSTEM SEOUL is one act in two rows: the
+  Deezer row holds SS-POP 1 and 2 (dated 2026-03-29), the MusicBrainz row holds SS-POP 1, 2 and 3.
+  woshi likewise shares "Lost&Found" (2025-04-21, 11 tracks) across both rows, but the Deezer row
+  has 45 groups including a Spanish-titled EP and "Little Drummer Boy", so it may also hold a
+  namesake's releases — not a clean merge. Bulin 47's second row is an empty stub with no
+  external id. Nothing changed.
 **2026-11-04 (Windows, Nov 4 evening) — Taste map 2D: schematic as hyperbole (emergent overlaps); to-scale island gaps closed.**
 
 - Jun: the schematic should keep genre overlaps and connections, not treat genres as discrete ("just hyperbole"). To scale, the Korean/Japanese world sat too far from the rest.

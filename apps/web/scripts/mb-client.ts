@@ -543,19 +543,7 @@ export async function browseArtistReleasesDetailed(
       `/release?artist=${artistMbid}&inc=${enc('recordings isrcs artist-credits media release-groups')}&limit=100&offset=${offset}`,
     );
     const rs: any[] = data?.releases ?? [];
-    for (const r of rs) {
-      out.push({
-        id: r.id,
-        rgId: r['release-group']?.id ?? null,
-        status: r.status ?? null,
-        date: r.date || null,
-        country: r.country ?? null,
-        trackCount: (r.media ?? []).reduce((n: number, m: any) => n + (m['track-count'] ?? (m.tracks?.length ?? 0)), 0),
-        coverFront: r['cover-art-archive']?.front ?? false,
-        tracks: parseMedia(r.media),
-        language: r['text-representation']?.language ?? null,
-      });
-    }
+    for (const r of rs) out.push(toArtistRelease(r));
     total = data?.['release-count'] ?? out.length;
     offset += rs.length;
     page++;
@@ -572,6 +560,44 @@ export async function browseArtistReleasesDetailed(
     }
   }
   return { releases: out, truncated, seen: offset, total: total || out.length };
+}
+
+function toArtistRelease(r: any): MbArtistRelease {
+  return {
+    id: r.id,
+    rgId: r['release-group']?.id ?? null,
+    status: r.status ?? null,
+    date: r.date || null,
+    country: r.country ?? null,
+    trackCount: (r.media ?? []).reduce((n: number, m: any) => n + (m['track-count'] ?? (m.tracks?.length ?? 0)), 0),
+    coverFront: r['cover-art-archive']?.front ?? false,
+    tracks: parseMedia(r.media),
+    language: r['text-representation']?.language ?? null,
+  };
+}
+
+/**
+ * Every edition of ONE release group, with tracks. The artist-level listing above is capped, and
+ * for a prolific artist the editions of a given group can sit entirely past the cap; asking by
+ * release group cannot be truncated that way. Usually one request (a group rarely has over 100
+ * editions). `truncated` is true only if the page cap was hit, in which case absence proves nothing.
+ */
+const MAX_RG_RELEASE_PAGES = 5;
+export async function browseReleaseGroupEditions(
+  releaseGroupMbid: string,
+): Promise<{ releases: MbArtistRelease[]; truncated: boolean }> {
+  const out: MbArtistRelease[] = [];
+  for (let offset = 0, page = 0; ; page++) {
+    const data = await mbGet(
+      `/release?release-group=${releaseGroupMbid}&inc=${enc('recordings isrcs artist-credits media release-groups')}&limit=100&offset=${offset}`,
+    );
+    const rs: any[] = data?.releases ?? [];
+    for (const r of rs) out.push(toArtistRelease(r));
+    offset += rs.length;
+    const total = data?.['release-count'] ?? out.length;
+    if (rs.length === 0 || offset >= total) return { releases: out, truncated: false };
+    if (page + 1 >= MAX_RG_RELEASE_PAGES) return { releases: out, truncated: true };
+  }
 }
 
 // Ordered artist credits for a single release group (for the release_group_artists backfill).

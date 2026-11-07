@@ -75,18 +75,34 @@ async function urlIsLive(u: string): Promise<boolean> {
 const norm = (s: string) =>
   (s || '').toLowerCase().replace(/\(feat[^)]*\)/g, '').replace(/[^\w가-힣]/g, ' ').replace(/\s+/g, ' ').trim();
 
-// Fuzzy "is this candidate the album we asked for" guard, shared by all search
-// tiers so Spotify/Last.fm can't silently attach a wrong-album cover. Title must
-// contain-or-be-contained; artist likewise, or share a first token (handles
-// "feat."/collab strings and romanized-vs-native artist names).
+/** Containment that respects word boundaries: "touch" is in "touch me", not in "touchdown". */
+function containsWord(haystack: string, needle: string): boolean {
+  const esc = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${esc}($|\\s)`).test(haystack);
+}
+
+// "Is this candidate the album we asked for" guard, shared by all search tiers so Spotify/Last.fm
+// can't silently attach a wrong-album cover. Same rules as backfill-fast-covers.ts, for the reason
+// given there: this used to accept bare substring titles and FIRST-WORD artist equality, so
+// "Kim Jaehwan" matched "Kim Namjoon" and "Touch" matched "Touchdown" — the wrong-cover class
+// reported against 사랑하기 때문에 and 201. A wrong cover is worse than no cover. Containment must
+// land on a word boundary, and a name short enough to collide by accident must match exactly.
+const MIN_TITLE_CONTAIN_LEN = 6;
+function nameOk(a: string, b: string, minContainLen: number): boolean {
+  if (a === b) return true;
+  const short = a.length <= b.length ? a : b;
+  const long = a.length <= b.length ? b : a;
+  if (short.length < minContainLen) return false;
+  return containsWord(long, short);
+}
+const artistOkStrict = (candArtist: string, wantArtist: string): boolean => {
+  const ca = norm(candArtist), wa = norm(wantArtist);
+  return !!ca && !!wa && nameOk(ca, wa, 3);
+};
 function titleArtistOk(candTitle: string, candArtist: string, wantTitle: string, wantArtist: string): boolean {
   const ct = norm(candTitle), wt = norm(wantTitle);
-  const ca = norm(candArtist), wa = norm(wantArtist);
   if (!ct || !wt) return false;
-  const titleOk = ct.includes(wt) || wt.includes(ct);
-  const artistOk =
-    !wa || !ca || ca.includes(wa) || wa.includes(ca) || (!!ca.split(' ')[0] && ca.split(' ')[0] === wa.split(' ')[0]);
-  return titleOk && artistOk;
+  return nameOk(ct, wt, MIN_TITLE_CONTAIN_LEN) && artistOkStrict(candArtist, wantArtist);
 }
 
 // ── Tier 1: Cover Art Archive (release-group level) ────────────────────────────
@@ -175,9 +191,7 @@ async function coverFromLastfm(title: string, artist: string, attempt = 0): Prom
     // romanized vs. our CJK title. Validate the ARTIST only — that still blocks
     // an autocorrect redirect to an unrelated artist, without dropping the many
     // KR albums Last.fm indexes under a romanized title.
-    const ca = norm(data.album.artist ?? ''), wa = norm(artist);
-    const artistOk = !wa || !ca || ca.includes(wa) || wa.includes(ca) || ca.split(' ')[0] === wa.split(' ')[0];
-    if (!artistOk) return null;
+    if (!artistOkStrict(data.album.artist ?? '', artist)) return null;
     const images: any[] = data.album?.image ?? [];
     for (const size of ['extralarge', 'mega', 'large']) {
       const img = images.find((i) => i.size === size);
@@ -382,7 +396,8 @@ async function main() {
       (counts as any)[source]++;
       process.stdout.write(`✓ ${source}\n`);
       if (WRITE) {
-        const { error } = await db.from('release_groups').update({ cover_url: cover }).eq('id', rg.id);
+        // Null-only: the gapfill lane works the same rows, and whichever lands first stays.
+        const { error } = await db.from('release_groups').update({ cover_url: cover }).eq('id', rg.id).is('cover_url', null);
         if (error) process.stdout.write(`     ⚠ write failed: ${error.message}\n`);
       }
     } else {
@@ -391,10 +406,13 @@ async function main() {
     }
 
     processed.add(rg.id);
-    if ((i + 1) % 25 === 0) saveProcessed(processed);
+    // A DRY RUN MUST NOT RECORD PROGRESS. It used to, so previewing a batch marked every row in it
+    // "processed" — including the ones a cover was found for but not written — and the --write run
+    // that followed skipped them all.
+    if (WRITE && (i + 1) % 25 === 0) saveProcessed(processed);
   }
 
-  saveProcessed(processed);
+  if (WRITE) saveProcessed(processed);
 
   const found = counts.caa + counts.spotify + counts.lastfm + counts.itunes;
   const evaluated = found + counts.none;

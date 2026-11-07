@@ -24,9 +24,15 @@
  * Sampled at random within each stratum rather than taking the top N, so the result is an estimate
  * of catalogue health instead of a hand-picked showcase.
  *
- * ONLY ARTISTS WITH AN iTUNES ID can be compared, since the comparison is a lookup by that id.
- * Artists without one are reported as unverifiable rather than silently dropped — "we could not
- * check" is a different finding from "we match".
+ * ARTISTS WITHOUT A STORED iTUNES ID ARE RESOLVED BY NAME. The first version compared only artists
+ * holding an iTunes id, and the prestige stratum came back 31 of 80 and almost entirely Korean: The
+ * Beatles, Bob Dylan, Radiohead, Kendrick Lamar and Beyoncé are MusicBrainz-only rows with no iTunes
+ * id, so every canonical Western artist was excluded without a word. They now fall back to an
+ * iTunes artist NAME SEARCH, accepted only on exact normalized equality with the name, native name
+ * or a stored alias ("Ye" resolves through his "Kanye West" alias) — a looser match would compare a
+ * discography against a namesake's. Each finding records resolved_by so a name-resolved comparison
+ * can be read with that in mind, and an artist iTunes cannot be matched to is reported as
+ * no_itunes_match rather than dropped — "we could not check" is a different finding from "we match".
  *
  * WHAT IT COMPARES. Albums and EPs only. Singles are excluded: iTunes lists them in the hundreds
  * for some artists and we deliberately do not mirror that, so including them would produce a huge
@@ -60,7 +66,45 @@ function norm(s: string): string {
     .trim();
 }
 
-type Artist = { id: string; name: string; itunes: string; stratum: 'engaged' | 'prestige' };
+type Artist = {
+  id: string; name: string; itunes: string | null; stratum: 'engaged' | 'prestige';
+  resolvedBy: 'id' | 'name' | null; itunesName?: string;
+};
+
+// Spacing after every iTunes call. The name-search fallback doubles the calls per artist, and the
+// pipeline's gapfill/recency lanes draw on the same per-IP allowance.
+const ITUNES_GAP_MS = 3000;
+
+/**
+ * iTunes artist id by NAME, for artists we hold no id for.
+ * null = iTunes answered and has no exact-name match. 'blocked' = iTunes never answered (403/429),
+ * which says nothing about the artist — the first run of this fallback reported Vaundy as "no
+ * match" while every request was being throttled.
+ */
+async function itunesArtistByName(names: string[]): Promise<{ id: string; name: string } | null | 'blocked'> {
+  const accept = new Set(names.map(norm).filter(Boolean));
+  let answered = false;
+  // Search on the display name first, then the native name; aliases only widen what is ACCEPTED.
+  for (const term of names.slice(0, 2)) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(
+          `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=musicArtist&limit=10`,
+          { headers: { 'User-Agent': 'sillajuku/1.0' } });
+        if (res.status === 403 || res.status === 429) { await sleep(8000 * (attempt + 1)); continue; }
+        await sleep(ITUNES_GAP_MS);
+        if (!res.ok) break;
+        answered = true;
+        const d = await res.json() as { results?: any[] };
+        // iTunes orders by relevance, so the first exact-name hit is the best-known holder of it.
+        const hit = (d.results ?? []).find(r => r.artistId && accept.has(norm(String(r.artistName ?? ''))));
+        if (hit) return { id: String(hit.artistId), name: String(hit.artistName) };
+        break;
+      } catch { await sleep(2000); }
+    }
+  }
+  return answered ? null : 'blocked';
+}
 
 async function pickSample(): Promise<Artist[]> {
   const picked = new Map<string, Artist>();
@@ -93,7 +137,8 @@ async function pickSample(): Promise<Artist[]> {
 
   const shuffle = <T,>(xs: T[]) => xs.map(v => [Math.random(), v] as const).sort((a, b) => a[0] - b[0]).map(p => p[1]);
 
-  // resolve an artist id + itunes id, keeping only comparable artists
+  // resolve an artist id + itunes id. An artist with no stored id is still picked; main() resolves
+  // it by name, so only the artists actually sampled cost a search.
   const withItunes = async (ids: string[], stratum: Artist['stratum'], want: number) => {
     for (const chunk of (() => { const out: string[][] = []; for (let i = 0; i < ids.length; i += 200) out.push(ids.slice(i, i + 200)); return out; })()) {
       if (picked.size >= want) break;
@@ -102,8 +147,9 @@ async function pickSample(): Promise<Artist[]> {
         .in('id', chunk);
       for (const a of shuffle((data ?? []) as any[])) {
         const it = (a.artist_external_ids ?? []).find((e: any) => e.source === 'itunes');
-        if (!it) continue;
-        if (!picked.has(a.id)) picked.set(a.id, { id: a.id, name: a.name, itunes: it.external_id, stratum });
+        if (!picked.has(a.id)) {
+          picked.set(a.id, { id: a.id, name: a.name, itunes: it?.external_id ?? null, stratum, resolvedBy: it ? 'id' : null });
+        }
         if (picked.size >= want) break;
       }
     }
@@ -163,11 +209,11 @@ async function itunesAlbums(artistId: string): Promise<TheirAlbum[] | null> {
 async function main() {
   console.log(`\n  sample audit vs live sources — ${N_ENGAGED} engaged + ${N_PRESTIGE} prestige\n`);
   const sample = await pickSample();
-  console.log(`  sampled ${sample.length} artist(s) with an iTunes id`
+  console.log(`  sampled ${sample.length} artist(s), ${sample.filter(s => !s.itunes).length} without an iTunes id (resolved by name)`
     + ` (${sample.filter(s => s.stratum === 'engaged').length} engaged / ${sample.filter(s => s.stratum === 'prestige').length} prestige)\n`);
 
   const findings: any[] = [];
-  let i = 0;
+  let i = 0, blockedStreak = 0;
   for (const a of sample) {
     i++;
     const { data: oursRows } = await db.from('release_groups')
@@ -178,8 +224,28 @@ async function main() {
       title: String(r.title), date: r.first_release_date ? String(r.first_release_date).slice(0, 10) : null,
     }));
 
+    if (!a.itunes) {
+      const { data: meta } = await db.from('artists').select('name_native, artist_aliases(alias)').eq('id', a.id).single();
+      const names = [a.name, (meta as any)?.name_native, ...(((meta as any)?.artist_aliases ?? []) as any[]).map(x => x.alias)]
+        .filter((x): x is string => !!x);
+      const hit = await itunesArtistByName(names);
+      if (hit === 'blocked') {
+        findings.push({ artist: a.name, stratum: a.stratum, status: 'itunes_unavailable', ours: ours.length });
+        console.log(`  [${i}/${sample.length}] ${a.name}: iTunes unavailable`);
+        if (++blockedStreak >= 3) { console.log('\n  iTunes is throttling this IP (3 in a row) — stopping; re-run once it clears.'); break; }
+        continue;
+      }
+      blockedStreak = 0;
+      if (!hit) {
+        findings.push({ artist: a.name, stratum: a.stratum, status: 'no_itunes_match', ours: ours.length });
+        console.log(`  [${i}/${sample.length}] ${a.name}: no exact-name iTunes artist — unverifiable`);
+        continue;
+      }
+      a.itunes = hit.id; a.resolvedBy = 'name'; a.itunesName = hit.name;
+    }
+
     const theirs = await itunesAlbums(a.itunes);
-    await sleep(1400);
+    await sleep(ITUNES_GAP_MS);
     if (theirs === null) {
       findings.push({ artist: a.name, stratum: a.stratum, status: 'itunes_unavailable', ours: ours.length });
       console.log(`  [${i}/${sample.length}] ${a.name}: iTunes unavailable`);
@@ -213,6 +279,7 @@ async function main() {
 
     const f = {
       artist: a.name, stratum: a.stratum, status: 'compared',
+      resolved_by: a.resolvedBy, ...(a.itunesName ? { itunes_name: a.itunesName } : {}),
       ours: ours.length, itunes: theirs.length,
       missing_count: missing.length, extra_count: extra.length,
       title_disagreement_count: titleDisagree.length,
@@ -220,7 +287,7 @@ async function main() {
       title_disagreements: titleDisagree.slice(0, 8),
     };
     findings.push(f);
-    console.log(`  [${i}/${sample.length}] ${a.name}: ours ${ours.length} / iTunes ${theirs.length}`
+    console.log(`  [${i}/${sample.length}] ${a.name}${a.resolvedBy === 'name' ? ` [by name: ${a.itunesName}]` : ''}: ours ${ours.length} / iTunes ${theirs.length}`
       + `  missing ${missing.length}, extra ${extra.length}, title-diff ${titleDisagree.length}`);
   }
 
@@ -233,7 +300,9 @@ async function main() {
   const clean = cmp.filter(f => f.missing_count === 0 && f.extra_count === 0).length;
   console.log('\n  ── SUMMARY ─────────────────────────');
   console.log(`  compared:              ${cmp.length}`);
-  console.log(`  iTunes unavailable:    ${findings.length - cmp.length}`);
+  console.log(`    of which by name:    ${cmp.filter(f => f.resolved_by === 'name').length}`);
+  console.log(`  no iTunes name match:  ${findings.filter(f => f.status === 'no_itunes_match').length}   (unverifiable, not a match)`);
+  console.log(`  iTunes unavailable:    ${findings.filter(f => f.status === 'itunes_unavailable').length}`);
   console.log(`  exact match:           ${clean}`);
   console.log(`  albums iTunes has, we lack: ${totMissing}`);
   console.log(`  albums we have, iTunes lacks: ${totExtra}`);

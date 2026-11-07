@@ -111,6 +111,34 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 >   - Other catalog tables may share the pattern; worth an audit.
 > - **Found, not touched:** `app/api/contradictions/route.ts` still reads `ratings.release_id` / `releases(...)` (the live column is `release_group_id`), so it probably returns nothing.
 
+> **2026-11-05: iPhone → app redirect added (web `components/IosAppRedirect.tsx` + Smart App Banner).** Not yet
+> tested on a real iPhone. After deploy, check both cases (app installed / not installed), and ship the iOS
+> `onOpenURL` change (`sillajuku://open` early return) in the next app build. Opt out on a phone with `?web=1`.
+
+> **CATALOGUE CLEAN-UP (2026-10-12, Windows evening).** Detail and evidence in SESSIONS.md (top entry).
+> **2026-11-04: the pipeline was dead from ~10-14 to 11-04 (killed with its launching shell) — restarted.** Run
+> the watchdog alongside it (`C:\Users\Kenneth\music_rating-overnight\watchdog.sh`) so a silent death is noticed.
+> The release-group repair finished on 10-12 (19:48) before that; its held-elsewhere / no-official lists are in
+> `scripts/data/repair-empty-release-groups.json` and still need a decision.
+> 1. ✅ **112 cross-source twins merged** (verified: 112 deleted, 112 MusicBrainz survivors, 0 aborted, 25 covers carried over). `dedup-by-duration.ts` now prefers the MB
+>    row, carries a cover to the survivor, and records removed MBIDs in `release_group_mbid_aliases`
+>    (migration `20261012000001`, applied) which `ingestArtist` skips.
+> 2. **97 MusicBrainz-internal duplicates — NOT merged yet, needs a yes.** The alias mechanism they were
+>    waiting on is built; the pipeline must be on the new code first (it is, once the chain above restarts it).
+>    List: `scripts/data/dup-same-title-confirmed.json`, class `mb-internal-same-recordings`.
+> 3. **Release-less groups are three classes.** The repair fills truncation gaps. It only REPORTS
+>    `held_elsewhere` (MusicBrainz moved the release to another group; the shell duplicates the row that holds
+>    it — merge candidates, with ids) and `no_official` / `no_editions` (shells). Both lists need a decision.
+>    349 iTunes-sourced release-less groups are untouched (the script is MusicBrainz-only).
+> 4. **Do NOT merge by name:** Pocahontas ×7 are language dubs; 1,549 of 1,552 duplicate artist names are
+>    homonyms with distinct MB ids (시온 ×6, "gray" ×6). Real split acts: **SYSTEM SEOUL** (clean), **woshi**
+>    (Deezer row may also hold a namesake), Bulin 47 (empty stub). None merged.
+> 5. **Owed once iTunes stops 403-ing this IP:** `audit-sample-vs-sources.ts --engaged=20 --prestige=80`
+>    (name-search fallback is in), then `backfill-rg-covers-kr.ts --reset --types album,ep --limit 60` as a
+>    dry run (matchers tightened; run with `SPOTIFY_CLIENT_ID=` empty to keep Spotify out of it).
+
+> **SESSION CLOSE (2026-10-12, Mac) — everything below through 10-06 (Mac, later) is shipped and on `main`
+> (`147650d` → `f39bc5f`); all migrations applied and verified live. Web is deployed; iOS needs a build.**
 > **2026-11-04 (Windows, Nov 4 evening) — Taste map 2D: schematic is now an exaggeration of the true map (no discs), and the to-scale islands sit closer (committed).**
 > - ✅ Jun: the schematic should still show genre overlaps and connections, without treating genres as discrete ("think of it as hyperbole"). To scale, the Korean/Japanese world sat too far from the rest.
 > - ✅ `lib/tasteMap/schematic.ts` rewritten (6 tests). No countries go in, only `pos2d` and kNN neighbors.
