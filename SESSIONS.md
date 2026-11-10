@@ -4,6 +4,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-11-09 (Windows) — Housekeeping: uncommitted work committed and pushed.** No app changes this session (it was spent on Instagram reels, outside this repo). Committed what had been sitting uncommitted on Windows: `1722be4` (iOS `sillajuku://open` early return, from 11-05) and `7aecb8d` (10-12 catalogue clean-up code: `release_group_mbid_aliases` migration, `repair-empty-release-groups.ts`, `mb-ingest`/`mb-client`/`dedup-by-duration`/cover/audit script changes, plus docs). The one-off dumps in `apps/web/scripts/data/` and `apps/ios/AppStoreScreenshots/samples/` were left uncommitted on purpose. Pipeline still running (restarted 11-04) with its watchdog; next health check due 2026-11-11.
+
+---
+
 **2026-11-06 (Mac) — Shared page links open in the app (Universal Links); post notifications open the author's profile at that post; album-page track titles no longer open the rating sheet.**
 
 - Tapping a tracklist title opened `TrackRatingSheet` (the big-flower precise rating sheet). Removed: titles are plain text now (`TrackRow` lost its `onTap`; `AlbumDetailView` lost `trackRatingTarget` and its `.sheet`). Rating a track goes through the row's flower button (`SongRateButton`, which still offers the precise sheet itself). `TrackRatingSheet` is still used by `SongRateButton` and `ProfileView`. Simulator build compiles.

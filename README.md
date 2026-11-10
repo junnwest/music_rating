@@ -53,7 +53,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-> **2026-11-06 (Mac) — Shared page links now open in the app (Universal Links); app-shared rating links fixed on web; post notifications open the author's profile at the post. Not committed.** Details in SESSIONS.
+> **2026-11-06 (Mac) — Shared page links now open in the app (Universal Links); app-shared rating links fixed on web; post notifications open the author's profile at the post. Pushed (`b4001ee`).** Details in SESSIONS.
 > - **Before it works:** deploy the web (the AASA file is what lets iOS open these links in the app; Apple's CDN can take up to ~a day to pick it up, or delete and reinstall the app), then install the new iOS build on the iPhone.
 > - **To try on the iPhone:** tap an album, artist, profile, post and Mix link (e.g. from Messages/Notes). Each should open that page on Home. Your own profile link goes to the Profile tab. An old `sillajuku.com/r/<id>` link should open the post too, in the app and on the web (it redirects to `/post/<id>`).
 > - **Also to try:** tap a like/comment notification. It should open your Profile tab scrolled to that post, outlined for a moment. Tap a "rated"/"commented" notification from someone you follow: their profile should open at the post. Try one on a post older than your newest 60 ratings; it gets added at the bottom.
@@ -112,10 +112,12 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > - **Found, not touched:** `app/api/contradictions/route.ts` still reads `ratings.release_id` / `releases(...)` (the live column is `release_group_id`), so it probably returns nothing.
 
 > **2026-11-05: iPhone → app redirect added (web `components/IosAppRedirect.tsx` + Smart App Banner).** Not yet
-> tested on a real iPhone. After deploy, check both cases (app installed / not installed), and ship the iOS
-> `onOpenURL` change (`sillajuku://open` early return) in the next app build. Opt out on a phone with `?web=1`.
+> tested on a real iPhone. After deploy, check both cases (app installed / not installed). The iOS
+> `onOpenURL` change (`sillajuku://open` early return) is pushed (`1722be4`, 2026-11-09); ship it in the next app build. Opt out on a phone with `?web=1`.
 
-> **CATALOGUE CLEAN-UP (2026-10-12, Windows evening).** Detail and evidence in SESSIONS.md (top entry).
+> **CATALOGUE CLEAN-UP (2026-10-12, Windows evening).** Detail and evidence in SESSIONS.md (top entry). The code
+> (alias migration, `repair-empty-release-groups.ts`, `mb-ingest`/`dedup-by-duration` changes) was committed and pushed
+> 2026-11-09 (`7aecb8d`); it had sat uncommitted on Windows until then. The `scripts/data/` dumps stay local, uncommitted.
 > **2026-11-04: the pipeline was dead from ~10-14 to 11-04 (killed with its launching shell) — restarted.** Run
 > the watchdog alongside it (`C:\Users\Kenneth\music_rating-overnight\watchdog.sh`) so a silent death is noticed.
 > The release-group repair finished on 10-12 (19:48) before that; its held-elsewhere / no-official lists are in
