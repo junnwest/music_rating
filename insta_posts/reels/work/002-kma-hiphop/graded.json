@@ -1,0 +1,582 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "artist": "이센스",
+      "artist_en": "E SENS",
+      "album": "The Anecdote",
+      "year": "2016",
+      "art": "assets/12.jpg",
+      "inputs": {
+        "rym": 3.77,
+        "aoty_critic": null,
+        "aoty_user": 85,
+        "kma_wins": 2,
+        "lastfm_listeners": 4736,
+        "deezer_fans": 26
+      },
+      "matched": {
+        "lastfm": "6 entries, top: E SENS — The Anecdote",
+        "deezer": "E Sens — The Anecdote"
+      },
+      "parts": {
+        "ratings": 80.2,
+        "reach": 66.88529234287158,
+        "recognition": 50
+      },
+      "grade": 70.65279385143074,
+      "draft": false
+    },
+    {
+      "artist": "식케이 & 릴 모쉬핏",
+      "artist_en": "Sik-K & Lil Moshpit",
+      "album": "K-FLIP+",
+      "year": "2026",
+      "art": "assets/22.jpg",
+      "inputs": {
+        "rym": 3.47,
+        "aoty_critic": null,
+        "aoty_user": 79,
+        "kma_wins": 2,
+        "lastfm_listeners": 21797,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "25 entries, top: Sik-K — K-FLIP+",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": 74.2,
+        "reach": 83.45991810490654,
+        "recognition": 50
+      },
+      "grade": 69.53898771573598,
+      "draft": false
+    },
+    {
+      "artist": "가리온",
+      "artist_en": "Garion",
+      "album": "가리온 2",
+      "year": "2011",
+      "art": "assets/07.jpg",
+      "inputs": {
+        "rym": 3.48,
+        "aoty_critic": null,
+        "aoty_user": 82,
+        "kma_wins": 3,
+        "lastfm_listeners": 94,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "4 entries, top: 가리온 — 가리온 2",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": 75.8,
+        "reach": 24.328196339992463,
+        "recognition": 75
+      },
+      "grade": 67.87922945099886,
+      "draft": false
+    },
+    {
+      "artist": "빈지노",
+      "artist_en": "Beenzino",
+      "album": "NOWITZKI",
+      "year": "2024",
+      "art": "assets/20.jpg",
+      "inputs": {
+        "rym": 3.52,
+        "aoty_critic": null,
+        "aoty_user": 74,
+        "kma_wins": 2,
+        "lastfm_listeners": 14847,
+        "deezer_fans": 161
+      },
+      "matched": {
+        "lastfm": "11 entries, top: Beenzino — Nowitzki",
+        "deezer": "Beenzino — NOWITZKI"
+      },
+      "parts": {
+        "ratings": 72.2,
+        "reach": 79.29096771327046,
+        "recognition": 50
+      },
+      "grade": 67.71364515699057,
+      "draft": false
+    },
+    {
+      "artist": "에픽하이",
+      "artist_en": "Epik High",
+      "album": "Remapping the Human Soul",
+      "year": "2008",
+      "art": "assets/04.jpg",
+      "inputs": {
+        "rym": 3.64,
+        "aoty_critic": null,
+        "aoty_user": 84,
+        "kma_wins": 1,
+        "lastfm_listeners": 54569,
+        "deezer_fans": 176
+      },
+      "matched": {
+        "lastfm": "22 entries, top: Epik High — Remapping the Human Soul",
+        "deezer": "Epik High — Remapping the Human Soul"
+      },
+      "parts": {
+        "ratings": 78.4,
+        "reach": 93.42364988065104,
+        "recognition": 25
+      },
+      "grade": 67.30354748209766,
+      "draft": false
+    },
+    {
+      "artist": "드렁큰 타이거",
+      "artist_en": "Drunken Tiger",
+      "album": "Feel gHood Muzik: The 8th Wonder",
+      "year": "2010",
+      "art": "assets/06.jpg",
+      "inputs": {
+        "rym": 3.13,
+        "aoty_critic": null,
+        "aoty_user": 90,
+        "kma_wins": 1,
+        "lastfm_listeners": 7220,
+        "deezer_fans": 25
+      },
+      "matched": {
+        "lastfm": "25 entries, top: Drunken Tiger — Feel gHood Muzik : The 8th Wonder",
+        "deezer": "Drunken Tiger — Feel gHood Muzik : The 8th Wonder"
+      },
+      "parts": {
+        "ratings": 76.3,
+        "reach": 71.46342993924097,
+        "recognition": 25
+      },
+      "grade": 62.74951449088614,
+      "draft": false
+    },
+    {
+      "artist": "씨잼",
+      "artist_en": "C JAMM",
+      "album": "킁",
+      "year": "2020",
+      "art": "assets/16.jpg",
+      "inputs": {
+        "rym": 3.67,
+        "aoty_critic": null,
+        "aoty_user": 84,
+        "kma_wins": 1,
+        "lastfm_listeners": 1690,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "4 entries, top: C Jamm — 킁",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": 78.7,
+        "reach": 55.69716761534183,
+        "recognition": 25
+      },
+      "grade": 61.82457514230127,
+      "draft": false
+    },
+    {
+      "artist": "넉살 & 까데호",
+      "artist_en": "Nucksal & Cadejo",
+      "album": "Sincerely Yours",
+      "year": "2023",
+      "art": "assets/19.jpg",
+      "inputs": {
+        "rym": 3.35,
+        "aoty_critic": null,
+        "aoty_user": 70,
+        "kma_wins": 2,
+        "lastfm_listeners": 934,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "1 entries, top: Nucksal — Sincerely Yours",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": 68.5,
+        "reach": 49.25867190575234,
+        "recognition": 50
+      },
+      "grade": 60.98880078586285,
+      "draft": false
+    },
+    {
+      "artist": "화지",
+      "artist_en": "Hwaji",
+      "album": "ZISSOU",
+      "year": "2017",
+      "art": "assets/13.jpg",
+      "inputs": {
+        "rym": 3.71,
+        "aoty_critic": null,
+        "aoty_user": 84,
+        "kma_wins": 1,
+        "lastfm_listeners": 659,
+        "deezer_fans": 6
+      },
+      "matched": {
+        "lastfm": "4 entries, top: Hwaji — Zissou",
+        "deezer": "Hwaji — ZISSOU"
+      },
+      "parts": {
+        "ratings": 79.1,
+        "reach": 45.47213536485024,
+        "recognition": 25
+      },
+      "grade": 60.53082030472753,
+      "draft": false
+    },
+    {
+      "artist": "비프리 & 허키 시바세키",
+      "artist_en": "B-Free & Hukky Shibaseki",
+      "album": "Odyssey. 1",
+      "year": "2025",
+      "art": "assets/21.jpg",
+      "inputs": {
+        "rym": 3.64,
+        "aoty_critic": null,
+        "aoty_user": 77,
+        "kma_wins": 1,
+        "lastfm_listeners": 2148,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "13 entries, top: B-Free — Free Hukky Shibaseki & the God Sun Symphony Group : Odyssey.1",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": 74.9,
+        "reach": 58.30085692568795,
+        "recognition": 25
+      },
+      "grade": 59.9351285388532,
+      "draft": false
+    },
+    {
+      "artist": "버벌진트",
+      "artist_en": "Verbal Jint",
+      "album": "누명",
+      "year": "2009",
+      "art": "assets/05.jpg",
+      "inputs": {
+        "rym": 3.63,
+        "aoty_critic": null,
+        "aoty_user": 78,
+        "kma_wins": 1,
+        "lastfm_listeners": 1767,
+        "deezer_fans": 8
+      },
+      "matched": {
+        "lastfm": "26 entries, top: Verbal Jint — 누명",
+        "deezer": "Verbal Jint — 누명"
+      },
+      "parts": {
+        "ratings": 75.3,
+        "reach": 56.1809137376691,
+        "recognition": 25
+      },
+      "grade": 59.857137060650366,
+      "draft": false
+    },
+    {
+      "artist": "화지",
+      "artist_en": "Hwaji",
+      "album": "eAT",
+      "year": "2015",
+      "art": "assets/11.jpg",
+      "inputs": {
+        "rym": 3.68,
+        "aoty_critic": null,
+        "aoty_user": 78,
+        "kma_wins": 1,
+        "lastfm_listeners": 659,
+        "deezer_fans": 2
+      },
+      "matched": {
+        "lastfm": "2 entries, top: Hwaji — EAT",
+        "deezer": "Hwaji — Eat"
+      },
+      "parts": {
+        "ratings": 75.80000000000001,
+        "reach": 45.47213536485024,
+        "recognition": 25
+      },
+      "grade": 58.55082030472754,
+      "draft": false
+    },
+    {
+      "artist": "최엘비",
+      "artist_en": "CHOILB",
+      "album": "독립음악",
+      "year": "2022",
+      "art": "assets/18.jpg",
+      "inputs": {
+        "rym": 3.48,
+        "aoty_critic": null,
+        "aoty_user": 81,
+        "kma_wins": 1,
+        "lastfm_listeners": 649,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "2 entries, top: 최엘비 — 독립음악",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": 75.3,
+        "reach": 45.30611742000923,
+        "recognition": 25
+      },
+      "grade": 58.225917613001386,
+      "draft": false
+    },
+    {
+      "artist": "쿤디판다",
+      "artist_en": "Khundi Panda",
+      "album": "가로사옥",
+      "year": "2021",
+      "art": "assets/17.jpg",
+      "inputs": {
+        "rym": 3.5,
+        "aoty_critic": null,
+        "aoty_user": 80,
+        "kma_wins": 1,
+        "lastfm_listeners": 285,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "2 entries, top: Khundi Panda — 가로사옥",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": 75,
+        "reach": 36.37112150021275,
+        "recognition": 25
+      },
+      "grade": 56.705668225031914,
+      "draft": false
+    },
+    {
+      "artist": "다이나믹 듀오",
+      "artist_en": "Dynamic Duo",
+      "album": "Double Dynamite",
+      "year": "2006",
+      "art": "assets/02.jpg",
+      "inputs": {
+        "rym": 3.16,
+        "aoty_critic": null,
+        "aoty_user": 68,
+        "kma_wins": 1,
+        "lastfm_listeners": 8037,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "30 entries, top: DynamicDuo — Double Dynamite",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": 65.6,
+        "reach": 72.62734920819678,
+        "recognition": 25
+      },
+      "grade": 56.50410238122951,
+      "draft": false
+    },
+    {
+      "artist": "뱃사공",
+      "artist_en": "Baetsagong",
+      "album": "탕아",
+      "year": "2019",
+      "art": "assets/15.jpg",
+      "inputs": {
+        "rym": 3.48,
+        "aoty_critic": null,
+        "aoty_user": 76,
+        "kma_wins": 1,
+        "lastfm_listeners": 537,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "1 entries, top: 뱃사공 — 탕아",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": 72.8,
+        "reach": 43.24935714248889,
+        "recognition": 25
+      },
+      "grade": 56.417403571373335,
+      "draft": false
+    },
+    {
+      "artist": "팔로알토",
+      "artist_en": "Paloalto",
+      "album": "Chief Life",
+      "year": "2014",
+      "art": "assets/10.jpg",
+      "inputs": {
+        "rym": 3.37,
+        "aoty_critic": null,
+        "aoty_user": 76,
+        "kma_wins": 1,
+        "lastfm_listeners": 798,
+        "deezer_fans": 2
+      },
+      "matched": {
+        "lastfm": "9 entries, top: Paloalto — Chief Life",
+        "deezer": "Paloalto — Chief Life"
+      },
+      "parts": {
+        "ratings": 71.7,
+        "reach": 47.550072283768245,
+        "recognition": 25
+      },
+      "grade": 56.40251084256524,
+      "draft": false
+    },
+    {
+      "artist": "비앙 X 쿤디판다",
+      "artist_en": "Bian X Khundi Panda",
+      "album": "재건축",
+      "year": "2018",
+      "art": "assets/14.jpg",
+      "inputs": {
+        "rym": 3.67,
+        "aoty_critic": null,
+        "aoty_user": 83,
+        "kma_wins": 1,
+        "lastfm_listeners": 69,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "4 entries, top: Viann X Khundi Panda — 재건축",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": 78.2,
+        "reach": 20.97122726843138,
+        "recognition": 25
+      },
+      "grade": 56.31568409026471,
+      "draft": false
+    },
+    {
+      "artist": "더 콰이엇",
+      "artist_en": "The Quiett",
+      "album": "Q Train",
+      "year": "2007",
+      "art": "assets/03.jpg",
+      "inputs": {
+        "rym": 3.41,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 944,
+        "deezer_fans": 7
+      },
+      "matched": {
+        "lastfm": "12 entries, top: The Quiett — Q Train",
+        "deezer": "The Quiett — Q Train 2"
+      },
+      "parts": {
+        "ratings": 68.2,
+        "reach": 49.37429985745172,
+        "recognition": 25
+      },
+      "grade": 54.57614497861776,
+      "draft": false
+    },
+    {
+      "artist": "바비 킴",
+      "artist_en": "Bobby Kim",
+      "album": "Beats Within My Soul",
+      "year": "2005",
+      "art": "assets/01.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 1339,
+        "deezer_fans": 6
+      },
+      "matched": {
+        "lastfm": "26 entries, top: Bobby Kim — Beats Within My Soul",
+        "deezer": "Bobby Kim — Beats Within My Soul"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 53.16951442530022,
+        "recognition": 25
+      },
+      "grade": 35.56356790948758,
+      "draft": true
+    },
+    {
+      "artist": "소리헤다",
+      "artist_en": "Sorihedda",
+      "album": "소리헤다 2",
+      "year": "2013",
+      "art": "assets/09.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 147,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "12 entries, top: 소리헤다 — 소리헤다 2",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 29.1829333687044,
+        "recognition": 25
+      },
+      "grade": 26.56860001326415,
+      "draft": true
+    },
+    {
+      "artist": "시모 & 무드슐라",
+      "artist_en": "Simo & Mood Schula",
+      "album": "Simo & Mood Schula",
+      "year": "2012",
+      "art": "assets/08.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 62,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "9 entries, top: Simo & Mood Schula — Simo & Mood Schula",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 19.809792237456346,
+        "recognition": 25
+      },
+      "grade": 23.053672089046128,
+      "draft": true
+    }
+  ]
+}

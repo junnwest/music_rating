@@ -1,0 +1,73 @@
+{
+  "series": "그날의 음악사",
+  "number": 19,
+  "caption": "기타 이름으로 더 유명한 레스 폴은 녹음 방식을 바꾼 발명가이기도 했습니다.\n\n혼자서 여러 파트를 겹쳐 녹음하는 멀티트랙 녹음. 그 시작을 한 장씩 넘기며 확인해 보세요.\n\n오늘 들은 곡에는 몇 개의 트랙이 겹쳐 있을까요?",
+  "hashtags": "#그날의음악사 #LesPaul #레스폴 #MaryFord #멀티트랙 #녹음 #Ampex #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "혼자서 만든 합주",
+      "photo": "assets/paul-ford-1953.jpg",
+      "credit": "Public domain",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "기타보다 먼저 녹음",
+      "photo": "assets/les-paul-guitar.jpg",
+      "credit": "Photo: Zurich_99, CC BY-SA 2.0",
+      "text": "레스 폴은 깁슨 레스 폴 기타로 이름이 알려졌지만, 녹음 기술을 실험한 발명가이기도 했습니다. 집에 스튜디오를 차리고 혼자 여러 파트를 겹쳐 녹음하는 방법을 찾았습니다. 사진은 그가 직접 개조한 기타."
+    },
+    {
+      "type": "photo",
+      "title": "1947년의 Lover",
+      "photo": "assets/paul-ford-1951.jpg",
+      "credit": "Public domain",
+      "text": "1947년 그는 집에서 녹음한 'Lover'에 기타 여덟 파트를 겹쳐 담았습니다. 처음엔 녹음 디스크를 여러 번 오가며 소리를 쌓는 방식이었어요. 1948년 캐피톨이 싱글로 발매합니다."
+    },
+    {
+      "type": "photo",
+      "title": "빙 크로스비의 선물",
+      "photo": "assets/ampex-601.jpg",
+      "credit": "Photo: Sverma, CC BY-SA 4.0",
+      "text": "1949년 가수 빙 크로스비가 그에게 앰펙스 테이프 녹음기를 선물했습니다. 레스 폴은 녹음 헤드를 하나 더 달아, 이미 녹음된 소리 위에 새 소리를 계속 더할 수 있게 개조했습니다. 사진은 앰펙스 601."
+    },
+    {
+      "type": "photo",
+      "title": "How High the Moon",
+      "photo": "assets/paul-ford-1955.jpg",
+      "credit": "Photo: IISG, CC BY-SA 2.0",
+      "text": "1951년 아내 메리 포드와 녹음한 'How High the Moon'은 빌보드 1위에 올랐습니다. 레스 폴은 이 곡에 기타 열두 파트, 보컬 열두 파트를 겹쳤다고 말했습니다.",
+      "focus": "50% 40%"
+    },
+    {
+      "type": "table",
+      "title": "한눈에 보기",
+      "rows": [
+        [
+          "1947",
+          "'Lover' 녹음"
+        ],
+        [
+          "1949",
+          "앰펙스 녹음기 개조"
+        ],
+        [
+          "1951",
+          "'How High the Moon' 1위"
+        ],
+        [
+          "1950년대",
+          "8트랙 녹음기 제작"
+        ]
+      ],
+      "text": "그가 앰펙스와 만든 8트랙 녹음기 '옥토퍼스'는 이후 스튜디오 멀티트랙 녹음의 원형이 됐습니다."
+    },
+    {
+      "type": "closing",
+      "title": "트랙을 쌓은 명곡은?",
+      "text": "여러 파트를 겹겹이 쌓아 만든 곡 중 가장 좋아하는 곡을 댓글로 알려주세요."
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "series": "요즘 음악",
+  "number": 28,
+  "captionInImage": true,
+  "caption": "2013년부터 1년 사이, 한국 힙합 레이블들이 차례로 단체 앨범을 냈습니다.\n\n하이라이트의 Hi-Life, 일리네어의 11:11, 저스트 뮤직의 파급효과. '컴필 3대장'으로 불리는 세 장을 한 장씩 넘기며 확인해 보세요.\n\n세 장 중 최고는 무엇이라고 생각하나요?",
+  "hashtags": "#한국힙합 #컴필레이션 #하이라이트레코즈 #일리네어 #저스트뮤직 #파급효과 #연결고리 #HiLife",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "한국 힙합\n컴필 3대장",
+      "art": "assets/art-1111.jpg",
+      "credit": "Album cover: 11:11 (Illionaire Records, 2014)"
+    },
+    {
+      "type": "photo",
+      "title": "레이블의 단체 앨범",
+      "photo": "assets/paloalto.jpg",
+      "credit": "Photo: Bonnielou2013, CC BY-SA 4.0",
+      "focus": "50% 25%",
+      "text": "레이블 소속 래퍼들이 함께 만든 단체 앨범을 컴필레이션이라고 부릅니다. 2013~2014년 한국 힙합에서는 이 앨범들이 레이블의 얼굴이었고, 그중 세 장이 흔히 '컴필 3대장'으로 불립니다."
+    },
+    {
+      "type": "photo",
+      "title": "Hi-Life, 2013",
+      "art": "assets/art-hi-life.jpg",
+      "credit": "Album cover: Hi-Life (Hi-Lite Records, 2013)",
+      "text": "2013년 6월 25일, 하이라이트 레코즈의 첫 컴필레이션. 팔로알토, 비프리, 허클베리 피, 오케이션, 레디가 한 앨범에 모였고, 레이블의 단단한 비트를 보여준 앨범으로 평가받았습니다."
+    },
+    {
+      "type": "photo",
+      "title": "11:11, 2014",
+      "photo": "assets/dok2.jpg",
+      "credit": "Photo: Explicit, CC BY-SA 4.0",
+      "focus": "50% 25%",
+      "text": "2014년 5월 21일, 도끼와 더콰이엇, 빈지노의 일리네어 레코즈가 11:11을 냈습니다. 수록곡 '연결고리'는 논란도 컸지만 레이블의 이름을 널리 알렸고, 앨범은 트랩 리듬을 한국 힙합에 자리 잡게 했다는 평을 받습니다."
+    },
+    {
+      "type": "photo",
+      "title": "파급효과, 2014",
+      "art": "assets/art-ripple.jpg",
+      "credit": "Album cover: 파급효과 (Just Music, 2014)",
+      "text": "2014년 6월 13일, 스윙스의 저스트 뮤직이 첫 컴필레이션 파급효과를 냈습니다. 피처링 없이 기리보이, 씨잼, 바스코 등 소속 멤버만 참여했고, 프로듀서 노창이 전곡을 만든 것으로 알려져 있습니다."
+    },
+    {
+      "type": "grid",
+      "title": "한 장만 고른다면?",
+      "items": [
+        {
+          "art": "assets/art-hi-life.jpg",
+          "label": "2013.6 · 하이라이트 레코즈",
+          "name": "Hi-Life",
+          "credit": "Album cover: Hi-Life (Hi-Lite Records, 2013)"
+        },
+        {
+          "art": "assets/art-1111.jpg",
+          "label": "2014.5 · 일리네어 레코즈",
+          "name": "11:11",
+          "credit": "Album cover: 11:11 (Illionaire Records, 2014)"
+        },
+        {
+          "art": "assets/art-ripple.jpg",
+          "label": "2014.6 · 저스트 뮤직",
+          "name": "파급효과",
+          "credit": "Album cover: 파급효과 (Just Music, 2014)"
+        }
+      ]
+    }
+  ]
+}

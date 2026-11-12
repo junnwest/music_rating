@@ -1,0 +1,218 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "tylerthecreator__igor",
+      "artist": "타일러 더 크리에이터",
+      "artist_en": "Tyler, the Creator",
+      "album": "IGOR",
+      "year": "2019",
+      "art": "assets/tylerthecreator__igor.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 90,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 2932582
+      },
+      "matched": {
+        "lastfm": "5 entries, top: Tyler, The Creator — IGOR"
+      },
+      "parts": {
+        "ratings": 90,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 75.25,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "tylerthecreator__callmeifyougetlost",
+      "artist": "타일러 더 크리에이터",
+      "artist_en": "Tyler, the Creator",
+      "album": "CALL ME IF YOU GET LOST",
+      "year": "2021",
+      "art": "assets/tylerthecreator__callmeifyougetlost.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 84,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 1910548
+      },
+      "matched": {
+        "lastfm": "34 entries, top: Tyler, The Creator — CALL ME IF YOU GET LOST"
+      },
+      "parts": {
+        "ratings": 84,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 71.65,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "tylerthecreator__flowerboy",
+      "artist": "타일러 더 크리에이터",
+      "artist_en": "Tyler, the Creator",
+      "album": "Flower Boy",
+      "year": "2017",
+      "art": "assets/tylerthecreator__flowerboy.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 85,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 3209641
+      },
+      "matched": {
+        "lastfm": "36 entries, top: Tyler, The Creator — Flower Boy"
+      },
+      "parts": {
+        "ratings": 85,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 66,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "tylerthecreator__chromakopia",
+      "artist": "타일러 더 크리에이터",
+      "artist_en": "Tyler, the Creator",
+      "album": "CHROMAKOPIA",
+      "year": "2024",
+      "art": "assets/tylerthecreator__chromakopia.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 82,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 2326262
+      },
+      "matched": {
+        "lastfm": "41 entries, top: Tyler, The Creator — Chromakopia"
+      },
+      "parts": {
+        "ratings": 82,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 64.19999999999999,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "tylerthecreator__wolf",
+      "artist": "타일러 더 크리에이터",
+      "artist_en": "Tyler, the Creator",
+      "album": "Wolf",
+      "year": "2013",
+      "art": "assets/tylerthecreator__wolf.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 77,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1700377
+      },
+      "matched": {
+        "lastfm": "4 entries, top: Tyler, The Creator — Wolf"
+      },
+      "parts": {
+        "ratings": 77,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 61.199999999999996,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "tylerthecreator__donttaptheglass",
+      "artist": "타일러 더 크리에이터",
+      "artist_en": "Tyler, the Creator",
+      "album": "DON'T TAP THE GLASS",
+      "year": "2025",
+      "art": "assets/tylerthecreator__donttaptheglass.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 75,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1588949
+      },
+      "matched": {
+        "lastfm": "38 entries, top: Tyler, The Creator — DON'T TAP THE GLASS"
+      },
+      "parts": {
+        "ratings": 75,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 60,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "tylerthecreator__cherrybomb",
+      "artist": "타일러 더 크리에이터",
+      "artist_en": "Tyler, the Creator",
+      "album": "Cherry Bomb",
+      "year": "2015",
+      "art": "assets/tylerthecreator__cherrybomb.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 67,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1205526
+      },
+      "matched": {
+        "lastfm": "16 entries, top: Tyler, The Creator — Cherry Bomb"
+      },
+      "parts": {
+        "ratings": 67,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 55.199999999999996,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "tylerthecreator__goblin",
+      "artist": "타일러 더 크리에이터",
+      "artist_en": "Tyler, the Creator",
+      "album": "Goblin",
+      "year": "2011",
+      "art": "assets/tylerthecreator__goblin.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 51,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1878564
+      },
+      "matched": {
+        "lastfm": "3 entries, top: Tyler, The Creator — Goblin"
+      },
+      "parts": {
+        "ratings": 51,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 45.599999999999994,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

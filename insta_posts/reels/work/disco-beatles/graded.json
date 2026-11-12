@@ -1,0 +1,348 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "thebeatles__sgtpepperslonelyheartsclubband",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "Sgt. Pepper's Lonely Hearts Club Band",
+      "year": "1967",
+      "art": "assets/thebeatles__sgtpepperslonelyheartsclubband.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 88,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 979008
+      },
+      "matched": {
+        "lastfm": "4 entries, top: The Beatles — Sgt. Pepper's Lonely Hearts Club Band"
+      },
+      "parts": {
+        "ratings": 88,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 74.05,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__abbeyroad",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "Abbey Road",
+      "year": "1969",
+      "art": "assets/thebeatles__abbeyroad.jpg",
+      "inputs": {
+        "rym": 4.3,
+        "aoty_user": 92,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1243128
+      },
+      "matched": {
+        "lastfm": "9 entries, top: The Beatles — Abbey Road"
+      },
+      "parts": {
+        "ratings": 89,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 68.4,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__thebeatleswhitealbum",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "The Beatles (White Album)",
+      "year": "1968",
+      "art": "assets/thebeatles__thebeatleswhitealbum.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 88,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 122167
+      },
+      "matched": {
+        "lastfm": "5 entries, top: The Beatles — The Beatles (White Album)"
+      },
+      "parts": {
+        "ratings": 88,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 67.8,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__revolver",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "Revolver",
+      "year": "1966",
+      "art": "assets/thebeatles__revolver.jpg",
+      "inputs": {
+        "rym": 4.23,
+        "aoty_user": 89,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 935777
+      },
+      "matched": {
+        "lastfm": "1 entries, top: The Beatles — Revolver"
+      },
+      "parts": {
+        "ratings": 86.80000000000001,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 67.08000000000001,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__magicalmysterytour",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "Magical Mystery Tour",
+      "year": "1967",
+      "art": "assets/thebeatles__magicalmysterytour.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 86,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 795468
+      },
+      "matched": {
+        "lastfm": "8 entries, top: The Beatles — Magical Mystery Tour"
+      },
+      "parts": {
+        "ratings": 86,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 66.6,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__rubbersoul",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "Rubber Soul",
+      "year": "1965",
+      "art": "assets/thebeatles__rubbersoul.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 85,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 830418
+      },
+      "matched": {
+        "lastfm": "8 entries, top: The Beatles — Rubber Soul"
+      },
+      "parts": {
+        "ratings": 85,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 66,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__letitbe",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "Let It Be",
+      "year": "1970",
+      "art": "assets/thebeatles__letitbe.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 79,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 807617
+      },
+      "matched": {
+        "lastfm": "1 entries, top: The Beatles — Let It Be"
+      },
+      "parts": {
+        "ratings": 79,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 62.4,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__help",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "Help!",
+      "year": "1965",
+      "art": "assets/thebeatles__help.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 78,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 658342
+      },
+      "matched": {
+        "lastfm": "5 entries, top: The Beatles — Help!"
+      },
+      "parts": {
+        "ratings": 78,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 61.8,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__aharddaysnight",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "A Hard Day's Night",
+      "year": "1964",
+      "art": "assets/thebeatles__aharddaysnight.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 76,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 571929
+      },
+      "matched": {
+        "lastfm": "5 entries, top: The Beatles — A Hard Day's Night"
+      },
+      "parts": {
+        "ratings": 76,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 60.6,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__pleasepleaseme",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "Please Please Me",
+      "year": "1963",
+      "art": "assets/thebeatles__pleasepleaseme.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 72,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 636307
+      },
+      "matched": {
+        "lastfm": "8 entries, top: The Beatles — Please Please Me"
+      },
+      "parts": {
+        "ratings": 72,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 58.199999999999996,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__withthebeatles",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "With the Beatles",
+      "year": "1963",
+      "art": "assets/thebeatles__withthebeatles.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 67,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 531481
+      },
+      "matched": {
+        "lastfm": "11 entries, top: The Beatles — With the Beatles"
+      },
+      "parts": {
+        "ratings": 67,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 55.199999999999996,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__beatlesforsale",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "Beatles for Sale",
+      "year": "1964",
+      "art": "assets/thebeatles__beatlesforsale.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 65,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 436625
+      },
+      "matched": {
+        "lastfm": "11 entries, top: The Beatles — Beatles for Sale"
+      },
+      "parts": {
+        "ratings": 65,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 54,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "thebeatles__yellowsubmarine",
+      "artist": "비틀스",
+      "artist_en": "The Beatles",
+      "album": "Yellow Submarine",
+      "year": "1969",
+      "art": "assets/thebeatles__yellowsubmarine.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 56,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 406680
+      },
+      "matched": {
+        "lastfm": "6 entries, top: The Beatles — Yellow Submarine"
+      },
+      "parts": {
+        "ratings": 56,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 48.6,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

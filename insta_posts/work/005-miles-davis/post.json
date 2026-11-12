@@ -1,0 +1,88 @@
+{
+  "number": 5,
+  "caption": "재즈를 어디서부터 들어야 할지 모르겠다면, 대부분 마일스 데이비스를 권합니다.\n\n재즈의 흐름이 바뀔 때마다 맨 앞에 있던 트럼펫 연주자. 그의 앨범 네 장으로 재즈의 반세기를 따라가 보세요.\n\n처음 들은 재즈 앨범은 무엇이었나요?",
+  "hashtags": "#재즈 #재즈입문 #MilesDavis #마일스데이비스 #KindofBlue #BirthoftheCool #BitchesBrew #명반",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "재즈 입문 1순위, 마일스 데이비스",
+      "art": "assets/art-kind-of-blue.jpg",
+      "credit": "Album cover: Kind of Blue (Columbia, 1959)"
+    },
+    {
+      "type": "photo",
+      "title": "열여덟 살, 학교 대신 클럽으로",
+      "photo": "assets/parker-davis-1947.jpg",
+      "credit": "Public domain",
+      "focus": "50% 30%",
+      "text": "1944년, 열여덟 살의 마일스 데이비스는 줄리아드 음대에 들어갔지만 수업보다 클럽을 찾아다녔습니다. 이듬해 학교를 그만두고 색소폰 연주자 찰리 파커의 밴드에 들어갑니다. 파커는 빠른 템포에 즉흥이 쏟아지는 재즈, 비밥을 이끈 연주자였습니다."
+    },
+    {
+      "type": "photo",
+      "title": "쿨 재즈의 시작",
+      "art": "assets/art-birth-of-the-cool.jpg",
+      "credit": "Album cover: Birth of the Cool (Capitol, 1957)",
+      "text": "1949~1950년 9인조 편성으로 녹음한 곡들이 1957년 Birth of the Cool로 묶였습니다. 빠르고 뜨거운 비밥과 달리 느긋하고 부드러운 소리. 쿨 재즈라는 이름이 이 앨범에서 나왔습니다."
+    },
+    {
+      "type": "photo",
+      "title": "Kind of Blue, 입문의 첫 장",
+      "photo": "assets/miles-palumbo.jpg",
+      "credit": "Photo: Tom Palumbo, CC BY-SA 2.0",
+      "text": "1959년, 단 두 번의 세션. 대부분 처음 끝까지 연주한 녹음이 그대로 실렸습니다. 쉴 새 없이 바뀌는 화음 대신 음계 하나 위에서 길게 즉흥하는 방식으로, 이를 모달 재즈라고 부릅니다."
+    },
+    {
+      "type": "photo",
+      "title": "열일곱 살 드러머와 5인조",
+      "art": "assets/art-miles-smiles.jpg",
+      "credit": "Album cover: Miles Smiles (Columbia, 1967)",
+      "text": "1960년대 중반, 마일스는 젊은 연주자들로 5인조 밴드를 새로 꾸렸습니다. 드러머 토니 윌리엄스는 합류할 때 열일곱 살. 피아니스트 허비 행콕을 비롯해 멤버들은 이후 각자 재즈의 큰 이름이 됩니다."
+    },
+    {
+      "type": "photo",
+      "title": "전기를 꽂은 재즈",
+      "art": "assets/art-bitches-brew.jpg",
+      "credit": "Album cover: Bitches Brew (Columbia, 1970)",
+      "text": "1969년 8월 사흘 동안 녹음해 1970년에 낸 두 장짜리 앨범. 재즈에 록의 전기 기타와 일렉트릭 피아노를 들였고, 녹음 테이프를 잘라 이어 붙여 긴 곡을 만들었습니다. 재즈 퓨전 유행의 출발점입니다."
+    },
+    {
+      "type": "photo",
+      "title": "멈추지 않은 변신",
+      "photo": "assets/miles-strasbourg.jpg",
+      "credit": "Photo: Dr Jean Fortunet, CC BY-SA 3.0",
+      "focus": "50% 20%",
+      "text": "1975년 건강 문제로 5년 가까이 무대를 떠났다가 1980년대에 돌아왔고, 1991년 세상을 떠날 때까지 연주했습니다. 비밥, 쿨, 모달, 퓨전. 재즈의 큰 변화마다 그가 있었습니다."
+    },
+    {
+      "type": "path",
+      "items": [
+        {
+          "art": "assets/art-kind-of-blue.jpg",
+          "label": "입문",
+          "name": "Kind of Blue (1959)",
+          "credit": "Album cover: Kind of Blue (Columbia, 1959)"
+        },
+        {
+          "art": "assets/art-birth-of-the-cool.jpg",
+          "label": "쿨 재즈",
+          "name": "Birth of the Cool (1957)",
+          "credit": "Album cover: Birth of the Cool (Capitol, 1957)"
+        },
+        {
+          "art": "assets/art-miles-smiles.jpg",
+          "label": "5인조",
+          "name": "Miles Smiles (1967)",
+          "credit": "Album cover: Miles Smiles (Columbia, 1967)"
+        },
+        {
+          "art": "assets/art-bitches-brew.jpg",
+          "label": "퓨전",
+          "name": "Bitches Brew (1970)",
+          "credit": "Album cover: Bitches Brew (Columbia, 1970)"
+        }
+      ]
+    }
+  ],
+  "captionInImage": true,
+  "series": "명반 한 장"
+}

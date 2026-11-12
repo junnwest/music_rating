@@ -1,0 +1,78 @@
+{
+  "series": "명반 한 장",
+  "number": 35,
+  "caption": "발매 전에 해체한 밴드의 두 번째 앨범이, 포스트록의 출발점이 됐습니다.\n\nSlint의 Spiderland(1991). 켄터키 루이빌의 10대 밴드가 남긴 조용하고 불안한 여섯 곡을 한 장씩 넘기며 확인해 보세요.\n\n포스트록 입문곡을 추천한다면?",
+  "hashtags": "#명반 #Slint #Spiderland #포스트록 #매스록 #1991 #TouchandGo #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "Spiderland, 조용한 시작",
+      "photo": "assets/slint-3.jpg",
+      "credit": "Photo: said&amp;done, CC BY 2.0"
+    },
+    {
+      "type": "photo",
+      "title": "켄터키의 10대들",
+      "photo": "assets/louisville.jpg",
+      "credit": "Public domain",
+      "text": "슬린트는 미국 켄터키주 루이빌에서 결성된 밴드입니다. 멤버들은 지역 하드코어 펑크 신에서 활동하던 10대였어요. 사진은 루이빌."
+    },
+    {
+      "type": "photo",
+      "title": "속삭임과 폭발",
+      "photo": "assets/slint-1.jpg",
+      "credit": "Photo: michael morel, CC BY 2.0",
+      "text": "Spiderland의 곡들은 조용히 읊조리는 목소리와 느린 기타로 시작해, 갑자기 거친 소리로 터집니다. 짧은 반복과 변칙적인 박자가 긴장을 오래 끌고 가요."
+    },
+    {
+      "type": "photo",
+      "title": "발매 전의 해체",
+      "photo": "assets/slint-2007.jpg",
+      "credit": "Photo: Erik Abderhalden, CC BY 2.0",
+      "text": "앨범은 1991년 3월 Touch and Go에서 나왔습니다. 하지만 밴드는 그 직전에 해체한 상태였어요. 투어도 인터뷰도 없이 앨범만 남았습니다."
+    },
+    {
+      "type": "photo",
+      "title": "물속의 네 사람",
+      "photo": "assets/quarry.jpg",
+      "credit": "Public domain",
+      "text": "흑백 커버에는 채석장 물 위로 머리만 내민 네 멤버가 찍혀 있습니다. 사진은 친구이자 음악가인 윌 올덤이 찍었어요. 사진은 커버 속 장소가 아닌 다른 채석장."
+    },
+    {
+      "type": "photo",
+      "title": "포스트록의 교과서",
+      "photo": "assets/slint-pitchfork.jpg",
+      "credit": "Photo: liz bustamante, CC BY 2.0",
+      "text": "판매는 조용했지만 입소문으로 퍼지며 포스트록과 매스록의 출발점으로 꼽히게 됐습니다. 밴드는 2000년대 들어 재결성해 이 앨범을 공연하기도 했습니다."
+    },
+    {
+      "type": "table",
+      "title": "앨범 한눈에",
+      "rows": [
+        [
+          "발매",
+          "1991년 3월"
+        ],
+        [
+          "레이블",
+          "Touch and Go"
+        ],
+        [
+          "수록곡",
+          "6곡"
+        ],
+        [
+          "커버 사진",
+          "윌 올덤"
+        ]
+      ],
+      "text": "처음 듣는다면 첫 곡 'Breadcrumb Trail'이나 마지막 곡 'Good Morning, Captain'을 권합니다. 볼륨을 충분히 올리세요."
+    },
+    {
+      "type": "closing",
+      "title": "포스트록 입문곡은?",
+      "text": "포스트록에 처음 빠지게 된 곡이나 앨범이 있나요? 댓글로 추천해 주세요."
+    }
+  ]
+}

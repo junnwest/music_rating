@@ -1,0 +1,74 @@
+{
+  "series": "명반 한 장",
+  "number": 26,
+  "captionInImage": true,
+  "caption": "데뷔 무대에서 심사위원에게 가장 낮은 점수를 받은 신인이 있었습니다.\n\n1992년, 서태지와 아이들. 랩을 한국 대중가요 한가운데로 가져온 1집과 그 뒤 4년의 이야기를 한 장씩 넘기며 확인해 보세요.\n\n서태지와 아이들 노래 중 가장 좋아하는 곡은 무엇인가요?",
+  "hashtags": "#서태지와아이들 #서태지 #난알아요 #1992 #한국대중음악 #명반 #시대유감 #뉴잭스윙",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "최저점으로 데뷔한\n서태지와 아이들",
+      "art": "assets/art-1.jpg",
+      "credit": "Album cover: 서태지와 아이들 (반도음반, 1992)"
+    },
+    {
+      "type": "photo",
+      "title": "1992년 4월 11일",
+      "photo": "assets/seo-taiji-2014.jpg",
+      "credit": "Photo: 박경은의 잼있게 살기, CC BY 4.0",
+      "focus": "50% 30%",
+      "text": "서태지와 아이들은 1992년 4월 11일 MBC 신인 경연 프로그램에서 '난 알아요'로 첫 무대에 섰습니다. 심사위원 점수는 그날 출연자 가운데 가장 낮았습니다."
+    },
+    {
+      "type": "photo",
+      "title": "랩과 춤, 록과 테크노",
+      "photo": "assets/yang-hyun-suk.png",
+      "credit": "Photo: K-POPIT 케이팝잇, CC BY 3.0",
+      "focus": "50% 25%",
+      "text": "멤버는 서태지, 양현석, 이주노. 1집은 데뷔 무대보다 앞선 3월 23일에 나왔습니다. 랩에 1990년대 초 유행한 댄스 리듬 뉴잭스윙, 록과 테크노를 섞은 소리였습니다."
+    },
+    {
+      "type": "photo",
+      "title": "K팝의 새벽",
+      "art": "assets/art-1.jpg",
+      "credit": "Album cover: 서태지와 아이들 (반도음반, 1992)",
+      "text": "앨범은 1996년까지 160만 장 넘게 팔렸습니다. 2020년 미국 매체 피치포크는 이 앨범에 한국 앨범 최고점인 8.3점을 주며 'K팝의 새벽'이라고 평했습니다."
+    },
+    {
+      "type": "photo",
+      "title": "가사 대신 연주곡으로",
+      "art": "assets/art-4.jpg",
+      "credit": "Album cover: 서태지와 아이들 IV (1995)",
+      "text": "1995년 4집의 '시대유감'은 정부를 비판한 가사 때문에 심의를 통과하지 못했습니다. 서태지는 가사를 고치는 대신 연주곡으로 실었고, 팬들의 반발은 이듬해 사전심의 폐지의 계기 중 하나가 됐습니다."
+    },
+    {
+      "type": "path",
+      "items": [
+        {
+          "art": "assets/art-1.jpg",
+          "label": "1992",
+          "name": "1집 · 난 알아요",
+          "credit": "Album cover: 서태지와 아이들 (반도음반, 1992)"
+        },
+        {
+          "art": "assets/art-2.jpg",
+          "label": "1993",
+          "name": "2집 · 하여가",
+          "credit": "Album cover: 서태지와 아이들 II (1993)"
+        },
+        {
+          "art": "assets/art-3.jpg",
+          "label": "1994",
+          "name": "3집 · 발해를 꿈꾸며",
+          "credit": "Album cover: 서태지와 아이들 III (1994)"
+        },
+        {
+          "art": "assets/art-4.jpg",
+          "label": "1995",
+          "name": "4집 · Come Back Home",
+          "credit": "Album cover: 서태지와 아이들 IV (1995)"
+        }
+      ]
+    }
+  ]
+}

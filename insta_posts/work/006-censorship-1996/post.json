@@ -1,0 +1,43 @@
+{
+  "series": "한국 음반",
+  "number": 6,
+  "caption": "불과 30년 전까지, 한국에서 음반을 내려면 먼저 '허락'을 받아야 했습니다.\n\n1996년 10월 31일, 헌법재판소는 음반 사전심의가 헌법이 금지한 검열이라고 결정했습니다. 그 뒤에는 심의를 거부하고 음반을 낸 한 가수가 있었어요.\n\n심의 때문에 가사가 바뀌거나 늦게 나온 노래, 알고 있는 사례가 있다면 댓글로 나눠주세요.",
+  "hashtags": "#한국음반 #가요사 #정태춘 #사전심의 #표현의자유 #헌법재판소 #한국대중음악 #음악사",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "음반에도 검열이 있었다",
+      "photo": "assets/constitutional-court.jpg",
+      "credit": "Photo: Wei-Te Wong, CC BY-SA 2.0"
+    },
+    {
+      "type": "photo",
+      "title": "노래가 나오기 전의 관문",
+      "photo": "assets/korea-cassette-1990.jpg",
+      "credit": "Public domain",
+      "text": "1990년대 중반까지 음반을 내려면 정부 기구인 공연윤리위원회의 사전심의를 거쳐야 했습니다. 통과하지 못한 곡은 가사를 고치거나 빼야 했고, 심의 없이 음반을 내면 처벌 대상이었어요."
+    },
+    {
+      "type": "photo",
+      "title": "심의를 거부한 가수",
+      "photo": "assets/jongno.jpg",
+      "credit": "Photo: 서울연구원, CC BY 4.0",
+      "text": "1990년대 초, 포크 가수 정태춘은 심의를 받지 않고 「아, 대한민국...」과 「92년 장마, 종로에서」를 냈습니다. 정식 유통망에 오를 수 없는, 이른바 '비합법 음반'이었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "1996년 10월 31일",
+      "photo": "assets/court-2.jpg",
+      "credit": "Photo: Pauloleong2002, CC BY-SA 4.0",
+      "text": "1994년 기소된 정태춘은 사전심의 조항이 헌법에 어긋난다며 다퉜고, 법원이 이 판단을 헌법재판소에 넘겼습니다. 1996년 10월 31일, 헌법재판소는 음반 사전심의를 검열이라고 결정했습니다."
+    },
+    {
+      "type": "photo",
+      "title": "지금도 남아 있는 심의",
+      "photo": "assets/kbs.jpg",
+      "credit": "Photo: Narubaru7, CC BY 4.0",
+      "text": "음반 사전심의는 사라졌지만, 방송사의 심의는 지금도 있습니다. KBS는 상표가 나오는 가사 등을 이유로 '방송 부적격' 판정을 내립니다. 블랙핑크 'Shut Down'은 람보르기니가 나온다는 이유로 KBS에서 방송되지 못했어요."
+    }
+  ],
+  "captionInImage": true
+}

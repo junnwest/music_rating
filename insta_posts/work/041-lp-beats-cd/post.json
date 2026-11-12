@@ -1,0 +1,52 @@
+{
+  "series": "음악 상식",
+  "number": 41,
+  "captionInImage": true,
+  "caption": "스트리밍 시대에 LP가 다시 CD를 앞질렀습니다. 35년 만의 일입니다.\n\n미국의 판매 집계와, 턴테이블 없이도 LP를 사는 사람들 이야기까지 한 장씩 넘기며 확인해 보세요.\n\n여러분은 LP를 사나요? 턴테이블은 있나요?",
+  "hashtags": "#LP #바이닐 #vinyl #CD #레코드 #턴테이블 #음악상식 #LP수집",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "LP가 CD를\n다시 앞질렀다",
+      "photo": "assets/shopping.jpg",
+      "credit": "Public domain",
+      "focus": "45% 50%"
+    },
+    {
+      "type": "photo",
+      "title": "35년 만의 역전",
+      "photo": "assets/cds.jpg",
+      "credit": "Photo: Dietmar Rabich, CC BY-SA 4.0",
+      "text": "2022년 미국에서 LP가 CD보다 많이 팔렸습니다. 미국음반산업협회 집계로 LP 4,130만 장, CD 3,340만 장. LP가 CD를 앞선 건 1987년 이후 처음입니다."
+    },
+    {
+      "type": "photo",
+      "title": "매출은 두 배 넘게",
+      "photo": "assets/turntable.jpg",
+      "credit": "Photo: traaf, CC BY-SA 2.0",
+      "text": "매출로 보면 차이가 더 큽니다. LP 약 12억 달러, CD 약 4억 8천만 달러. LP 판매는 16년 연속으로 늘었고, CD 매출은 1년 새 18% 줄었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "듣지 않아도 산다",
+      "photo": "assets/record-store.jpg",
+      "credit": "Public domain",
+      "focus": "25% 50%",
+      "text": "2023년 미국 조사에서 최근 LP를 산 사람 가운데 턴테이블을 가진 사람은 절반 정도였습니다. 다른 조사에서는 음악을 실물로 갖고 싶어서라는 답이 가장 많았습니다."
+    },
+    {
+      "type": "photo",
+      "title": "한국은?",
+      "photo": "assets/cd-rack.jpg",
+      "credit": "Photo: Arbitrarily0, CC BY-SA 3.0",
+      "text": "한국에서도 20~30대를 중심으로 LP 판매가 늘고 있다는 게 음반 유통사의 설명입니다. 다만 한국에서는 K팝 실물 앨범 덕분에 CD가 여전히 훨씬 많이 팔립니다."
+    },
+    {
+      "type": "photo",
+      "title": "LP 15장 중 1장",
+      "art": "assets/art-1989-tv.jpg",
+      "credit": "Album cover: 1989 (Taylor's Version) (Republic, 2023)",
+      "text": "2023년 미국에서 팔린 LP 15장 가운데 1장꼴이 테일러 스위프트의 앨범이었습니다. 『1989 (Taylor's Version)』은 집계가 시작된 1991년 이후 처음으로 한 해에 LP만 100만 장 넘게 팔린 앨범이 됐어요."
+    }
+  ]
+}

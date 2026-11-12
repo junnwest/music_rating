@@ -1,0 +1,81 @@
+{
+  "series": "명반 한 장",
+  "number": 27,
+  "caption": "가장 사적인 노래가 가장 많은 사람에게 닿은 앨범.\n\nJoni Mitchell의 Blue(1971). 그리스의 동굴, 덜시머, 로럴 캐니언의 집까지. 한 장씩 넘기며 확인해 보세요.\n\nBlue에서 가장 아끼는 곡은?",
+  "hashtags": "#명반 #JoniMitchell #조니미첼 #Blue #1971 #싱어송라이터 #포크 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "Blue, 가장 사적인 앨범",
+      "photo": "assets/joni-1983.jpg",
+      "credit": "Photo: Capannelle, CC BY 2.0",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "로럴 캐니언의 집",
+      "photo": "assets/lookout-mountain.jpg",
+      "credit": "Photo: Fisches Nachtgesang, CC BY-SA 4.0",
+      "text": "1960년대 말 로스앤젤레스 로럴 캐니언은 많은 음악가가 모여 살던 동네였습니다. 조니 미첼의 집도 이곳 룩아웃 마운틴 애비뉴에 있었어요. 사진은 그 집."
+    },
+    {
+      "type": "photo",
+      "title": "그리스의 동굴",
+      "photo": "assets/matala.jpg",
+      "credit": "Public domain",
+      "text": "미첼은 1970년 그리스 크레타섬 마탈라에 머물며 여행을 했습니다. 이때의 경험이 수록곡 'Carey'에 담겼습니다. 사진은 마탈라 해변의 절벽 동굴."
+    },
+    {
+      "type": "photo",
+      "title": "애팔래치안 덜시머",
+      "photo": "assets/dulcimer.jpg",
+      "credit": "Public domain",
+      "text": "앨범의 여러 곡에서 미첼은 기타와 피아노 외에 애팔래치안 덜시머를 연주했습니다. 무릎 위에 올려 뜯는 미국 민속 현악기로, 1969년 한 포크 페스티벌에서 구한 악기입니다. 사진은 덜시머의 예."
+    },
+    {
+      "type": "photo",
+      "title": "최소한의 반주",
+      "photo": "assets/james-taylor.jpg",
+      "credit": "Public domain",
+      "text": "편성은 단출합니다. 제임스 테일러가 세 곡에서 기타를, 스티븐 스틸스가 'Carey'에서 베이스와 기타를 더했을 뿐. 사진은 제임스 테일러.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "감추지 않은 노래",
+      "photo": "assets/joni-1974.jpg",
+      "credit": "Photo: Matt Gibbons, CC BY 2.0",
+      "text": "사랑과 이별, 외로움을 거의 일기처럼 적은 가사. 미첼은 이 시기의 자신이 '셀로판 포장지 같았다'고 말했습니다. 모든 게 투명하게 비쳐 보였다는 뜻입니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "table",
+      "title": "앨범 한눈에",
+      "rows": [
+        [
+          "발매",
+          "1971년 6월 22일"
+        ],
+        [
+          "레이블",
+          "Reprise"
+        ],
+        [
+          "녹음",
+          "A&M 스튜디오"
+        ],
+        [
+          "프로듀서",
+          "조니 미첼"
+        ]
+      ],
+      "text": "모든 곡을 미첼이 쓰고 프로듀스했습니다. 처음 듣는다면 'A Case of You'부터 권합니다."
+    },
+    {
+      "type": "closing",
+      "title": "가장 아끼는 곡은?",
+      "text": "'River', 'A Case of You', 'Blue'. Blue에서 가장 아끼는 곡을 댓글로 알려주세요."
+    }
+  ]
+}

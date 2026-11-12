@@ -1,0 +1,78 @@
+{
+  "series": "명반 한 장",
+  "number": 34,
+  "caption": "두 번의 밤, 기타 한 대, 28분.\n\nNick Drake의 Pink Moon(1972). 생전에는 거의 팔리지 않았지만 수십 년 뒤 다시 발견된 앨범을 한 장씩 넘기며 확인해 보세요.\n\n닉 드레이크를 처음 들은 곡은?",
+  "hashtags": "#명반 #NickDrake #닉드레이크 #PinkMoon #1972 #포크 #싱어송라이터 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "Pink Moon, 두 번의 밤",
+      "photo": "assets/pink-moon-art.png",
+      "credit": "Photo: Visions of Domino, CC BY 2.0"
+    },
+    {
+      "type": "photo",
+      "title": "세 번째 앨범",
+      "photo": "assets/tanworth-green.jpg",
+      "credit": "Photo: Stephen McKay, CC BY-SA 2.0",
+      "text": "닉 드레이크는 앞선 두 앨범에서 현악과 밴드 편곡을 썼습니다. 판매는 부진했고, 그는 점점 사람들 앞에 서는 것을 힘들어했어요. 세 번째 앨범은 정반대의 방식으로 만들어집니다. 사진은 그가 자란 탠워스인아든."
+    },
+    {
+      "type": "photo",
+      "title": "기타와 목소리만",
+      "photo": "assets/tanworth.jpg",
+      "credit": "Photo: P Gaskell, CC BY-SA 2.0",
+      "text": "Pink Moon은 1971년 10월, 런던의 한 스튜디오에서 두 번의 밤 동안 녹음됐습니다. 편성은 기타와 목소리, 타이틀곡의 피아노가 전부. 앨범 길이는 30분이 채 되지 않습니다. 사진은 탠워스인아든의 길."
+    },
+    {
+      "type": "photo",
+      "title": "4천 장 남짓",
+      "photo": "assets/pink-moon-ad.png",
+      "credit": "Public domain",
+      "text": "1972년 2월 아일랜드 레코드에서 나왔지만, 첫 판매는 수천 장에 그쳤습니다. 세 장의 앨범을 합쳐도 생전 판매량은 5천 장이 안 됐다고 알려져 있어요. 사진은 당시 잡지 광고."
+    },
+    {
+      "type": "photo",
+      "title": "스물여섯의 죽음",
+      "photo": "assets/grave.jpg",
+      "credit": "Photo: Mike Parker, CC BY-SA 2.0",
+      "text": "드레이크는 1974년 11월, 스물여섯 살에 세상을 떠났습니다. 앨범은 한동안 소수의 팬들 사이에서만 전해졌습니다. 사진은 탠워스인아든 교회의 묘비."
+    },
+    {
+      "type": "photo",
+      "title": "25년 뒤의 광고",
+      "photo": "assets/vw-cabrio.jpg",
+      "credit": "Public domain",
+      "text": "1999년 미국의 폭스바겐 카브리오 광고에 'Pink Moon'이 쓰이면서 그의 음반 판매가 크게 늘었습니다. 세상을 떠난 지 25년 만의 재발견이었어요."
+    },
+    {
+      "type": "table",
+      "title": "앨범 한눈에",
+      "rows": [
+        [
+          "녹음",
+          "1971년 10월 · 이틀 밤"
+        ],
+        [
+          "발매",
+          "1972년 2월 · Island"
+        ],
+        [
+          "길이",
+          "약 28분"
+        ],
+        [
+          "편성",
+          "기타 · 목소리 · 피아노"
+        ]
+      ],
+      "text": "처음 듣는다면 타이틀곡 'Pink Moon'부터. 짧은 곡들이라 앨범 한 장을 쉬지 않고 듣기 좋습니다."
+    },
+    {
+      "type": "closing",
+      "title": "처음 들은 곡은?",
+      "text": "'Pink Moon', 'Place to Be', 'Things Behind the Sun'. 닉 드레이크를 처음 들은 곡을 댓글로 알려주세요."
+    }
+  ]
+}

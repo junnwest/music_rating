@@ -1,0 +1,140 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "theblackskirts__thirsty",
+      "artist": "검정치마",
+      "artist_en": "The Black Skirts",
+      "album": "THIRSTY",
+      "year": "2019",
+      "art": "assets/theblackskirts__thirsty.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 84,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 47350
+      },
+      "matched": {
+        "lastfm": "3 entries, top: The Black Skirts — THIRSTY"
+      },
+      "parts": {
+        "ratings": 84,
+        "reach": 91.88299958348232,
+        "recognition": 25
+      },
+      "grade": 70.43244993752235,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "theblackskirts__teentroubles",
+      "artist": "검정치마",
+      "artist_en": "The Black Skirts",
+      "album": "Teen Troubles",
+      "year": "2022",
+      "art": "assets/theblackskirts__teentroubles.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 81,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 29754
+      },
+      "matched": {
+        "lastfm": "4 entries, top: The Black Skirts — TEEN TROUBLES"
+      },
+      "parts": {
+        "ratings": 81,
+        "reach": 86.83863396686884,
+        "recognition": 25
+      },
+      "grade": 67.87579509503033,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "theblackskirts__201",
+      "artist": "검정치마",
+      "artist_en": "The Black Skirts",
+      "album": "201",
+      "year": "2008",
+      "art": "assets/theblackskirts__201.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 82,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 4177
+      },
+      "matched": {
+        "lastfm": "4 entries, top: 검정치마 — 201"
+      },
+      "parts": {
+        "ratings": 82,
+        "reach": 65.52161188162803,
+        "recognition": 25
+      },
+      "grade": 65.27824178224421,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "theblackskirts__teambaby",
+      "artist": "검정치마",
+      "artist_en": "The Black Skirts",
+      "album": "TEAM BABY",
+      "year": "2017",
+      "art": "assets/theblackskirts__teambaby.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 411949
+      },
+      "matched": {
+        "lastfm": "6 entries, top: The Black Skirts — Team Baby"
+      },
+      "parts": {
+        "ratings": 80,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 63,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "theblackskirts__dontyouworrybabyimonlyswimming",
+      "artist": "검정치마",
+      "artist_en": "The Black Skirts",
+      "album": "Don't You Worry Baby (I'm Only Swimming)",
+      "year": "2011",
+      "art": "assets/theblackskirts__dontyouworrybabyimonlyswimming.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 75,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 15257
+      },
+      "matched": {
+        "lastfm": "17 entries, top: The Black Skirts — Don't you worry baby (I'm only swimming)"
+      },
+      "parts": {
+        "ratings": 75,
+        "reach": 79.58672865578775,
+        "recognition": 0
+      },
+      "grade": 56.938009298368165,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

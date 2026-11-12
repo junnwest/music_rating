@@ -1,0 +1,51 @@
+{
+  "series": "용어사전",
+  "number": 39,
+  "caption": "데모는 정식 녹음 전에 만들어보는 초안입니다. 그런데 그 초안이 그대로 데뷔곡이 되기도 합니다.\n\n빌리 아일리시의 'ocean eyes'와 브루스 스프링스틴의 Nebraska. 데모가 정식 발매로 이어진 두 이야기를 한 장씩 넘기며 확인해 보세요.\n\n정식 버전보다 데모 버전이 더 좋았던 곡이 있나요?",
+  "hashtags": "#용어사전 #데모 #BillieEilish #빌리아일리시 #oceaneyes #Nebraska #홈레코딩 #음악용어",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "빌리 아일리시의 데뷔곡은 데모였다",
+      "art": "assets/art-ocean-eyes.jpg",
+      "credit": "Album cover: ocean eyes (2016)"
+    },
+    {
+      "type": "photo",
+      "title": "데모란",
+      "photo": "assets/studer-b67.jpg",
+      "credit": "Photo: Robert Taylor, CC BY 2.0",
+      "text": "데모(demo)는 곡을 정식으로 녹음하기 전에 대략의 모습을 담아보는 녹음입니다. 밴드나 프로듀서에게 곡을 들려주거나, 음반사에 보내기 위해 만듭니다."
+    },
+    {
+      "type": "photo",
+      "title": "오빠가 쓴 노래",
+      "photo": "assets/billie-2019.jpg",
+      "credit": "Photo: Toglenn, CC BY-SA 4.0",
+      "focus": "50% 25%",
+      "text": "'ocean eyes'는 빌리 아일리시의 오빠 피니어스가 원래 자기 밴드를 위해 쓴 곡입니다. 동생 목소리에 더 어울린다고 보고 함께 녹음했어요. 녹음 프로그램의 기본 소리만으로 만든 곡이었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "춤 선생님에게 보낸 곡",
+      "photo": "assets/c120.jpg",
+      "credit": "Photo: Joxemai, CC BY-SA 4.0",
+      "text": "2015년 11월 18일, 남매는 춤 선생님이 안무에 쓸 수 있도록 이 곡을 사운드클라우드에 올렸습니다. 곡은 하룻밤 사이에 퍼졌고, 1년 뒤 같은 날 음반사를 통해 정식 싱글로 다시 나왔습니다."
+    },
+    {
+      "type": "photo",
+      "title": "카세트 데모가 앨범으로",
+      "art": "assets/art-nebraska.jpg",
+      "credit": "Album cover: Nebraska (Columbia, 1982)",
+      "text": "1982년 브루스 스프링스틴의 Nebraska는 집에서 카세트 4트랙 녹음기로 만든 데모를 그대로 낸 앨범입니다. 밴드와 스튜디오에서 다시 녹음해 봤지만 데모의 분위기를 넘지 못했습니다."
+    },
+    {
+      "type": "photo",
+      "title": "43년 만에 나온 밴드 버전",
+      "photo": "assets/springsteen.jpg",
+      "credit": "Photo: Rocky Widner, Public domain",
+      "text": "1982년 스프링스틴은 이 곡들을 밴드와도 녹음했지만 발표하지 않았습니다. 소문으로만 전해지던 이 녹음은 2025년 10월 확장판으로 처음 공개됐어요. 같은 달, 앨범의 제작 과정을 그린 영화 『Deliver Me from Nowhere』도 개봉했습니다."
+    }
+  ]
+}

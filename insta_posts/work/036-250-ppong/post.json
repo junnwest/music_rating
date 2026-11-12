@@ -1,0 +1,52 @@
+{
+  "series": "명반 한 장",
+  "number": 36,
+  "captionInImage": true,
+  "caption": "촌스럽다고 여겨지던 뽕짝을 클럽 음악으로 다시 쓴 앨범이, 그해 한국대중음악상 올해의 앨범이 됐습니다.\n\n뉴진스의 프로듀서로 더 유명해진 250의 《뽕》. 6년 넘는 작업과 휴게소에서 시작된 다큐까지 한 장씩 넘기며 확인해 보세요.\n\n《뽕》에서 가장 좋아하는 곡은 무엇인가요?",
+  "hashtags": "#250 #이오공 #뽕 #Ppong #뽕을찾아서 #뽕짝 #한국대중음악상 #전자음악",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "250의 《뽕》,\n뽕짝을 정면으로",
+      "art": "assets/art-ppong.jpg",
+      "credit": "Album cover: 뽕 (BANA, 2022)"
+    },
+    {
+      "type": "photo",
+      "title": "이태원의 DJ",
+      "photo": "assets/itaewon.jpg",
+      "credit": "Photo: eugene_o, CC BY 2.0",
+      "focus": "50% 50%",
+      "text": "250은 서울 이태원에서 오래 활동한 전자음악가이자 DJ입니다. 2016년 무렵, 그는 다음 앨범의 주제로 '뽕'을 꺼냈습니다. 트로트의 흥겨운 리듬, 흔히 뽕짝이라 부르는 그 소리입니다."
+    },
+    {
+      "type": "photo",
+      "title": "뽕을 찾아서",
+      "photo": "assets/rest-area.jpg",
+      "credit": "Public domain",
+      "focus": "50% 40%",
+      "text": "250은 그 소리의 뿌리를 찾아 휴게소와 콜라텍, 전국노래자랑 예선장을 다녔습니다. 그 과정은 5부작 다큐멘터리 『뽕을 찾아서』로 4년 넘게 나뉘어 공개됐습니다."
+    },
+    {
+      "type": "photo",
+      "title": "6년 넘게 만든 앨범",
+      "art": "assets/art-ppong.jpg",
+      "credit": "Album cover: 뽕 (BANA, 2022)",
+      "text": "2022년 3월 18일 《뽕》이 나왔습니다. 작업에만 6년 넘게 걸렸고, 신중현과 이박사 같은 이름도 함께했습니다. 낡았다고 여겨지던 뽕짝을 숨기지 않고 정면으로 다룬 앨범이라는 평을 받았습니다."
+    },
+    {
+      "type": "photo",
+      "title": "올해의 앨범, 그리고 뉴진스",
+      "art": "assets/art-new-jeans.jpg",
+      "credit": "Album cover: New Jeans (ADOR, 2022)",
+      "text": "2023년 한국대중음악상에서 《뽕》은 올해의 앨범을 포함해 4관왕에 올랐습니다. 그 사이 250은 뉴진스의 'Attention'과 'Ditto'를 만들며 이름이 더 널리 알려졌습니다."
+    },
+    {
+      "type": "photo",
+      "title": "처음 마이크 앞에 선 김수일",
+      "credit": "Album cover: 뽕 (BANA, 2022)",
+      "text": "앨범을 여는 '모든 것이 꿈이었네'는 이박사의 오랜 음악 파트너 김수일이 생애 처음으로 보컬을 녹음한 곡으로 알려져 있습니다. 이박사도 '사랑이야기'에 추임새를 더했습니다.",
+      "art": "assets/art-ppong.jpg"
+    }
+  ]
+}

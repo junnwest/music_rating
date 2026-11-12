@@ -1,0 +1,88 @@
+{
+  "series": "그날의 음악사",
+  "number": 9,
+  "caption": "칸예 웨스트가 앨범 제목에 넣은 808. 원래는 3년 만에 단종된 실패작이었습니다.\n\n롤랜드 TR-808. 외면받았던 드럼머신이 칸예의 앨범을 거쳐 지금의 힙합 소리가 되기까지, 한 장씩 넘기며 확인해 보세요.\n\n808 하면 가장 먼저 떠오르는 곡은 무엇인가요?",
+  "hashtags": "#그날의음악사 #TR808 #808 #KanyeWest #칸예웨스트 #808sandHeartbreak #힙합 #드럼머신",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "칸예 앨범 제목이 된 실패작, 808",
+      "art": "assets/art-808s.jpg",
+      "credit": "Album cover: 808s & Heartbreak (Roc-A-Fella, 2008)"
+    },
+    {
+      "type": "photo",
+      "title": "진짜 드럼처럼 안 들렸다",
+      "photo": "assets/808-smem.jpg",
+      "credit": "Photo: 1904.CC, CC BY 4.0",
+      "text": "1980년 롤랜드가 내놓은 드럼머신 TR-808. 경쟁 제품들은 실제 드럼을 녹음한 소리를 썼지만, 808은 전자회로로 소리를 만들었습니다. 킥은 둥글고 길게 울리고, 박수 소리는 장난감 같았어요."
+    },
+    {
+      "type": "photo",
+      "title": "약 1만 2천 대",
+      "photo": "assets/808-fr4dd.jpg",
+      "credit": "Photo: fr4dd, CC BY 2.0",
+      "text": "가격은 1,195달러. 롤랜드는 약 1만 2천 대를 만들고 1983년 생산을 멈췄습니다. 단종 후 중고 시장에 싸게 풀린 808은 돈 없는 젊은 음악가들의 손에 들어갑니다."
+    },
+    {
+      "type": "photo",
+      "title": "1982년의 Sexual Healing",
+      "art": "assets/art-midnight-love.jpg",
+      "credit": "Album cover: Midnight Love (Columbia, 1982)",
+      "text": "1982년, 마빈 게이의 'Sexual Healing'이 808 비트로 팝 차트에 올랐습니다. 같은 해 힙합 곡 'Planet Rock'도 808로 만들어졌어요. 실패작의 소리가 새 음악의 소리가 되기 시작했습니다."
+    },
+    {
+      "type": "photo",
+      "title": "앨범 제목이 된 808",
+      "photo": "assets/kanye-studio.jpg",
+      "credit": "Photo: Angel Laws, CC BY 2.0",
+      "focus": "40% 55%",
+      "text": "2008년 칸예 웨스트는 앨범 제목을 808s & Heartbreak로 지었습니다. 랩 대신 노래를 택했고, 텅 빈 808 비트 위에서 목소리 대부분에 오토튠을 걸었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "어머니를 잃은 해",
+      "photo": "assets/kanye-2008.jpg",
+      "credit": "Photo: Steve Jurvetson, CC BY 2.0",
+      "focus": "50% 25%",
+      "text": "2007년 11월 칸예의 어머니 돈다 웨스트가 세상을 떠났고, 이듬해 4월에는 약혼이 깨졌습니다. 칸예는 그해 가을, 약 3주 만에 이 앨범을 녹음했습니다."
+    },
+    {
+      "type": "photo",
+      "title": "슬픔을 노래하는 힙합",
+      "photo": "assets/tr-808.jpg",
+      "credit": "Photo: Brandon Daniel / Clusternote, CC BY-SA 2.0",
+      "text": "앨범은 빌보드 200 1위로 데뷔했습니다. 허세 대신 상처를 노래한 이 앨범 뒤로, 드레이크와 위켄드, 트래비스 스캇의 음악이 그 영향 아래 나왔다는 평가가 많습니다."
+    },
+    {
+      "type": "path",
+      "items": [
+        {
+          "art": "assets/art-808s.jpg",
+          "label": "칸예 웨스트 · 2008",
+          "name": "808s & Heartbreak",
+          "credit": "Album cover: 808s & Heartbreak (Roc-A-Fella, 2008)"
+        },
+        {
+          "art": "assets/art-thank-me-later.jpg",
+          "label": "드레이크 · 2010",
+          "name": "Thank Me Later",
+          "credit": "Album cover: Thank Me Later (Young Money, 2010)"
+        },
+        {
+          "art": "assets/art-house-of-balloons.jpg",
+          "label": "위켄드 · 2011",
+          "name": "House of Balloons",
+          "credit": "Album cover: House of Balloons (2011)"
+        },
+        {
+          "art": "assets/art-rodeo.jpg",
+          "label": "트래비스 스캇 · 2015",
+          "name": "Rodeo",
+          "credit": "Album cover: Rodeo (Grand Hustle / Epic, 2015)"
+        }
+      ]
+    }
+  ],
+  "captionInImage": true
+}

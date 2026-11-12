@@ -1,0 +1,70 @@
+{
+  "series": "요즘 음악",
+  "number": 32,
+  "captionInImage": true,
+  "caption": "2007년에 나온 노래가 2026년 1월 차트에 다시 올랐습니다.\n\n에픽하이의 '러브 러브 러브'. 식케이와 릴 모쉬핏의 샘플, 숏폼 챌린지, 그리고 이 팀이 처음 열었던 코첼라의 문까지 한 장씩 넘기며 확인해 보세요.\n\n에픽하이 노래 중 가장 좋아하는 곡은 무엇인가요?",
+  "hashtags": "#에픽하이 #EpikHigh #러브러브러브 #역주행 #LOV3 #식케이 #릴모쉬핏 #코첼라",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "에픽하이,\n19년 만의 역주행",
+      "art": "assets/art-remapping.jpg",
+      "credit": "Album cover: Remapping the Human Soul (2007)"
+    },
+    {
+      "type": "photo",
+      "title": "2007년의 노래",
+      "photo": "assets/epik-everland.jpg",
+      "credit": "Photo: Taehoon Kang, CC BY 2.0",
+      "focus": "50% 60%",
+      "text": "에픽하이의 '러브 러브 러브'는 2007년 1월 정규 4집 Remapping the Human Soul의 타이틀곡 가운데 하나입니다. 멤버는 타블로, 미쓰라 진, DJ 투컷."
+    },
+    {
+      "type": "photo",
+      "title": "샘플과 챌린지",
+      "photo": "assets/epik-2019.jpg",
+      "credit": "Photo: Explicit, CC BY-SA 4.0",
+      "focus": "30% 40%",
+      "text": "2025년 3월, 식케이와 릴 모쉬핏의 'LOV3'가 이 곡을 샘플링했습니다. 그리고 틱톡과 릴스에서 '러브 러브 러브' 챌린지가 퍼지며 원곡을 다시 찾는 사람이 늘었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "19년 만의 차트",
+      "art": "assets/art-remapping.jpg",
+      "credit": "Album cover: Remapping the Human Soul (2007)",
+      "text": "2026년 1월 12일 기준 애플뮤직 한국 4위, 스포티파이 한국 7위. 인스타그램 인기 상승 오디오 10위에도 올랐습니다. 2007년 노래가 지금 차트에서 신곡들과 나란히 섰습니다."
+    },
+    {
+      "type": "photo",
+      "title": "코첼라에 선 첫 한국 가수",
+      "photo": "assets/epik-2015-live.jpg",
+      "credit": "Photo: May S. Young, CC BY-SA 2.0",
+      "focus": "50% 40%",
+      "text": "에픽하이는 2016년 4월 한국 가수 최초로 미국 코첼라 페스티벌 무대에 섰습니다. 2022년에는 다시 초청받은 첫 한국 가수가 됐습니다."
+    },
+    {
+      "type": "grid",
+      "title": "러브 러브 러브 다음으로",
+      "items": [
+        {
+          "art": "assets/art-swan-songs.jpg",
+          "label": "2005 · Swan Songs",
+          "name": "Fly",
+          "credit": "Album cover: Swan Songs (Epik High, 2005)"
+        },
+        {
+          "art": "assets/art-pieces-1.jpg",
+          "label": "2008 · Pieces, Part One",
+          "name": "우산",
+          "credit": "Album cover: Pieces, Part One (Epik High, 2008)"
+        },
+        {
+          "art": "assets/art-shoebox.jpg",
+          "label": "2014 · SHOEBOX",
+          "name": "Born Hater",
+          "credit": "Album cover: SHOEBOX (Epik High, 2014)"
+        }
+      ]
+    }
+  ]
+}

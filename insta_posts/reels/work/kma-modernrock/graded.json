@@ -1,0 +1,218 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "theblackskirts__thirsty",
+      "artist": "검정치마",
+      "artist_en": "The Black Skirts",
+      "album": "THIRSTY",
+      "year": "2019",
+      "art": "assets/theblackskirts__thirsty.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 84,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 47350
+      },
+      "matched": {
+        "lastfm": "3 entries, top: The Black Skirts — THIRSTY"
+      },
+      "parts": {
+        "ratings": 84,
+        "reach": 91.88299958348232,
+        "recognition": 25
+      },
+      "grade": 70.43244993752235,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "sistersbarbershop__가장보통의존재",
+      "artist": "언니네 이발관",
+      "artist_en": "Sister's Barbershop",
+      "album": "가장 보통의 존재",
+      "year": "2008",
+      "art": "assets/sistersbarbershop__가장보통의존재.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 3361
+      },
+      "matched": {
+        "lastfm": "11 entries, top: 언니네 이발관 — 가장 보통의 존재"
+      },
+      "parts": {
+        "ratings": 80,
+        "reach": 63.16171281173693,
+        "recognition": 50
+      },
+      "grade": 69.97425692176054,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "3rdlinebutterfly__dreamtalk",
+      "artist": "3호선 버터플라이",
+      "artist_en": "3rd Line Butterfly",
+      "album": "Dreamtalk",
+      "year": "2012",
+      "art": "assets/3rdlinebutterfly__dreamtalk.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 78,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 6237
+      },
+      "matched": {
+        "lastfm": "7 entries, top: 3rd Line Butterfly — dreamtalk"
+      },
+      "parts": {
+        "ratings": 78,
+        "reach": 69.8743936012783,
+        "recognition": 50
+      },
+      "grade": 69.78115904019174,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "theblackskirts__teentroubles",
+      "artist": "검정치마",
+      "artist_en": "The Black Skirts",
+      "album": "Teen Troubles",
+      "year": "2022",
+      "art": "assets/theblackskirts__teentroubles.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 81,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 29754
+      },
+      "matched": {
+        "lastfm": "4 entries, top: The Black Skirts — TEEN TROUBLES"
+      },
+      "parts": {
+        "ratings": 81,
+        "reach": 86.83863396686884,
+        "recognition": 25
+      },
+      "grade": 67.87579509503033,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "silicagel__powerandre99",
+      "artist": "실리카겔",
+      "artist_en": "Silica Gel",
+      "album": "POWER ANDRE 99",
+      "year": "2023",
+      "art": "assets/silicagel__powerandre99.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 38977
+      },
+      "matched": {
+        "lastfm": "7 entries, top: Silica Gel — POWER ANDRE 99"
+      },
+      "parts": {
+        "ratings": 80,
+        "reach": 89.77021022716904,
+        "recognition": 25
+      },
+      "grade": 67.71553153407535,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "hyukoh__23",
+      "artist": "혁오",
+      "artist_en": "HYUKOH",
+      "album": "23",
+      "year": "2017",
+      "art": "assets/hyukoh__23.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 77,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 116577
+      },
+      "matched": {
+        "lastfm": "2 entries, top: HYUKOH — 23"
+      },
+      "parts": {
+        "ratings": 77,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 67.44999999999999,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "theblackskirts__201",
+      "artist": "검정치마",
+      "artist_en": "The Black Skirts",
+      "album": "201",
+      "year": "2008",
+      "art": "assets/theblackskirts__201.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 82,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 4177
+      },
+      "matched": {
+        "lastfm": "4 entries, top: 검정치마 — 201"
+      },
+      "parts": {
+        "ratings": 82,
+        "reach": 65.52161188162803,
+        "recognition": 25
+      },
+      "grade": 65.27824178224421,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "saysueme__whereweweretogether",
+      "artist": "세이수미",
+      "artist_en": "Say Sue Me",
+      "album": "Where We Were Together",
+      "year": "2018",
+      "art": "assets/saysueme__whereweweretogether.jpg",
+      "inputs": {
+        "rym": 3.36,
+        "aoty_user": 73,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 38044
+      },
+      "matched": {
+        "lastfm": "6 entries, top: Say Sue Me — Where We Were Together"
+      },
+      "parts": {
+        "ratings": 70.1,
+        "reach": 89.5071543250622,
+        "recognition": 25
+      },
+      "grade": 61.736073148759324,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

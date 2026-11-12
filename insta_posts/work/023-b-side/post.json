@@ -1,0 +1,43 @@
+{
+  "series": "용어사전",
+  "number": 23,
+  "caption": "싱글의 뒷면, B사이드. 때로는 앞면보다 더 큰 히트곡이 숨어 있었습니다.\n\n'I Will Survive'부터 비틀스의 양면 싱글까지, 뒤집혀서 성공한 곡들을 한 장씩 넘기며 확인해 보세요.\n\n타이틀곡보다 더 좋아하는 수록곡이 있나요?",
+  "hashtags": "#음악용어 #B사이드 #싱글 #바이닐 #7인치 #더블A사이드 #음반 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "B사이드의 반전",
+      "photo": "assets/single-label.png",
+      "credit": "Public domain"
+    },
+    {
+      "type": "photo",
+      "title": "A면과 B면",
+      "photo": "assets/jp-singles.jpg",
+      "credit": "Photo: 能無しさん, CC BY-SA 3.0",
+      "text": "7인치 싱글은 앞면(A면)에 밀어줄 곡을, 뒷면(B면)에 덜 알려진 곡을 싣는 게 보통이었습니다. B면에는 앨범에 없는 곡이나 실험적인 곡이 들어가기도 했어요."
+    },
+    {
+      "type": "photo",
+      "title": "'I Will Survive'",
+      "photo": "assets/jukebox.jpg",
+      "credit": "Photo: Joe Mabel, CC BY-SA 3.0",
+      "text": "글로리아 게이너의 'I Will Survive'는 원래 싱글의 B면이었습니다. 클럽 DJ들이 B면을 먼저 틀었고, 음반사는 앞뒤를 바꿔 다시 냈습니다. 곡은 1979년 미국 1위에 올랐어요."
+    },
+    {
+      "type": "photo",
+      "title": "더블 A사이드",
+      "credit": "Album cover: Strawberry Fields Forever / Penny Lane (Parlophone, 1967)",
+      "text": "양쪽 모두 히트곡일 때는 두 면을 모두 A면으로 내기도 합니다. 비틀스의 'Strawberry Fields Forever / Penny Lane'(1967)이 대표적인 예입니다.",
+      "art": "assets/art-sff-penny-lane.jpg"
+    },
+    {
+      "type": "photo",
+      "title": "B사이드만 모은 앨범",
+      "art": "assets/art-masterplan.jpg",
+      "credit": "Album cover: The Masterplan (Creation, 1998)",
+      "text": "오아시스는 1998년 B사이드만 모은 앨범 The Masterplan을 냈습니다. 제목곡은 원래 'Wonderwall' CD 싱글의 B사이드였어요. 노엘 갤러거는 이 곡을 자신이 쓴 최고의 곡으로 여러 번 꼽았습니다."
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "series": "한 곡 한 순간",
+  "number": 24,
+  "caption": "티모시 샬라메가 밥 딜런을 연기한 영화 『컴플리트 언노운』. 그 마지막 무대는 실제로 있었던 일입니다.\n\n1965년 7월 25일, 포크 페스티벌 무대에 일렉트릭 기타를 들고 오른 밥 딜런. 야유와 환호가 뒤섞인 그날 밤을 한 장씩 넘기며 확인해 보세요.\n\n어쿠스틱 딜런과 일렉트릭 딜런, 어느 쪽이 더 좋나요?",
+  "hashtags": "#한곡한순간 #BobDylan #밥딜런 #Newport1965 #뉴포트포크페스티벌 #일렉기타 #포크록 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "밥 딜런이\n전기를 꽂은 날",
+      "photo": "assets/dylan-1965.jpg",
+      "credit": "Public domain",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "포크의 무대",
+      "photo": "assets/seeger-nywts.jpg",
+      "credit": "Public domain",
+      "text": "영화 『컴플리트 언노운』의 마지막 무대는 1965년 뉴포트 포크 페스티벌입니다. 통기타로 부르는 어쿠스틱 포크의 상징 같은 무대였고, 밥 딜런은 이 무대가 키운 스타였습니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "펜더 스트라토캐스터",
+      "photo": "assets/strat-1958.jpg",
+      "credit": "Photo: User:Lightburst, CC BY-SA 4.0",
+      "text": "1965년 7월 25일 밤, 딜런은 통기타 대신 일렉트릭 기타, 펜더 스트라토캐스터를 메고 나왔습니다. 옷차림도 가죽 재킷이었습니다.",
+      "focus": "50% 40%"
+    },
+    {
+      "type": "photo",
+      "title": "세 곡과 야유",
+      "photo": "assets/butterfield.jpg",
+      "credit": "Public domain",
+      "text": "블루스 밴드 멤버들과 함께 'Like a Rolling Stone' 등 세 곡을 연주하는 동안, 객석에서 야유가 터져 나왔습니다."
+    },
+    {
+      "type": "photo",
+      "title": "도끼 이야기의 진실",
+      "photo": "assets/seeger-sings.jpg",
+      "credit": "Public domain",
+      "text": "포크계의 큰 어른 피트 시거가 도끼로 전선을 자르려 했다는 이야기는 과장에 가깝습니다. 시거는 소리가 뭉개져 가사가 들리지 않자 '도끼가 있으면 선을 자르고 싶다'고 말했을 뿐이라고 밝혔습니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "다시 어쿠스틱으로",
+      "photo": "assets/dylan-1965-b.jpg",
+      "credit": "Public domain",
+      "text": "딜런은 잠시 무대를 떠났다가 어쿠스틱 기타를 들고 돌아와 두 곡을 더 불렀습니다. 야유가 음악 때문이었는지, 음향과 짧은 공연 때문이었는지는 지금도 의견이 갈립니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "table",
+      "rows": [
+        [
+          "날짜",
+          "1965년 7월 25일"
+        ],
+        [
+          "장소",
+          "뉴포트 포크 페스티벌"
+        ],
+        [
+          "기타",
+          "펜더 스트라토캐스터"
+        ],
+        [
+          "일렉트릭 연주",
+          "세 곡"
+        ]
+      ],
+      "style": "facts"
+    }
+  ]
+}

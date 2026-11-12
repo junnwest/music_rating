@@ -1,0 +1,73 @@
+{
+  "series": "요즘 음악",
+  "number": 14,
+  "captionInImage": true,
+  "caption": "아이돌 음악은 잘 안 듣는다는 사람도 뉴진스는 듣습니다. 이유가 뭘까요?\n\n데뷔곡부터 함께한 프로듀서 250, 꽉 채우는 대신 비워낸 소리, 그리고 평론가들의 상까지. 뉴진스가 음악 팬에게도 사랑받은 이유를 한 장씩 넘기며 확인해 보세요.\n\n뉴진스 노래 중 가장 좋아하는 곡은 무엇인가요?",
+  "hashtags": "#뉴진스 #NewJeans #250 #이오공 #Ditto #HypeBoy #한국대중음악상 #프로듀서",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "음악 팬도 인정한 뉴진스",
+      "art": "assets/art-new-jeans.jpg",
+      "credit": "Album cover: New Jeans (ADOR, 2022)"
+    },
+    {
+      "type": "photo",
+      "title": "예고 없이 나온 데뷔곡",
+      "photo": "assets/newjeans-2023.jpg",
+      "credit": "Photo: TV10, CC BY 3.0",
+      "focus": "50% 30%",
+      "text": "뉴진스는 2022년 7월 22일, 예고 없이 'Attention'을 공개하며 데뷔했습니다. 이 곡의 프로듀서는 그해 3월 앨범 《뽕》을 낸 전자음악가 250이었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "채우기보다 비우기",
+      "art": "assets/art-omg.jpg",
+      "credit": "Album cover: OMG (ADOR, 2023)",
+      "text": "당시 K팝은 소리를 꽉 채운 화려한 편곡이 주류였습니다. 뉴진스의 곡은 부드러운 비트와 여백을 남긴 편곡. 미국 NPR 평론가들은 이를 동시대 K팝과 대비되는 섬세한 소리라고 평했습니다."
+    },
+    {
+      "type": "photo",
+      "title": "클럽 음악을 팝으로",
+      "art": "assets/art-get-up.jpg",
+      "credit": "Album cover: Get Up (ADOR, 2023)",
+      "text": "평론가들은 뉴진스의 곡에서 1990~2000년대 클럽 음악을 읽어냈습니다. UK 개러지, 드럼 앤 베이스, 그리고 미국 뉴저지에서 생긴 빠르고 통통 튀는 댄스 리듬, 저지 클럽."
+    },
+    {
+      "type": "photo",
+      "title": "평론가들의 상",
+      "art": "assets/art-supernatural.jpg",
+      "credit": "Album cover: Supernatural (ADOR, 2024)",
+      "text": "2023년 한국대중음악상에서 뉴진스는 올해의 신인과 최우수 K팝 음반·노래로 3관왕에 올랐습니다. 같은 시상식에서 250은 《뽕》으로 올해의 앨범을 포함해 4관왕을 차지했습니다."
+    },
+    {
+      "type": "path",
+      "items": [
+        {
+          "art": "assets/art-new-jeans.jpg",
+          "label": "2022 · 데뷔곡",
+          "name": "Attention",
+          "credit": "Album cover: New Jeans (ADOR, 2022)"
+        },
+        {
+          "art": "assets/art-omg.jpg",
+          "label": "2022 · 써클차트 13주 1위",
+          "name": "Ditto",
+          "credit": "Album cover: OMG (ADOR, 2023)"
+        },
+        {
+          "art": "assets/art-get-up.jpg",
+          "label": "2023",
+          "name": "Get Up",
+          "credit": "Album cover: Get Up (ADOR, 2023)"
+        },
+        {
+          "art": "assets/art-supernatural.jpg",
+          "label": "2024",
+          "name": "Supernatural",
+          "credit": "Album cover: Supernatural (ADOR, 2024)"
+        }
+      ]
+    }
+  ]
+}

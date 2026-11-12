@@ -1,0 +1,296 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "250__뽕",
+      "artist": "250",
+      "artist_en": "250",
+      "album": "뽕",
+      "year": "2022",
+      "art": "assets/250__뽕.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 77,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 8113
+      },
+      "matched": {
+        "lastfm": "2 entries, top: 250 — PPONG"
+      },
+      "parts": {
+        "ratings": 77,
+        "reach": 72.72953689944632,
+        "recognition": 50
+      },
+      "grade": 69.60943053491694,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "browneyedgirls__soundg",
+      "artist": "브라운 아이드 걸스",
+      "artist_en": "Brown Eyed Girls",
+      "album": "Sound G.",
+      "year": "2009",
+      "art": "assets/browneyedgirls__soundg.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 78,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 246895
+      },
+      "matched": {
+        "lastfm": "17 entries, top: Brown Eyed Girls — Sound G."
+      },
+      "parts": {
+        "ratings": 78,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 68.05,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "midairthief__무너지기",
+      "artist": "공중도둑",
+      "artist_en": "Mid-Air Thief",
+      "album": "무너지기",
+      "year": "2018",
+      "art": "assets/midairthief__무너지기.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 86,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 2550
+      },
+      "matched": {
+        "lastfm": "10 entries, top: Mid-Air Thief — 무너지기"
+      },
+      "parts": {
+        "ratings": 86,
+        "reach": 60.163504510848874,
+        "recognition": 25
+      },
+      "grade": 66.87452567662733,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kirara__moves",
+      "artist": "키라라",
+      "artist_en": "Kirara",
+      "album": "moves",
+      "year": "2016",
+      "art": "assets/kirara__moves.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 83,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 4394
+      },
+      "matched": {
+        "lastfm": "1 entries, top: Kirara — moves"
+      },
+      "parts": {
+        "ratings": 83,
+        "reach": 66.07150131461229,
+        "recognition": 25
+      },
+      "grade": 65.96072519719183,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "limkim__generasian",
+      "artist": "림킴",
+      "artist_en": "LIM KIM",
+      "album": "GENERASIAN",
+      "year": "2019",
+      "art": "assets/limkim__generasian.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 75,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 31495
+      },
+      "matched": {
+        "lastfm": "2 entries, top: Lim Kim — GENERASIAN"
+      },
+      "parts": {
+        "ratings": 75,
+        "reach": 87.45604031714728,
+        "recognition": 25
+      },
+      "grade": 64.3684060475721,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "2ne1__toanyone",
+      "artist": "2NE1",
+      "artist_en": "2NE1",
+      "album": "To Anyone",
+      "year": "2010",
+      "art": "assets/2ne1__toanyone.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 71,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 181127
+      },
+      "matched": {
+        "lastfm": "13 entries, top: 2NE1 — To Anyone"
+      },
+      "parts": {
+        "ratings": 71,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 63.85,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "idiotape__11111101",
+      "artist": "이디오테잎",
+      "artist_en": "IDIOTAPE",
+      "album": "11111101",
+      "year": "2011",
+      "art": "assets/idiotape__11111101.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 77,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 9706
+      },
+      "matched": {
+        "lastfm": "8 entries, top: Idiotape — 11111101"
+      },
+      "parts": {
+        "ratings": 77,
+        "reach": 74.67600717448167,
+        "recognition": 25
+      },
+      "grade": 63.65140107617225,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "glencheck__hautecouture",
+      "artist": "글렌체크",
+      "artist_en": "Glen Check",
+      "album": "Haute Couture",
+      "year": "2012",
+      "art": "assets/glencheck__hautecouture.jpg",
+      "inputs": {
+        "rym": 3.51,
+        "aoty_user": 77,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 12314
+      },
+      "matched": {
+        "lastfm": "3 entries, top: Glen Check — Haute Couture"
+      },
+      "parts": {
+        "ratings": 73.6,
+        "reach": 77.25997873138657,
+        "recognition": 25
+      },
+      "grade": 61.99899680970798,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "glencheck__youth",
+      "artist": "글렌체크",
+      "artist_en": "Glen Check",
+      "album": "YOUTH!",
+      "year": "2013",
+      "art": "assets/glencheck__youth.jpg",
+      "inputs": {
+        "rym": 3.26,
+        "aoty_user": 63,
+        "aoty_used": false,
+        "award_wins": 1,
+        "lastfm_listeners": 4441
+      },
+      "matched": {
+        "lastfm": "4 entries, top: Glen Check — YOUTH!"
+      },
+      "parts": {
+        "ratings": 65.19999999999999,
+        "reach": 66.1870193293419,
+        "recognition": 25
+      },
+      "grade": 55.29805289940127,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kirara__kirara",
+      "artist": "키라라",
+      "artist_en": "Kirara",
+      "album": "Kirara",
+      "year": "2025",
+      "art": "assets/kirara__kirara.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 68,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 1226
+      },
+      "matched": {
+        "lastfm": "2 entries, top: Kirara — Kirara"
+      },
+      "parts": {
+        "ratings": 68,
+        "reach": 52.212261754559904,
+        "recognition": 25
+      },
+      "grade": 54.881839263183984,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "yetsuby__mystarmyplanetmyearth",
+      "artist": "예츠비",
+      "artist_en": "Yetsuby",
+      "album": "My Star My Planet My Earth",
+      "year": "2023",
+      "art": "assets/yetsuby__mystarmyplanetmyearth.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 60,
+        "aoty_used": false,
+        "award_wins": 1,
+        "lastfm_listeners": 605
+      },
+      "matched": {
+        "lastfm": "1 entries, top: Yetsuby — MY STAR MY PLANET MY EARTH"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 44.54388436631172,
+        "recognition": 25
+      },
+      "grade": 32.32895663736689,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

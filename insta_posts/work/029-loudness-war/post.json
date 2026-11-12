@@ -1,0 +1,58 @@
+{
+  "series": "용어사전",
+  "number": 29,
+  "caption": "음반이 점점 시끄러워진 시절이 있었습니다.\n\n'라우드니스 워'. 옆 곡보다 더 크게 들리려고 소리를 눌러 담던 경쟁과, 그 경쟁을 멈추게 한 스트리밍 이야기를 한 장씩 넘기며 확인해 보세요.\n\n소리가 유난히 꽉 차 답답하게 느껴진 앨범이 있나요?",
+  "hashtags": "#음악용어 #라우드니스워 #loudnesswar #마스터링 #다이나믹레인지 #CD #스트리밍 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "라우드니스 워",
+      "photo": "assets/cds.jpg",
+      "credit": "Photo: Dietmar Rabich, CC BY-SA 4.0"
+    },
+    {
+      "type": "photo",
+      "title": "더 크게, 더 크게",
+      "photo": "assets/loudness-trend.gif",
+      "credit": "Public domain",
+      "text": "크게 들리는 음악이 더 좋게 들린다는 인식 때문에, 음반사들은 1990년대부터 CD의 평균 음량을 계속 끌어올렸습니다. 이 음량 경쟁을 '라우드니스 워'라고 부릅니다."
+    },
+    {
+      "type": "photo",
+      "title": "눌러 담은 소리",
+      "photo": "assets/neumann-lathe.jpg",
+      "credit": "Photo: VACANT FEVER, CC BY-SA 2.0",
+      "text": "CD에는 넘을 수 없는 최대 음량이 있습니다. 평균을 더 올리려면 큰 소리와 작은 소리의 차이를 눌러 줄여야 했어요. 그만큼 음악의 강약이 사라집니다."
+    },
+    {
+      "type": "photo",
+      "title": "파형으로 보면",
+      "photo": "assets/abba-waveforms.png",
+      "credit": "Photo: Kosmosi, CC BY-SA 4.0",
+      "text": "같은 곡도 재발매할 때마다 파형이 점점 꽉 찬 벽돌처럼 변했습니다. 이런 극단적 압축을 '브릭월'이라고 부릅니다. ABBA 'Super Trouper'의 버전별 파형입니다."
+    },
+    {
+      "type": "photo",
+      "title": "Death Magnetic 논란",
+      "credit": "Album cover: Death Magnetic (Warner, 2008)",
+      "text": "2008년 메탈리카의 『Death Magnetic』은 과도한 압축으로 소리가 찢어진다는 비판을 받았습니다. 게임 『기타 히어로』에 실린 버전이 CD보다 낫다는 말까지 나왔어요.",
+      "art": "assets/art-death-magnetic.jpg"
+    },
+    {
+      "type": "photo",
+      "title": "전쟁을 끝낸 스트리밍",
+      "photo": "assets/hammett-2008.jpg",
+      "credit": "Photo: Kreepin Deth, CC BY 3.0",
+      "text": "스트리밍 서비스들은 곡마다 음량을 일정하게 맞춰 재생합니다. 무작정 크게 만든 곡은 오히려 소리가 줄어들고 강약만 잃게 되면서, 음량 경쟁의 의미가 크게 줄었습니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "가장 먼저 꼽히는 앨범",
+      "art": "assets/art-morning-glory.jpg",
+      "credit": "Album cover: (What's the Story) Morning Glory? (Creation, 1995)",
+      "text": "라우드니스 워의 상징으로 자주 꼽히는 앨범은 'Wonderwall'이 실린 오아시스의 (What's the Story) Morning Glory?(1995)입니다. 당시로서는 유난히 꽉 채워 크게 마스터링한 앨범이었어요."
+    }
+  ]
+}

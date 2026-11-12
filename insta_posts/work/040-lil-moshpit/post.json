@@ -1,0 +1,64 @@
+{
+  "series": "요즘 음악",
+  "number": 40,
+  "captionInImage": true,
+  "caption": "그루비룸의 휘민과 릴 모쉬핏은 같은 사람입니다. 이름이 바뀌면 음악도 바뀝니다.\n\n힙합과 R&B를 오가는 프로듀서 듀오의 멤버가 거친 힙합 이름으로 2026년 시상식을 휩쓸기까지 한 장씩 넘기며 확인해 보세요.\n\n그루비룸 휘민과 릴 모쉬핏, 어느 쪽 음악이 더 좋나요?",
+  "hashtags": "#릴모쉬핏 #LilMoshpit #그루비룸 #GroovyRoom #이휘민 #식케이 #KFLIP #LOV3",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "그루비룸 휘민,\n그리고 릴 모쉬핏",
+      "art": "assets/art-k-flip-plus.jpg",
+      "credit": "Album cover: K-FLIP+ (2025)"
+    },
+    {
+      "type": "photo",
+      "title": "그루비룸의 휘민",
+      "photo": "assets/groovyroom-2020.png",
+      "credit": "Photo: OnlyOneOf official, CC BY 3.0",
+      "focus": "50% 30%",
+      "text": "이휘민은 1994년생 프로듀서입니다. 프로듀서 듀오 그루비룸의 멤버로 힙합과 팝, R&B를 섞은 곡들을 만들어 왔습니다."
+    },
+    {
+      "type": "photo",
+      "title": "릴 모쉬핏이라는 이름",
+      "photo": "assets/hwimin-2020.png",
+      "credit": "Photo: OnlyOneOf Official, CC BY 3.0",
+      "focus": "50% 30%",
+      "text": "혼자 작업할 때 쓰는 이름은 릴 모쉬핏. 공연장에서 관객끼리 몸을 부딪치며 노는 '모쉬핏'을 좋아해서 붙였습니다. 이 이름으로는 더 거칠고 힙합에 가까운 음악을 합니다."
+    },
+    {
+      "type": "photo",
+      "title": "식케이와 K-FLIP",
+      "photo": "assets/sik-k.jpg",
+      "credit": "Photo: Bonnielou2013, CC BY-SA 4.0",
+      "focus": "50% 25%",
+      "text": "2025년 1월 래퍼 식케이와 함께 K-FLIP을 냈고, 3월에는 곡을 더한 K-FLIP+를 냈습니다. 그 무렵 나온 'LOV3'는 에픽하이의 '러브 러브 러브'를 샘플링한 곡입니다."
+    },
+    {
+      "type": "photo",
+      "title": "2026년을 휩쓸다",
+      "art": "assets/art-k-flip.jpg",
+      "credit": "Album cover: K-FLIP (2025)",
+      "text": "2026년 한국대중음악상에서 K-FLIP+는 최우수 랩&힙합 음반, 'LOV3'는 최우수 랩&힙합 노래를 받았습니다. 같은 해 한국힙합어워즈에서는 올해의 프로듀서를 포함해 4관왕에 올랐습니다."
+    },
+    {
+      "type": "grid",
+      "title": "어느 쪽이 더 좋나요?",
+      "items": [
+        {
+          "art": "assets/art-everywhere.jpg",
+          "label": "그루비룸 · 2017",
+          "name": "EVERYWHERE",
+          "credit": "Album cover: EVERYWHERE (GroovyRoom, 2017)"
+        },
+        {
+          "art": "assets/art-k-flip.jpg",
+          "label": "식케이·릴 모쉬핏 · 2025",
+          "name": "K-FLIP",
+          "credit": "Album cover: K-FLIP (2025)"
+        }
+      ]
+    }
+  ]
+}

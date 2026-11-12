@@ -1,0 +1,218 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "sikklilmoshpit__kflip+",
+      "artist": "식케이 & 릴 모쉬핏",
+      "artist_en": "Sik-K & Lil Moshpit",
+      "album": "K-FLIP+",
+      "year": "2025",
+      "art": "assets/sikklilmoshpit__kflip+.jpg",
+      "inputs": {
+        "rym": 3.47,
+        "aoty_user": 79,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 21797
+      },
+      "matched": {
+        "lastfm": "25 entries, top: Sik-K — K-FLIP+"
+      },
+      "parts": {
+        "ratings": 74.2,
+        "reach": 83.45991810490654,
+        "recognition": 50
+      },
+      "grade": 69.53898771573598,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "beenzino__nowitzki",
+      "artist": "빈지노",
+      "artist_en": "Beenzino",
+      "album": "NOWITZKI",
+      "year": "2023",
+      "art": "assets/beenzino__nowitzki.jpg",
+      "inputs": {
+        "rym": 3.52,
+        "aoty_user": 74,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 14847
+      },
+      "matched": {
+        "lastfm": "11 entries, top: Beenzino — Nowitzki"
+      },
+      "parts": {
+        "ratings": 72.2,
+        "reach": 79.29096771327046,
+        "recognition": 50
+      },
+      "grade": 67.71364515699057,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "cjamm__킁",
+      "artist": "씨잼",
+      "artist_en": "C JAMM",
+      "album": "킁",
+      "year": "2019",
+      "art": "assets/cjamm__킁.jpg",
+      "inputs": {
+        "rym": 3.67,
+        "aoty_user": 84,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 1690
+      },
+      "matched": {
+        "lastfm": "4 entries, top: C Jamm — 킁"
+      },
+      "parts": {
+        "ratings": 78.7,
+        "reach": 55.69716761534183,
+        "recognition": 25
+      },
+      "grade": 61.82457514230127,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "bfreehukkyshibaseki__odyssey1",
+      "artist": "비프리 & 허키 시바세키",
+      "artist_en": "B-Free & Hukky Shibaseki",
+      "album": "Odyssey. 1",
+      "year": "2024",
+      "art": "assets/bfreehukkyshibaseki__odyssey1.jpg",
+      "inputs": {
+        "rym": 3.64,
+        "aoty_user": 77,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 2148
+      },
+      "matched": {
+        "lastfm": "13 entries, top: B-Free — Free Hukky Shibaseki & the God Sun Symphony Group : Odyssey.1"
+      },
+      "parts": {
+        "ratings": 74.9,
+        "reach": 58.30085692568795,
+        "recognition": 25
+      },
+      "grade": 59.9351285388532,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "xxx__language",
+      "artist": "XXX",
+      "artist_en": "XXX",
+      "album": "Language",
+      "year": "2018",
+      "art": "assets/xxx__language.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 77,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 3676
+      },
+      "matched": {
+        "lastfm": "1 entries, top: XXX — Language"
+      },
+      "parts": {
+        "ratings": 77,
+        "reach": 64.13438756785183,
+        "recognition": 0
+      },
+      "grade": 55.82015813517777,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "changmo__undergroundrockstar",
+      "artist": "창모",
+      "artist_en": "Changmo",
+      "album": "Underground Rockstar",
+      "year": "2021",
+      "art": "assets/changmo__undergroundrockstar.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 70,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 10039
+      },
+      "matched": {
+        "lastfm": "10 entries, top: CHANGMO — UNDERGROUND ROCKSTAR"
+      },
+      "parts": {
+        "ratings": 70,
+        "reach": 75.04226135580383,
+        "recognition": 0
+      },
+      "grade": 53.25633920337057,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "nucksal__작은것들의신",
+      "artist": "넉살",
+      "artist_en": "Nucksal",
+      "album": "작은 것들의 신",
+      "year": "2016",
+      "art": "assets/nucksal__작은것들의신.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 75,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 374
+      },
+      "matched": {
+        "lastfm": "5 entries, top: 넉살 — 작은 것들의 신"
+      },
+      "parts": {
+        "ratings": 75,
+        "reach": 39.32179005501201,
+        "recognition": 0
+      },
+      "grade": 50.8982685082518,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "lilmoshpit__aaa",
+      "artist": "릴 모쉬핏",
+      "artist_en": "Lil Moshpit",
+      "album": "AAA",
+      "year": "2022",
+      "art": "assets/lilmoshpit__aaa.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 57,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 8426
+      },
+      "matched": {
+        "lastfm": "1 entries, top: Lil Moshpit — AAA"
+      },
+      "parts": {
+        "ratings": 57,
+        "reach": 73.14053636977073,
+        "recognition": 0
+      },
+      "grade": 45.17108045546561,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

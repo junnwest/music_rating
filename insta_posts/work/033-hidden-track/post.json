@@ -1,0 +1,77 @@
+{
+  "series": "용어사전",
+  "number": 33,
+  "caption": "마지막 곡이 끝난 뒤, 한참 동안의 침묵. 그리고 갑자기 시작되는 노래.\n\n트랙 목록에 없는 곡, 히든 트랙. 비틀스의 23초짜리 곡부터 너바나가 유행시킨 CD 시대의 숨기기까지 한 장씩 넘기며 확인해 보세요.\n\nCD를 끝까지 틀어두다 깜짝 놀란 기억이 있나요?",
+  "hashtags": "#음악용어 #히든트랙 #hiddentrack #Nirvana #TheBeatles #CD #음반 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "히든 트랙,\n숨겨진 한 곡",
+      "photo": "assets/zebra.jpg",
+      "credit": "Public domain"
+    },
+    {
+      "type": "photo",
+      "title": "23초짜리 곡",
+      "credit": "Album cover: Abbey Road (Apple, 1969)",
+      "text": "첫 히든 트랙으로 흔히 꼽히는 곡은 비틀스 Abbey Road(1969)의 'Her Majesty'입니다. 마지막 곡 'The End'가 끝나고 약 20초 뒤 흘러나오는 23초짜리 노래예요.",
+      "art": "assets/art-abbey-road.jpg"
+    },
+    {
+      "type": "photo",
+      "title": "버리려던 곡",
+      "photo": "assets/paul-1969.jpg",
+      "credit": "Public domain",
+      "text": "원래 이 곡은 앨범 후반부 메들리에서 빠진 곡이었습니다. 엔지니어가 버리지 않고 테이프 끝에 붙여둔 것이 그대로 앨범에 실렸다고 알려져 있습니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "10분 뒤의 노래",
+      "photo": "assets/nirvana-1992.jpg",
+      "credit": "Photo: P.B. Rage, CC BY-SA 2.0",
+      "text": "너바나의 『Nevermind』(1991) CD는 마지막 곡이 끝나고 약 10분 뒤에 'Endless, Nameless'가 시작됩니다. 이 앨범이 CD 히든 트랙 유행을 이끌었다는 평이 많습니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "초판에는 없었다",
+      "photo": "assets/cobain.jpg",
+      "credit": "Public domain",
+      "text": "첫 프레싱 CD에는 이 곡이 빠져 있었습니다. 커트 코베인은 『Abbey Road』처럼 곡을 숨기고 싶어 했고, 누락을 알고 항의해 이후 프레싱부터 실렸다고 알려져 있어요.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "CD만의 숨기는 법",
+      "photo": "assets/cds.jpg",
+      "credit": "Photo: Dietmar Rabich, CC BY-SA 4.0",
+      "text": "CD 시대에는 숨기는 방법도 다양해졌습니다. 마지막 트랙 뒤에 긴 무음을 두거나, 1번 트랙보다 앞에 곡을 숨겨 되감아야 들리게 하는 식이었어요."
+    },
+    {
+      "type": "grid",
+      "title": "더 찾아볼 히든 트랙",
+      "items": [
+        {
+          "art": "assets/art-miseducation.jpg",
+          "label": "로린 힐 · 1998",
+          "name": "Can't Take My Eyes Off of You",
+          "credit": "Album cover: The Miseducation of Lauryn Hill (Ruffhouse/Columbia, 1998)"
+        },
+        {
+          "art": "assets/art-dookie.jpg",
+          "label": "그린데이 · 1994",
+          "name": "All By Myself",
+          "credit": "Album cover: Dookie (Reprise, 1994)"
+        },
+        {
+          "art": "assets/art-parachutes.jpg",
+          "label": "콜드플레이 · 2000",
+          "name": "Life Is for Living",
+          "credit": "Album cover: Parachutes (Parlophone, 2000)"
+        }
+      ]
+    }
+  ]
+}

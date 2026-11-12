@@ -1,0 +1,53 @@
+{
+  "series": "그날의 음악사",
+  "number": 25,
+  "caption": "MP3의 음질을 맞춘 기준은 한 여성 가수의 무반주 노래였습니다.\n\n수잔 베가의 'Tom's Diner'가 'MP3의 어머니'라고 불리는 이유를 한 장씩 넘기며 확인해 보세요.\n\n처음 MP3로 들은 노래, 기억나나요?",
+  "hashtags": "#그날의음악사 #MP3 #SuzanneVega #TomsDiner #수잔베가 #Fraunhofer #디지털음악 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "MP3의 어머니",
+      "photo": "assets/vega-guitar.jpg",
+      "credit": "Photo: Richard Huber, CC BY-SA 3.0"
+    },
+    {
+      "type": "photo",
+      "title": "프라운호퍼 연구소",
+      "photo": "assets/fraunhofer-iis.jpg",
+      "credit": "Photo: Arneb, CC BY-SA 3.0",
+      "text": "MP3는 독일 프라운호퍼 연구소에서 카를하인츠 브란덴부르크 등이 개발했습니다. 사람이 잘 듣지 못하는 소리를 덜어내 파일 크기를 크게 줄이는 기술입니다."
+    },
+    {
+      "type": "photo",
+      "title": "가장 까다로운 목소리",
+      "photo": "assets/brandenburg.jpg",
+      "credit": "Photo: Christliches Medienmagazin pro, CC BY 2.0",
+      "text": "개발자 브란덴부르크는 'Tom's Diner'의 무반주 버전을 시험 곡으로 썼습니다. 다른 곡은 괜찮게 들리는 압축률에서도 수잔 베가의 목소리는 크게 망가졌다고 해요.",
+      "focus": "50% 30%"
+    },
+    {
+      "type": "photo",
+      "title": "수없이 반복된 한 곡",
+      "credit": "Album cover: Solitude Standing (A&M, 1987)",
+      "text": "그는 방식을 고칠 때마다 이 노래를 반복해 들으며 목소리의 결이 살아 있는지 확인했습니다. 이 일화 덕에 베가는 'MP3의 어머니'로 불립니다.",
+      "focus": "50% 25%",
+      "art": "assets/art-solitude-standing.jpg"
+    },
+    {
+      "type": "photo",
+      "title": "표준이 된 MP3",
+      "photo": "assets/mp3-player.jpg",
+      "credit": "Public domain",
+      "text": "이 기술은 MPEG-1 Audio Layer III라는 이름으로 1990년대 초 국제 표준이 됐습니다. 이후 인터넷과 휴대용 플레이어를 타고 퍼지며 음악을 파일로 듣는 시대를 열었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "MP3가 버린 소리",
+      "photo": "assets/vega-2004.jpg",
+      "credit": "Photo: Peabody Awards, CC BY 2.0",
+      "text": "2014년 미국의 한 음악 연구자는 'Tom's Diner'를 MP3로 압축할 때 사라지는 소리만 모아 곡을 만들었습니다. 제목은 Tom's Diner의 철자를 뒤섞은 'moDernisT'. 버려진 소리인데도 또렷이 들리는 부분이 많았습니다.",
+      "focus": "50% 30%"
+    }
+  ]
+}

@@ -1,0 +1,218 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "thama__dontdiecolors",
+      "artist": "타마",
+      "artist_en": "THAMA",
+      "album": "DON'T DIE COLORS",
+      "year": "2021",
+      "art": "assets/thama__dontdiecolors.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 84,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 12840
+      },
+      "matched": {
+        "lastfm": "6 entries, top: THAMA — DON’T DIE COLORS"
+      },
+      "parts": {
+        "ratings": 84,
+        "reach": 77.71412559332087,
+        "recognition": 25
+      },
+      "grade": 68.30711883899812,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "suminslom__miniseries2",
+      "artist": "수민 & 슬롬",
+      "artist_en": "Sumin & Slom",
+      "album": "Miniseries 2",
+      "year": "2024",
+      "art": "assets/suminslom__miniseries2.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 79,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 42558
+      },
+      "matched": {
+        "lastfm": "30 entries, top: SUMIN — MINISERIES 2"
+      },
+      "parts": {
+        "ratings": 79,
+        "reach": 90.72453025580435,
+        "recognition": 25
+      },
+      "grade": 67.25867953837064,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "ziont__redlight",
+      "artist": "자이언티",
+      "artist_en": "Zion.T",
+      "album": "Red Light",
+      "year": "2013",
+      "art": "assets/ziont__redlight.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 79,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 30308
+      },
+      "matched": {
+        "lastfm": "1 entries, top: Zion.T — Red Light"
+      },
+      "parts": {
+        "ratings": 79,
+        "reach": 87.03893196443477,
+        "recognition": 25
+      },
+      "grade": 66.70583979466521,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "crush__crushonyou",
+      "artist": "크러쉬",
+      "artist_en": "Crush",
+      "album": "Crush On You",
+      "year": "2014",
+      "art": "assets/crush__crushonyou.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 75,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 52881
+      },
+      "matched": {
+        "lastfm": "4 entries, top: Crush — Crush on You"
+      },
+      "parts": {
+        "ratings": 75,
+        "reach": 93.08249148076312,
+        "recognition": 25
+      },
+      "grade": 65.21237372211448,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "jaypark__everythingyouwanted",
+      "artist": "박재범",
+      "artist_en": "Jay Park",
+      "album": "EVERYTHING YOU WANTED",
+      "year": "2016",
+      "art": "assets/jaypark__everythingyouwanted.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 65,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 323404
+      },
+      "matched": {
+        "lastfm": "9 entries, top: Jay Park — EVERYTHING YOU WANTED"
+      },
+      "parts": {
+        "ratings": 65,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 60.25,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "taeyang__hot",
+      "artist": "태양",
+      "artist_en": "Taeyang",
+      "album": "Hot",
+      "year": "2008",
+      "art": "assets/taeyang__hot.jpg",
+      "inputs": {
+        "rym": 2.89,
+        "aoty_user": 64,
+        "aoty_used": false,
+        "award_wins": 1,
+        "lastfm_listeners": 48624
+      },
+      "matched": {
+        "lastfm": "3 entries, top: 태양 — Hot"
+      },
+      "parts": {
+        "ratings": 57.800000000000004,
+        "reach": 92.17126706839669,
+        "recognition": 25
+      },
+      "grade": 54.755690060259504,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "naul__principleofmysoul",
+      "artist": "나얼",
+      "artist_en": "Naul",
+      "album": "Principle of my Soul",
+      "year": "2012",
+      "art": "assets/naul__principleofmysoul.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 61,
+        "aoty_used": false,
+        "award_wins": 1,
+        "lastfm_listeners": 23568
+      },
+      "matched": {
+        "lastfm": "10 entries, top: Naul — Principle of My Soul"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 84.30806823746389,
+        "recognition": 25
+      },
+      "grade": 47.24052558904896,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "jinbo__afterwork",
+      "artist": "진보",
+      "artist_en": "Jinbo",
+      "album": "Afterwork",
+      "year": "2010",
+      "art": "assets/jinbo__afterwork.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 86,
+        "aoty_used": false,
+        "award_wins": 1,
+        "lastfm_listeners": 1079
+      },
+      "matched": {
+        "lastfm": "5 entries, top: JINBO the SuperFreak — Afterwork"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 50.825536117072765,
+        "recognition": 25
+      },
+      "grade": 34.68457604390228,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

@@ -1,0 +1,270 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "epikhigh__remappingthehumansoul",
+      "artist": "에픽하이",
+      "artist_en": "Epik High",
+      "album": "Remapping the Human Soul",
+      "year": "2007",
+      "art": "assets/epikhigh__remappingthehumansoul.jpg",
+      "inputs": {
+        "rym": 3.64,
+        "aoty_user": 84,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 54569
+      },
+      "matched": {
+        "lastfm": "22 entries, top: Epik High — Remapping the Human Soul"
+      },
+      "parts": {
+        "ratings": 78.4,
+        "reach": 93.42364988065104,
+        "recognition": 25
+      },
+      "grade": 67.30354748209766,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "epikhigh__wevedonesomethingwonderful",
+      "artist": "에픽하이",
+      "artist_en": "Epik High",
+      "album": "WE’VE DONE SOMETHING WONDERFUL",
+      "year": "2017",
+      "art": "assets/epikhigh__wevedonesomethingwonderful.jpg",
+      "inputs": {
+        "rym": 3.22,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 84314
+      },
+      "matched": {
+        "lastfm": "39 entries, top: Epik High — WE'VE DONE SOMETHING WONDERFUL"
+      },
+      "parts": {
+        "ratings": 72.2,
+        "reach": 98.14749233653457,
+        "recognition": 0
+      },
+      "grade": 58.04212385048018,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "epikhigh__piecespartone",
+      "artist": "에픽하이",
+      "artist_en": "Epik High",
+      "album": "Pieces, Part One",
+      "year": "2008",
+      "art": "assets/epikhigh__piecespartone.jpg",
+      "inputs": {
+        "rym": 3.27,
+        "aoty_user": 81,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 57180
+      },
+      "matched": {
+        "lastfm": "35 entries, top: Epik High — Pieces, Part One"
+      },
+      "parts": {
+        "ratings": 73.2,
+        "reach": 93.93110377554925,
+        "recognition": 0
+      },
+      "grade": 58.00966556633239,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "epikhigh__mapofthehumansoul",
+      "artist": "에픽하이",
+      "artist_en": "Epik High",
+      "album": "Map of the Human Soul",
+      "year": "2003",
+      "art": "assets/epikhigh__mapofthehumansoul.jpg",
+      "inputs": {
+        "rym": 3.35,
+        "aoty_user": 81,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 14562
+      },
+      "matched": {
+        "lastfm": "42 entries, top: Epik High — Map of the Human Soul"
+      },
+      "parts": {
+        "ratings": 74,
+        "reach": 79.08052566788946,
+        "recognition": 0
+      },
+      "grade": 56.262078850183414,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "epikhigh__신발장",
+      "artist": "에픽하이",
+      "artist_en": "Epik High",
+      "album": "신발장",
+      "year": "2014",
+      "art": "assets/epikhigh__신발장.jpg",
+      "inputs": {
+        "rym": 3.35,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 9476
+      },
+      "matched": {
+        "lastfm": "35 entries, top: Epik High — 신발장"
+      },
+      "parts": {
+        "ratings": 73.5,
+        "reach": 74.41562630126819,
+        "recognition": 0
+      },
+      "grade": 55.26234394519023,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "epikhigh__swansongs",
+      "artist": "에픽하이",
+      "artist_en": "Epik High",
+      "album": "Swan Songs",
+      "year": "2005",
+      "art": "assets/epikhigh__swansongs.jpg",
+      "inputs": {
+        "rym": 3.14,
+        "aoty_user": 78,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 28962
+      },
+      "matched": {
+        "lastfm": "10 entries, top: Epik High — Swan Songs"
+      },
+      "parts": {
+        "ratings": 70.4,
+        "reach": 86.5457137300584,
+        "recognition": 0
+      },
+      "grade": 55.221857059508764,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "epikhigh__epikhighishere下part2",
+      "artist": "에픽하이",
+      "artist_en": "Epik High",
+      "album": "Epik High Is Here 下 (Part 2)",
+      "year": "2022",
+      "art": "assets/epikhigh__epikhighishere下part2.jpg",
+      "inputs": {
+        "rym": 2.94,
+        "aoty_user": 72,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 71710
+      },
+      "matched": {
+        "lastfm": "29 entries, top: Epik High — Epik High Is Here 下 (Part 2)"
+      },
+      "parts": {
+        "ratings": 65.4,
+        "reach": 96.38949306254294,
+        "recognition": 0
+      },
+      "grade": 53.698423959381444,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "epikhigh__epikhighishere上part1",
+      "artist": "에픽하이",
+      "artist_en": "Epik High",
+      "album": "Epik High Is Here 上 (Part 1)",
+      "year": "2021",
+      "art": "assets/epikhigh__epikhighishere上part1.jpg",
+      "inputs": {
+        "rym": 2.97,
+        "aoty_user": 68,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 87818
+      },
+      "matched": {
+        "lastfm": "39 entries, top: Epik High — Epik High Is Here 上 (Part 1)"
+      },
+      "parts": {
+        "ratings": 63.7,
+        "reach": 98.58958855239798,
+        "recognition": 0
+      },
+      "grade": 53.0084382828597,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "epikhigh__highsociety",
+      "artist": "에픽하이",
+      "artist_en": "Epik High",
+      "album": "High Society",
+      "year": "2004",
+      "art": "assets/epikhigh__highsociety.jpg",
+      "inputs": {
+        "rym": 3.07,
+        "aoty_user": 73,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 12125
+      },
+      "matched": {
+        "lastfm": "3 entries, top: Epik High — High Society"
+      },
+      "parts": {
+        "ratings": 67.2,
+        "reach": 77.09204368185753,
+        "recognition": 0
+      },
+      "grade": 51.88380655227863,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "epikhigh__99",
+      "artist": "에픽하이",
+      "artist_en": "Epik High",
+      "album": "99",
+      "year": "2012",
+      "art": "assets/epikhigh__99.jpg",
+      "inputs": {
+        "rym": 2.39,
+        "aoty_user": 56,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 37429
+      },
+      "matched": {
+        "lastfm": "2 entries, top: Epik High — 99"
+      },
+      "parts": {
+        "ratings": 51.900000000000006,
+        "reach": 89.33020560286494,
+        "recognition": 0
+      },
+      "grade": 44.53953084042974,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

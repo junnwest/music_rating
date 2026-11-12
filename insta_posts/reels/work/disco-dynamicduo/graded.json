@@ -1,0 +1,270 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "dynamicduo__taxidriver",
+      "artist": "다이나믹 듀오",
+      "artist_en": "Dynamic Duo",
+      "album": "Taxi Driver",
+      "year": "2004",
+      "art": "assets/dynamicduo__taxidriver.jpg",
+      "inputs": {
+        "rym": 3.63,
+        "aoty_user": 82,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 5599
+      },
+      "matched": {
+        "lastfm": "3 entries, top: DynamicDuo — TAXI DRIVER"
+      },
+      "parts": {
+        "ratings": 77.3,
+        "reach": 68.70276168737459,
+        "recognition": 0
+      },
+      "grade": 56.68541425310618,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "dynamicduo__doubledynamite",
+      "artist": "다이나믹 듀오",
+      "artist_en": "Dynamic Duo",
+      "album": "Double Dynamite",
+      "year": "2005",
+      "art": "assets/dynamicduo__doubledynamite.jpg",
+      "inputs": {
+        "rym": 3.16,
+        "aoty_user": 68,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 8037
+      },
+      "matched": {
+        "lastfm": "30 entries, top: DynamicDuo — Double Dynamite"
+      },
+      "parts": {
+        "ratings": 65.6,
+        "reach": 72.62734920819678,
+        "recognition": 25
+      },
+      "grade": 56.50410238122951,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "dynamicduo__enlightened",
+      "artist": "다이나믹 듀오",
+      "artist_en": "Dynamic Duo",
+      "album": "Enlightened",
+      "year": "2007",
+      "art": "assets/dynamicduo__enlightened.jpg",
+      "inputs": {
+        "rym": 3.38,
+        "aoty_user": 73,
+        "aoty_used": false,
+        "award_wins": 0,
+        "lastfm_listeners": 5338
+      },
+      "matched": {
+        "lastfm": "6 entries, top: DynamicDuo — Enlightened"
+      },
+      "parts": {
+        "ratings": 67.6,
+        "reach": 68.18446423628723,
+        "recognition": 0
+      },
+      "grade": 50.78766963544308,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "dynamicduo__offduty",
+      "artist": "다이나믹 듀오",
+      "artist_en": "Dynamic Duo",
+      "album": "OFF DUTY",
+      "year": "2019",
+      "art": "assets/dynamicduo__offduty.jpg",
+      "inputs": {
+        "rym": 3.07,
+        "aoty_user": 68,
+        "aoty_used": false,
+        "award_wins": 0,
+        "lastfm_listeners": 20056
+      },
+      "matched": {
+        "lastfm": "12 entries, top: DynamicDuo — OFF DUTY"
+      },
+      "parts": {
+        "ratings": 61.4,
+        "reach": 82.55610802375399,
+        "recognition": 0
+      },
+      "grade": 49.2234162035631,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "dynamicduo__bandofdynamicbrothers",
+      "artist": "다이나믹 듀오",
+      "artist_en": "Dynamic Duo",
+      "album": "Band of Dynamic Brothers",
+      "year": "2009",
+      "art": "assets/dynamicduo__bandofdynamicbrothers.jpg",
+      "inputs": {
+        "rym": 2.94,
+        "aoty_user": 74,
+        "aoty_used": false,
+        "award_wins": 0,
+        "lastfm_listeners": 28907
+      },
+      "matched": {
+        "lastfm": "31 entries, top: DynamicDuo — Band of Dynamic Brothers"
+      },
+      "parts": {
+        "ratings": 58.8,
+        "reach": 86.5250755613525,
+        "recognition": 0
+      },
+      "grade": 48.258761334202866,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "dynamicduo__luckynumbers",
+      "artist": "다이나믹 듀오",
+      "artist_en": "Dynamic Duo",
+      "album": "Luckynumbers",
+      "year": "2013",
+      "art": "assets/dynamicduo__luckynumbers.jpg",
+      "inputs": {
+        "rym": 2.79,
+        "aoty_user": 82,
+        "aoty_used": false,
+        "award_wins": 0,
+        "lastfm_listeners": 25224
+      },
+      "matched": {
+        "lastfm": "39 entries, top: DynamicDuo — LUCKYNUMBERS"
+      },
+      "parts": {
+        "ratings": 55.8,
+        "reach": 85.04534894349621,
+        "recognition": 0
+      },
+      "grade": 46.236802341524424,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "dynamicduo__grandcarnival",
+      "artist": "다이나믹 듀오",
+      "artist_en": "Dynamic Duo",
+      "album": "Grand Carnival",
+      "year": "2015",
+      "art": "assets/dynamicduo__grandcarnival.jpg",
+      "inputs": {
+        "rym": 2.67,
+        "aoty_user": 85,
+        "aoty_used": false,
+        "award_wins": 0,
+        "lastfm_listeners": 26086
+      },
+      "matched": {
+        "lastfm": "33 entries, top: DynamicDuo — GRAND CARNIVAL"
+      },
+      "parts": {
+        "ratings": 53.4,
+        "reach": 85.41018724857746,
+        "recognition": 0
+      },
+      "grade": 44.85152808728662,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "dynamicduo__lastdays",
+      "artist": "다이나믹 듀오",
+      "artist_en": "Dynamic Duo",
+      "album": "LastDays",
+      "year": "2008",
+      "art": "assets/dynamicduo__lastdays.jpg",
+      "inputs": {
+        "rym": 2.99,
+        "aoty_user": 68,
+        "aoty_used": false,
+        "award_wins": 0,
+        "lastfm_listeners": 81
+      },
+      "matched": {
+        "lastfm": "5 entries, top: Dynamic Duo — LASTDAYS"
+      },
+      "parts": {
+        "ratings": 59.800000000000004,
+        "reach": 22.712125471966242,
+        "recognition": 0
+      },
+      "grade": 39.28681882079494,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "dynamicduo__digilog22",
+      "artist": "다이나믹 듀오",
+      "artist_en": "Dynamic Duo",
+      "album": "Digilog 2/2",
+      "year": "2012",
+      "art": "assets/dynamicduo__digilog22.jpg",
+      "inputs": {
+        "rym": 2.41,
+        "aoty_user": 78,
+        "aoty_used": false,
+        "award_wins": 0,
+        "lastfm_listeners": 481
+      },
+      "matched": {
+        "lastfm": "9 entries, top: Dynamic Duo — Digilog 2/2"
+      },
+      "parts": {
+        "ratings": 48.2,
+        "reach": 42.053626909345795,
+        "recognition": 0
+      },
+      "grade": 35.22804403640187,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "dynamicduo__6thdigilog12",
+      "artist": "다이나믹 듀오",
+      "artist_en": "Dynamic Duo",
+      "album": "6th Digilog 1/2",
+      "year": "2011",
+      "art": "assets/dynamicduo__6thdigilog12.jpg",
+      "inputs": {
+        "rym": 2.55,
+        "aoty_user": 85,
+        "aoty_used": false,
+        "award_wins": 0,
+        "lastfm_listeners": 29
+      },
+      "matched": {
+        "lastfm": "3 entries, top: Dynamic Duo — 6th Digilog 1/2"
+      },
+      "parts": {
+        "ratings": 51,
+        "reach": 11.559949947473902,
+        "recognition": 0
+      },
+      "grade": 32.333992492121084,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

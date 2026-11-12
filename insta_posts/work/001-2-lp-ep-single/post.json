@@ -1,0 +1,76 @@
+{
+  "series": "용어사전",
+  "number": 1,
+  "caption": "EP는 '짧은 앨범'일까요? 반은 맞고 반은 틀립니다.\n\nLP, EP, 싱글. 세 단어 모두 1940~50년대 레코드 회사들의 규격 경쟁에서 나왔습니다. '앨범'이 종이 책이던 시절부터 지금의 스트리밍 기준까지, 한 장씩 넘기며 확인해 보세요.\n\n여러분의 인생 EP는 무엇인가요?",
+  "hashtags": "#음악용어 #LP #EP #바이닐 #음반 #레코드 #음악사 #명반",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "EP는 ‘짧은 앨범’이 아니다",
+      "photo": "assets/turntable.jpg",
+      "credit": "Photo: Khaosaming, CC BY-SA 4.0",
+      "text": "LP, EP, 싱글. 매일 쓰는 말이지만 차이를 설명하려면 막히는 단어들입니다. 이 단어들이 생긴 과정을 따라가 봅니다."
+    },
+    {
+      "type": "photo",
+      "title": "‘앨범’은 원래 책이었다",
+      "photo": "assets/album-book-1947.jpg",
+      "credit": "Public domain",
+      "text": "LP 이전의 표준은 78회전 음반. 여러 곡을 팔려면 판이 여러 장 필요했고, 음반사는 이를 두꺼운 책자에 한 장씩 끼워 팔았습니다. 생김새가 사진첩을 닮아 '앨범'이라고 불렀어요."
+    },
+    {
+      "type": "photo",
+      "title": "한 면에 한 곡",
+      "text": "78회전 음반 한 면은 10인치 기준 약 3분. 교향곡처럼 긴 곡은 여러 장에 나눠 담았고, 듣는 사람은 몇 분마다 판을 바꿔야 했습니다. 사진은 종이 슬리브에 담긴 78회전 음반들.",
+      "photo": "assets/shellac-78s.jpg",
+      "credit": "Photo: Gelpgim22 (Sergio Panei Pitrau), CC BY-SA 3.0"
+    },
+    {
+      "type": "photo",
+      "title": "1948, LP의 등장",
+      "photo": "assets/columbia-ml4001.png",
+      "credit": "Photo: Sigmundg, CC BY-SA 4.0",
+      "text": "1948년, 컬럼비아가 33⅓회전 음반을 공개합니다. 홈을 가늘게 파서 12인치 한 면에 20분 넘게 담았습니다. 이름은 Long Playing, 줄여서 LP. 사진은 첫 LP로 알려진 ML 4001."
+    },
+    {
+      "type": "photo",
+      "title": "LP는 앨범으로, 45는 싱글로",
+      "text": "RCA는 1949년 7인치 45회전 판으로 맞섰습니다. 이른바 '회전수 전쟁'. 결과는 역할 분담이었습니다. 긴 음악은 LP로, 히트곡 한 곡은 45회전으로. 지금의 앨범과 싱글입니다.",
+      "photo": "assets/rca-45-1949.jpg",
+      "credit": "Public domain",
+      "focus": "50% 78%"
+    },
+    {
+      "type": "photo",
+      "title": "EP = ‘늘어난’ 싱글",
+      "photo": "assets/hmv-7inch-ep-1963.jpg",
+      "credit": "Auckland Museum, CC BY 4.0",
+      "text": "1952년, RCA가 45회전 판에 홈을 더 촘촘히 파서 한 면에 7분 남짓을 담았습니다. 싱글을 늘린 판, 그래서 이름이 Extended Play. 출발점은 앨범이 아니라 싱글이었어요."
+    },
+    {
+      "type": "table",
+      "title": "현대적 정의",
+      "rows": [
+        [
+          "싱글",
+          "1–3곡"
+        ],
+        [
+          "EP",
+          "4–6곡 · 30분 미만"
+        ],
+        [
+          "앨범",
+          "7곡 이상 또는 30분 초과"
+        ]
+      ],
+      "text": "서비스마다 조금씩 예외가 있고, 영국 공식 차트는 4곡·25분이 기준입니다. 한국의 '미니앨범'은 대체로 EP, '정규'는 앨범과 같은 뜻입니다."
+    },
+    {
+      "type": "closing",
+      "title": "당신의 인생 EP는?",
+      "text": "여러분이 가장 아끼는 EP는 무엇인가요? 앨범 이름과 함께 댓글로 알려주세요."
+    }
+  ],
+  "captionInImage": true
+}

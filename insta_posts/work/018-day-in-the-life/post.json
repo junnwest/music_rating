@@ -1,0 +1,60 @@
+{
+  "series": "한 곡 한 순간",
+  "number": 18,
+  "caption": "40명의 오케스트라가 가장 낮은 음에서 가장 높은 음까지 제멋대로 올라갑니다.\n\n비틀스 'A Day in the Life'(1967). 두 사람이 쓴 두 곡을 이어 붙이고, 그 사이를 소리의 폭풍으로 채운 방법을 한 장씩 넘기며 확인해 보세요.\n\n이 곡의 마지막 코드, 끝까지 들어봤나요?",
+  "hashtags": "#한곡한순간 #ADayintheLife #TheBeatles #비틀스 #SgtPepper #오케스트라 #1967 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "비틀스의\nA Day in the Life",
+      "photo": "assets/beatles-1967.jpg",
+      "credit": "Public domain",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "두 사람의 두 곡",
+      "photo": "assets/abbey-2025.jpg",
+      "credit": "Photo: Alvis Jean, CC BY-SA 4.0",
+      "text": "비틀스의 'A Day in the Life'는 두 곡을 이어 붙인 노래입니다. 큰 틀은 존 레논이 신문 기사를 보고 쓴 부분. 가운데에는 폴 매카트니가 따로 쓴 짧은 곡이 끼어듭니다."
+    },
+    {
+      "type": "photo",
+      "title": "비워둔 24마디",
+      "photo": "assets/abbey-mics.jpg",
+      "credit": "Photo: MrJamesAckerley, CC BY 2.0",
+      "text": "두 부분 사이의 24마디는 처음엔 비워둔 채 녹음했습니다. 스태프가 마디를 세는 목소리와 알람시계 소리가 그 흔적으로 남아 있어요."
+    },
+    {
+      "type": "photo",
+      "title": "40명의 오케스트라",
+      "photo": "assets/orchestra-1968.jpg",
+      "credit": "Public domain",
+      "text": "1967년 2월 10일, 40명 규모의 오케스트라가 스튜디오에 모였습니다. 각자 자기 악기의 가장 낮은 음에서 가장 높은 음까지 자유롭게 올라가라는 지시를 받았습니다.",
+      "focus": "50% 40%"
+    },
+    {
+      "type": "photo",
+      "title": "40초짜리 마지막 코드",
+      "photo": "assets/abbey-pianos.jpg",
+      "credit": "Photo: MrJamesAckerley, CC BY 2.0",
+      "text": "곡은 여러 대의 피아노가 동시에 누른 코드 하나로 끝납니다. 소리가 사라질 때까지 녹음 음량을 계속 올려 40초 넘게 이어지게 했어요."
+    },
+    {
+      "type": "photo",
+      "title": "BBC의 방송 금지",
+      "art": "assets/art-sgt-pepper.jpg",
+      "credit": "Album cover: Sgt. Pepper's Lonely Hearts Club Band (Parlophone, 1967)",
+      "text": "BBC는 'I'd love to turn you on'이라는 가사가 약물을 떠올리게 한다며 이 곡을 방송하지 않았습니다. 곡은 1967년 앨범 Sgt. Pepper's Lonely Hearts Club Band의 마지막 곡입니다."
+    },
+    {
+      "type": "photo",
+      "title": "개만 들을 수 있는 소리",
+      "photo": "assets/dog-gramophone.jpg",
+      "credit": "Photo: Herbert Ponting, 1911, Public domain",
+      "focus": "50% 45%",
+      "text": "마지막 코드가 끝나면 사람 귀에는 거의 들리지 않는 15kHz의 높은 음이 이어집니다. 개 호루라기와 같은 높이로, 레논의 장난이었어요. 영국 초판 LP에는 그 뒤로 알아들을 수 없는 웅얼거림이 들어 있어, 바늘을 들 때까지 끝없이 반복됐습니다."
+    }
+  ]
+}

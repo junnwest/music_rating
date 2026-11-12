@@ -1,0 +1,69 @@
+{
+  "series": "그날의 음악사",
+  "number": 31,
+  "captionInImage": true,
+  "caption": "시상식 무대에서 방금 받은 트로피를 경매에 부친 가수가 있습니다. 낙찰가는 50만 원, 그달 월세였습니다.\n\n2017년 한국대중음악상의 이랑. 그날의 수상 소감과 엇갈린 반응, 그리고 5년 뒤의 올해의 앨범까지 한 장씩 넘기며 확인해 보세요.\n\n음악으로 먹고사는 일, 어떻게 생각하나요?",
+  "hashtags": "#이랑 #LangLee #한국대중음악상 #신의놀이 #늑대가나타났다 #인디음악 #포크 #트로피경매",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "트로피를 판 가수, 이랑",
+      "art": "assets/art-gods-play.jpg",
+      "credit": "Album cover: 신의 놀이 (2016)"
+    },
+    {
+      "type": "photo",
+      "title": "수상 소감 대신 가계부",
+      "photo": "assets/lang-lee-band.jpg",
+      "credit": "Photo: Jimin Lee, CC BY 3.0",
+      "focus": "50% 30%",
+      "text": "싱어송라이터 이랑은 2017년 2월 한국대중음악상에서 '신의 놀이'로 최우수 포크 노래상을 받았습니다. 수상 소감에서 그는 1월 수입 42만 원, 2월 수입 96만 원을 밝혔습니다."
+    },
+    {
+      "type": "photo",
+      "title": "50만 원에 팔린 트로피",
+      "photo": "assets/trophy.jpg",
+      "credit": "Photo: Simon O'Kelly, CC BY-SA 4.0",
+      "focus": "50% 35%",
+      "text": "그리고 월세 50만 원을 내려면 트로피를 팔아야겠다며 그 자리에서 경매를 열었습니다. 트로피는 현금 50만 원을 낸 관객에게 넘어갔습니다."
+    },
+    {
+      "type": "photo",
+      "title": "엇갈린 반응",
+      "art": "assets/art-gods-play.jpg",
+      "credit": "Album cover: 신의 놀이 (2016)",
+      "text": "시상식을 가볍게 여겼다는 비난도 많았습니다. 이랑은 남성 음악가였다면 유쾌한 풍자로 받아들여졌을 거라고 말했습니다. 한편 앨범 『신의 놀이』의 판매가 늘었다는 보도도 나왔습니다."
+    },
+    {
+      "type": "photo",
+      "title": "5년 뒤, 올해의 앨범",
+      "art": "assets/art-wolf.jpg",
+      "credit": "Album cover: 늑대가 나타났다 (2021)",
+      "text": "이랑은 2021년 세 번째 앨범 『늑대가 나타났다』를 냈습니다. 이 앨범으로 2022년 한국대중음악상에서 올해의 앨범과 최우수 포크 음반을 받았습니다."
+    },
+    {
+      "type": "grid",
+      "title": "이랑을 더 듣는다면",
+      "items": [
+        {
+          "art": "assets/art-yonyonson.jpg",
+          "label": "2012 · 1집",
+          "name": "욘욘슨",
+          "credit": "Album cover: 욘욘슨 (Lang Lee, 2012)"
+        },
+        {
+          "art": "assets/art-gods-play.jpg",
+          "label": "2016 · 2집",
+          "name": "신의 놀이",
+          "credit": "Album cover: 신의 놀이 (2016)"
+        },
+        {
+          "art": "assets/art-wolf.jpg",
+          "label": "2021 · 3집",
+          "name": "늑대가 나타났다",
+          "credit": "Album cover: 늑대가 나타났다 (2021)"
+        }
+      ]
+    }
+  ]
+}

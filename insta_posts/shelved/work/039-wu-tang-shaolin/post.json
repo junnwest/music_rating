@@ -1,0 +1,80 @@
+{
+  "series": "비하인드",
+  "number": 39,
+  "caption": "세상에 딱 한 장뿐인 앨범이 있습니다.\n\nWu-Tang Clan의 『Once Upon a Time in Shaolin』. 경매, 억만장자, 법원 몰수, 박물관까지 이어진 한 장의 이야기를 넘기며 확인해 보세요.\n\n여러분이라면 이 앨범을 들으러 가겠습니까?",
+  "hashtags": "#비하인드 #WuTangClan #우탱클랜 #OnceUponaTimeinShaolin #한장뿐인앨범 #힙합 #음반 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "단 한 장뿐인 앨범",
+      "photo": "assets/box-open.webp",
+      "credit": "Public domain"
+    },
+    {
+      "type": "photo",
+      "title": "예술품처럼 팔기",
+      "photo": "assets/rza.jpg",
+      "credit": "Photo: Jørund Føreland Pedersen, CC BY-SA 3.0",
+      "text": "우탱 클랜은 이 앨범을 딱 한 장만 만들어 예술품처럼 팔기로 했습니다. 음악이 쉽게 복제되는 시대에 음반의 가치를 묻겠다는 기획이었어요. 사진은 우탱 클랜의 RZA.",
+      "focus": "50% 30%"
+    },
+    {
+      "type": "photo",
+      "title": "은으로 만든 상자",
+      "photo": "assets/box-detail.webp",
+      "credit": "Public domain",
+      "text": "31곡이 담긴 CD 두 장은 손으로 조각한 은빛 상자에 들어 있습니다. 앨범 계약에는 오랜 기간 상업적으로 발매할 수 없다는 조건이 붙었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "200만 달러의 낙찰",
+      "photo": "assets/shkreli.jpg",
+      "credit": "Public domain",
+      "text": "2015년 경매에서 이 앨범을 약 200만 달러에 산 사람은 제약회사 경영자 마틴 슈크렐리였습니다. 그는 약값 인상 논란으로 유명했던 인물이에요. 사진은 2016년 의회 청문회의 슈크렐리.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "정부의 몰수",
+      "photo": "assets/book.webp",
+      "credit": "Public domain",
+      "text": "슈크렐리가 증권 사기로 유죄 판결을 받은 뒤, 미국 정부는 이 앨범을 몰수했습니다. 2021년 디지털 아트 수집 단체에 약 400만 달러에 팔렸습니다. 사진은 앨범에 딸린 책."
+    },
+    {
+      "type": "photo",
+      "title": "박물관에서 듣기",
+      "photo": "assets/mona.jpg",
+      "credit": "Photo: Jorge Láscar, CC BY 2.0",
+      "text": "2024년 호주 태즈메이니아의 MONA 미술관이 이 앨범을 빌려 전시하고, 관람객이 일부를 들을 수 있는 행사를 열었습니다. 사진은 MONA."
+    },
+    {
+      "type": "table",
+      "title": "한눈에 보기",
+      "rows": [
+        [
+          "제작",
+          "단 한 장"
+        ],
+        [
+          "2015",
+          "경매 · 약 200만 달러"
+        ],
+        [
+          "2021",
+          "몰수 후 약 400만 달러"
+        ],
+        [
+          "2024",
+          "MONA 전시"
+        ]
+      ],
+      "text": "사진 속 상자는 미국 정부가 몰수 뒤 공개한 사진입니다. 음악은 여전히 공식적으로 발매되지 않았습니다."
+    },
+    {
+      "type": "closing",
+      "title": "들으러 가겠습니까?",
+      "text": "세상에 한 장뿐인 앨범, 들을 수 있다면 비행기를 타고 가겠습니까? 댓글로 알려주세요."
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "series": "명반 한 장",
+  "number": 14,
+  "caption": "앤디 워홀의 바나나 한 개가 그려진 커버. 발매 당시엔 거의 팔리지 않았습니다.\n\nThe Velvet Underground & Nico(1967). 라디오가 외면한 이 앨범이 어떻게 수많은 밴드의 출발점이 됐는지, 한 장씩 넘기며 확인해 보세요.\n\n이 앨범에서 가장 좋아하는 곡은?",
+  "hashtags": "#명반 #VelvetUnderground #Nico #AndyWarhol #LouReed #1967 #바나나앨범 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "바나나 앨범",
+      "photo": "assets/vu-nico-publicity.jpg",
+      "credit": "Public domain",
+      "focus": "50% 30%"
+    },
+    {
+      "type": "photo",
+      "title": "앤디 워홀의 밴드",
+      "photo": "assets/warhol-1977.jpg",
+      "credit": "Public domain",
+      "text": "1965년, 앤디 워홀은 뉴욕의 무명 밴드 벨벳 언더그라운드의 매니저가 됩니다. 앨범에는 워홀이 프로듀서로 이름을 올렸고, 커버의 바나나도 그의 작품입니다. 사진은 1977년의 워홀.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "니코가 부른 세 곡",
+      "photo": "assets/epi-nico.png",
+      "credit": "Public domain",
+      "text": "워홀은 독일 출신 모델 겸 가수 니코를 밴드에 합류시켰습니다. 니코는 'Femme Fatale', 'All Tomorrow's Parties', 'I'll Be Your Mirror' 세 곡을 불렀습니다. 사진은 워홀의 멀티미디어 공연에 선 니코.",
+      "focus": "50% 30%"
+    },
+    {
+      "type": "photo",
+      "title": "라디오가 피한 노래",
+      "photo": "assets/vu-1968.png",
+      "credit": "Public domain",
+      "text": "1967년 3월 Verve에서 발매. 마약과 거리의 삶을 그대로 다룬 'Heroin', 'I'm Waiting for the Man' 같은 곡 탓에 라디오와 매장이 외면했고, 판매는 부진했습니다.",
+      "focus": "50% 30%"
+    },
+    {
+      "type": "photo",
+      "title": "모두가 밴드를 만들었다",
+      "photo": "assets/vu-wlwh.jpg",
+      "credit": "Public domain",
+      "text": "'이 앨범을 산 사람은 몇 명 안 되지만, 그들 모두 밴드를 만들었다.' 브라이언 이노가 했다고 알려진 말입니다. 펑크, 포스트펑크, 인디 록의 많은 밴드가 이 앨범을 출발점으로 꼽습니다."
+    },
+    {
+      "type": "table",
+      "title": "앨범 한눈에",
+      "rows": [
+        [
+          "발매",
+          "1967년 3월 · Verve"
+        ],
+        [
+          "프로듀서",
+          "앤디 워홀"
+        ],
+        [
+          "보컬",
+          "루 리드 · 니코"
+        ],
+        [
+          "커버",
+          "벗겨지는 바나나 스티커"
+        ]
+      ],
+      "text": "초판 커버의 바나나는 스티커였습니다. 'Peel slowly and see(천천히 벗겨보세요)'라는 문구를 따라 벗기면 분홍색 바나나가 나옵니다."
+    },
+    {
+      "type": "closing",
+      "title": "가장 좋아하는 곡은?",
+      "text": "'Sunday Morning'부터 'Venus in Furs'까지. 이 앨범에서 가장 좋아하는 곡을 댓글로 알려주세요."
+    }
+  ]
+}

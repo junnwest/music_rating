@@ -1,0 +1,51 @@
+{
+  "series": "한 곡 한 순간",
+  "number": 10,
+  "caption": "피아니스트가 무대에 올라, 4분 33초 동안 한 음도 치지 않았습니다.\n\n1952년 존 케이지의 '4′33″' 초연. 연주자가 아무것도 하지 않는 동안 청중은 무엇을 들었을까요? 한 장씩 넘기며 확인해 보세요.\n\n지금 4분 33초만 아무것도 틀지 말고 주변 소리를 들어보세요. 무엇이 들렸는지 댓글로 알려주세요.",
+  "hashtags": "#한곡한순간 #JohnCage #존케이지 #433 #현대음악 #실험음악 #침묵 #음악사",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "4분 33초의 침묵",
+      "photo": "assets/cage-1988.jpg",
+      "credit": "Public domain"
+    },
+    {
+      "type": "photo",
+      "title": "숲속의 콘서트홀",
+      "photo": "assets/maverick-hall.jpg",
+      "credit": "Photo: John E Leslie III, CC BY-SA 4.0",
+      "text": "1952년 8월 29일, 미국 작곡가 존 케이지의 새 곡이 초연됐습니다. 피아니스트는 4분 33초 동안 한 음도 치지 않았어요. 벽이 트인 숲속 목조 공연장이라 바람 소리가 그대로 들어왔습니다."
+    },
+    {
+      "type": "photo",
+      "title": "세 개의 악장",
+      "photo": "assets/stopwatch.jpg",
+      "credit": "Public domain",
+      "text": "곡은 세 악장이고, 악보에는 모두 '쉼'이라는 뜻의 TACET만 적혀 있습니다. 피아니스트는 스톱워치로 시간을 재며 악장마다 피아노 뚜껑을 닫고 열었습니다. 악기 지정도 없습니다."
+    },
+    {
+      "type": "photo",
+      "title": "완전한 침묵은 없다",
+      "photo": "assets/anechoic.jpg",
+      "credit": "Public domain",
+      "text": "케이지는 소리 반사가 전혀 없는 방, 하버드의 무향실에서 두 가지 소리를 들었다고 자주 말했습니다. 신경계와 피가 흐르는 소리였다는 설명. 살아 있는 한 완전한 침묵은 없다는 경험이었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "하얀 그림에서 얻은 용기",
+      "photo": "assets/rauschenberg-1968.jpg",
+      "credit": "Photo: Jack de Nijs for Anefo, CC BY-SA 3.0",
+      "text": "비슷한 시기, 화가 로버트 라우셴버그가 아무것도 그리지 않은 하얀 캔버스 연작을 발표했습니다. 케이지는 이 그림들에서 침묵 작품을 내놓을 용기를 얻었다고 밝혔어요.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "차트에 오른 침묵",
+      "photo": "assets/oxford-st-xmas.jpg",
+      "credit": "Photo: Lauren, CC BY-SA 2.0",
+      "text": "2010년 영국에서는 크리스마스 차트 1위를 두고 '4′33″'을 사자는 운동이 벌어졌습니다. 여러 음악가가 함께 녹음한 침묵은 싱글 차트 21위까지 올랐어요. 그해 1위는 오디션 프로그램 우승자의 곡이었습니다."
+    }
+  ],
+  "captionInImage": true
+}

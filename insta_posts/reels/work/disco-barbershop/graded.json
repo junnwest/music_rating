@@ -1,0 +1,166 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "sistersbarbershop__가장보통의존재",
+      "artist": "언니네 이발관",
+      "artist_en": "Sister's Barbershop",
+      "album": "가장 보통의 존재",
+      "year": "2008",
+      "art": "assets/sistersbarbershop__가장보통의존재.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 3361
+      },
+      "matched": {
+        "lastfm": "11 entries, top: 언니네 이발관 — 가장 보통의 존재"
+      },
+      "parts": {
+        "ratings": 80,
+        "reach": 63.16171281173693,
+        "recognition": 50
+      },
+      "grade": 69.97425692176054,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "sistersbarbershop__후일담",
+      "artist": "언니네 이발관",
+      "artist_en": "Sister's Barbershop",
+      "album": "후일담",
+      "year": "1998",
+      "art": "assets/sistersbarbershop__후일담.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 79,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 944
+      },
+      "matched": {
+        "lastfm": "6 entries, top: 언니네 이발관 — 후일담"
+      },
+      "parts": {
+        "ratings": 79,
+        "reach": 49.37429985745172,
+        "recognition": 0
+      },
+      "grade": 54.80614497861775,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "sistersbarbershop__비둘기는하늘의쥐",
+      "artist": "언니네 이발관",
+      "artist_en": "Sister's Barbershop",
+      "album": "비둘기는 하늘의 쥐",
+      "year": "1996",
+      "art": "assets/sistersbarbershop__비둘기는하늘의쥐.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 75,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 757
+      },
+      "matched": {
+        "lastfm": "6 entries, top: 언니네 이발관 — 비둘기는 하늘의 쥐"
+      },
+      "parts": {
+        "ratings": 75,
+        "reach": 46.97739698750182,
+        "recognition": 0
+      },
+      "grade": 52.046609548125275,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "sistersbarbershop__꿈의팝송",
+      "artist": "언니네 이발관",
+      "artist_en": "Sister's Barbershop",
+      "album": "꿈의 팝송",
+      "year": "2002",
+      "art": "assets/sistersbarbershop__꿈의팝송.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 72,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1304
+      },
+      "matched": {
+        "lastfm": "6 entries, top: 언니네 이발관 — 꿈의 팝송"
+      },
+      "parts": {
+        "ratings": 72,
+        "reach": 52.88193978489753,
+        "recognition": 0
+      },
+      "grade": 51.132290967734626,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "sistersbarbershop__순간을믿어요",
+      "artist": "언니네 이발관",
+      "artist_en": "Sister's Barbershop",
+      "album": "순간을 믿어요",
+      "year": "2004",
+      "art": "assets/sistersbarbershop__순간을믿어요.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 71,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1236
+      },
+      "matched": {
+        "lastfm": "14 entries, top: 언니네 이발관 — 순간을 믿어요"
+      },
+      "parts": {
+        "ratings": 71,
+        "reach": 52.30046176881993,
+        "recognition": 0
+      },
+      "grade": 50.44506926532299,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "sistersbarbershop__홀로있는사람들",
+      "artist": "언니네 이발관",
+      "artist_en": "Sister's Barbershop",
+      "album": "홀로 있는 사람들",
+      "year": "2017",
+      "art": "assets/sistersbarbershop__홀로있는사람들.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 69,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 772
+      },
+      "matched": {
+        "lastfm": "5 entries, top: 언니네 이발관 — 홀로 있는 사람들"
+      },
+      "parts": {
+        "ratings": 69,
+        "reach": 47.1904325083934,
+        "recognition": 0
+      },
+      "grade": 48.47856487625901,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

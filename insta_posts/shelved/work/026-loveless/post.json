@@ -1,0 +1,79 @@
+{
+  "series": "명반 한 장",
+  "number": 26,
+  "caption": "소리가 녹아내리는 것처럼 들리는 기타. 슈게이즈를 대표하는 앨범입니다.\n\nMy Bloody Valentine의 Loveless(1991). 2년, 19곳의 스튜디오, 그리고 레이블을 망하게 했다는 소문까지. 한 장씩 넘기며 확인해 보세요.\n\n이 앨범을 처음 들었을 때 어땠나요?",
+  "hashtags": "#명반 #MyBloodyValentine #Loveless #슈게이즈 #KevinShields #1991 #CreationRecords #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "Loveless, 녹아내리는 기타",
+      "photo": "assets/mbv-dublin.jpg",
+      "credit": "Photo: Ceoil, CC BY-SA 4.0"
+    },
+    {
+      "type": "photo",
+      "title": "케빈 실즈의 집착",
+      "photo": "assets/shields-2009.jpg",
+      "credit": "Photo: Julio Enriquez, CC BY 2.0",
+      "text": "리더 케빈 실즈는 기타, 편곡, 녹음 대부분을 직접 이끌었습니다. 1989년부터 1991년까지 약 2년 동안 19곳의 스튜디오를 오가며 소리를 다듬었어요. 사진은 2009년의 실즈.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "글라이드 기타",
+      "photo": "assets/jazzmaster-trem.jpg",
+      "credit": "Photo: Edward Lund, CC BY 2.0",
+      "text": "실즈는 기타를 치는 동안 트레몰로 암을 계속 눌러 음정을 휘게 했습니다. 이른바 '글라이드 기타'. 소리가 흔들리며 녹아내리는 듯한 질감이 여기서 나옵니다. 사진은 재즈마스터의 트레몰로 장치."
+    },
+    {
+      "type": "photo",
+      "title": "특이한 조율과 샘플링",
+      "photo": "assets/jazzmaster-body.jpg",
+      "credit": "Photo: ligia diniz, CC BY 2.0",
+      "text": "변칙 조율과 겹겹이 쌓은 기타, 샘플러로 다시 다듬은 소리까지. 악기와 목소리가 한 덩어리로 섞여 무엇이 무엇인지 구분하기 어려운 소리가 만들어졌습니다."
+    },
+    {
+      "type": "photo",
+      "title": "25만 파운드 설",
+      "photo": "assets/mbv-2008.jpg",
+      "credit": "Photo: kweezy mcG, CC BY 2.0",
+      "text": "제작비가 약 25만 파운드였고 이 때문에 크리에이션 레코드가 파산 위기를 맞았다는 소문이 유명합니다. 실즈는 이를 과장된 이야기라며 실제 비용을 약 14만 파운드라고 밝혔습니다."
+    },
+    {
+      "type": "photo",
+      "title": "22년 뒤의 다음 앨범",
+      "photo": "assets/mbv-manchester.jpg",
+      "credit": "Photo: Martie Donohoe, CC BY-SA 3.0",
+      "text": "Loveless는 1991년 11월 발매됐습니다. 밴드의 다음 정규 앨범 『m b v』가 나온 건 22년 뒤인 2013년입니다. 사진은 2013년 맨체스터 공연."
+    },
+    {
+      "type": "table",
+      "title": "앨범 한눈에",
+      "rows": [
+        [
+          "발매",
+          "1991년 11월"
+        ],
+        [
+          "레이블",
+          "Creation"
+        ],
+        [
+          "녹음",
+          "약 2년 · 19곳"
+        ],
+        [
+          "장르",
+          "슈게이즈"
+        ]
+      ],
+      "text": "처음 듣는다면 첫 곡 'Only Shallow'부터. 헤드폰으로, 큰 볼륨으로 듣기를 권합니다."
+    },
+    {
+      "type": "closing",
+      "title": "처음 들었을 때 어땠나요?",
+      "text": "Loveless를 처음 들었을 때의 느낌이나 가장 좋아하는 곡을 댓글로 알려주세요."
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "series": "공지",
+  "number": 0,
+  "caption": "sillajuku가 문을 열었습니다.\n\n좋아하는 음반을 기록하고, 평가하고, 취향이 맞는 사람의 기록을 발견하는 곳. 지금 App Store와 웹(sillajuku.com)에서 만나보세요.\n\n처음 함께하는 500명 한정, 프로필에 표시되는 런칭 배지를 드립니다.",
+  "hashtags": "#sillajuku #실라주쿠 #음악기록 #음반평가 #앨범리뷰 #음악추천 #런칭배지",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "promo-logo",
+      "title": "",
+      "web": "sillajuku.com"
+    },
+    {
+      "type": "promo-badge",
+      "title": "처음 함께하는 500명 한정,\n런칭 배지를 드립니다."
+    }
+  ]
+}

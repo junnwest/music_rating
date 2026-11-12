@@ -1,0 +1,296 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "yerinbaek__ourloveisgreat",
+      "artist": "백예린",
+      "artist_en": "Yerin Baek",
+      "album": "Our love is great",
+      "year": "2019",
+      "art": "assets/yerinbaek__ourloveisgreat.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 95166
+      },
+      "matched": {
+        "lastfm": "10 entries, top: Yerin Baek — Our love is great"
+      },
+      "parts": {
+        "ratings": 80,
+        "reach": 99.46204538771045,
+        "recognition": 50
+      },
+      "grade": 75.41930680815656,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "esens__theanecdote",
+      "artist": "이센스",
+      "artist_en": "E SENS",
+      "album": "The Anecdote",
+      "year": "2015",
+      "art": "assets/esens__theanecdote.jpg",
+      "inputs": {
+        "rym": 3.77,
+        "aoty_user": 85,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 4736
+      },
+      "matched": {
+        "lastfm": "6 entries, top: E SENS — The Anecdote"
+      },
+      "parts": {
+        "ratings": 80.2,
+        "reach": 66.88529234287158,
+        "recognition": 50
+      },
+      "grade": 70.65279385143074,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "sistersbarbershop__가장보통의존재",
+      "artist": "언니네 이발관",
+      "artist_en": "Sister's Barbershop",
+      "album": "가장 보통의 존재",
+      "year": "2008",
+      "art": "assets/sistersbarbershop__가장보통의존재.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 3361
+      },
+      "matched": {
+        "lastfm": "11 entries, top: 언니네 이발관 — 가장 보통의 존재"
+      },
+      "parts": {
+        "ratings": 80,
+        "reach": 63.16171281173693,
+        "recognition": 50
+      },
+      "grade": 69.97425692176054,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "3rdlinebutterfly__dreamtalk",
+      "artist": "3호선 버터플라이",
+      "artist_en": "3rd Line Butterfly",
+      "album": "Dreamtalk",
+      "year": "2012",
+      "art": "assets/3rdlinebutterfly__dreamtalk.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 78,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 6237
+      },
+      "matched": {
+        "lastfm": "7 entries, top: 3rd Line Butterfly — dreamtalk"
+      },
+      "parts": {
+        "ratings": 78,
+        "reach": 69.8743936012783,
+        "recognition": 50
+      },
+      "grade": 69.78115904019174,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "250__뽕",
+      "artist": "250",
+      "artist_en": "250",
+      "album": "뽕",
+      "year": "2022",
+      "art": "assets/250__뽕.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 77,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 8113
+      },
+      "matched": {
+        "lastfm": "2 entries, top: 250 — PPONG"
+      },
+      "parts": {
+        "ratings": 77,
+        "reach": 72.72953689944632,
+        "recognition": 50
+      },
+      "grade": 69.60943053491694,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "garion__가리온2",
+      "artist": "가리온",
+      "artist_en": "Garion",
+      "album": "가리온 2",
+      "year": "2010",
+      "art": "assets/garion__가리온2.jpg",
+      "inputs": {
+        "rym": 3.48,
+        "aoty_user": 82,
+        "aoty_used": true,
+        "award_wins": 3,
+        "lastfm_listeners": 94
+      },
+      "matched": {
+        "lastfm": "4 entries, top: 가리온 — 가리온 2"
+      },
+      "parts": {
+        "ratings": 75.8,
+        "reach": 24.328196339992463,
+        "recognition": 75
+      },
+      "grade": 67.87922945099886,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "beenzino__nowitzki",
+      "artist": "빈지노",
+      "artist_en": "Beenzino",
+      "album": "NOWITZKI",
+      "year": "2023",
+      "art": "assets/beenzino__nowitzki.jpg",
+      "inputs": {
+        "rym": 3.52,
+        "aoty_user": 74,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 14847
+      },
+      "matched": {
+        "lastfm": "11 entries, top: Beenzino — Nowitzki"
+      },
+      "parts": {
+        "ratings": 72.2,
+        "reach": 79.29096771327046,
+        "recognition": 50
+      },
+      "grade": 67.71364515699057,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "langlee__늑대가나타났다",
+      "artist": "이랑",
+      "artist_en": "Lang Lee",
+      "album": "늑대가 나타났다",
+      "year": "2021",
+      "art": "assets/langlee__늑대가나타났다.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 78,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 334
+      },
+      "matched": {
+        "lastfm": "2 entries, top: Lang Lee — 늑대가 나타났다"
+      },
+      "parts": {
+        "ratings": 78,
+        "reach": 38.093661670289116,
+        "recognition": 50
+      },
+      "grade": 65.01404925054337,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "jangpilsoon__soonyeight소길花",
+      "artist": "장필순",
+      "artist_en": "Jang Pil Soon",
+      "album": "soony eight : 소길花",
+      "year": "2018",
+      "art": "assets/jangpilsoon__soonyeight소길花.jpg",
+      "inputs": {
+        "rym": 3.52,
+        "aoty_user": 77,
+        "aoty_used": false,
+        "award_wins": 2,
+        "lastfm_listeners": 88
+      },
+      "matched": {
+        "lastfm": "4 entries, top: 장필순 — Soony Eight : 소길花"
+      },
+      "parts": {
+        "ratings": 70.4,
+        "reach": 23.612066803754217,
+        "recognition": 50
+      },
+      "grade": 58.281810020563135,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "chudahyechagis__소수민족",
+      "artist": "추다혜차지스",
+      "artist_en": "Chudahye Chagis",
+      "album": "소수민족",
+      "year": "2025",
+      "art": "assets/chudahyechagis__소수민족.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 70,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 174
+      },
+      "matched": {
+        "lastfm": "2 entries, top: CHUDAHYE CHAGIS — 소수민족"
+      },
+      "parts": {
+        "ratings": 70,
+        "reach": 31.013731207064986,
+        "recognition": 25
+      },
+      "grade": 52.90205968105975,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kihathefaces__장기하와얼굴들",
+      "artist": "장기하와 얼굴들",
+      "artist_en": "Kiha & The Faces",
+      "album": "장기하와 얼굴들",
+      "year": "2011",
+      "art": "assets/kihathefaces__장기하와얼굴들.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 75,
+        "aoty_used": false,
+        "award_wins": 2,
+        "lastfm_listeners": 1878
+      },
+      "matched": {
+        "lastfm": "1 entries, top: 장기하와 얼굴들 — 장기하와 얼굴들"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 56.842389698252305,
+        "recognition": 50
+      },
+      "grade": 52.565896136844614,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

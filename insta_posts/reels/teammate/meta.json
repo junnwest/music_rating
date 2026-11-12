@@ -1,0 +1,237 @@
+{
+ "08-rating-spread-arcticam": {
+  "album": "AM",
+  "artist": "악틱 몽키즈",
+  "year": "2013"
+ },
+ "10-rating-spread-szasos": {
+  "album": "SOS",
+  "artist": "SZA",
+  "year": "2022"
+ },
+ "11-rating-spread-tylerigor": {
+  "album": "IGOR",
+  "artist": "타일러 더 크리에이터",
+  "year": "2019"
+ },
+ "12-rating-spread-badbunnyverano": {
+  "album": "Un Verano Sin Ti",
+  "artist": "배드 버니",
+  "year": "2022"
+ },
+ "13-rating-spread-fionafetch": {
+  "album": "Fetch the Bolt Cutters",
+  "artist": "피오나 애플",
+  "year": "2020"
+ },
+ "15-rating-spread-wavetoearth": {
+  "album": "0.1 flaws and all.",
+  "artist": "웨이브 투 어스",
+  "year": "2023"
+ },
+ "16-rating-spread-baekyerin": {
+  "album": "Every letter I sent you.",
+  "artist": "백예린",
+  "year": "2019"
+ },
+ "17-rating-spread-kidmillibeige": {
+  "album": "BEIGE",
+  "artist": "키드밀리",
+  "year": "2023"
+ },
+ "18-rating-spread-silicagel": {
+  "album": "Machine Boy",
+  "artist": "실리카겔",
+  "year": "2023"
+ },
+ "27-rating-spread-frankocean-blonde": {
+  "album": "Blonde",
+  "artist": "프랭크오션",
+  "year": "2016"
+ },
+ "28-rating-spread-lanadelrey-nfr": {
+  "album": "Norman Fucking Rockwell!",
+  "artist": "라나델레이",
+  "year": "2019"
+ },
+ "29-rating-spread-cigarettesaftersex": {
+  "album": "Cigarettes After Sex",
+  "artist": "시가렛 애프터 섹스",
+  "year": "2017"
+ },
+ "30-rating-spread-charlixcx-brat": {
+  "album": "BRAT",
+  "artist": "찰리 XCX",
+  "year": "2024"
+ },
+ "31-rating-spread-frankocean-channelorange": {
+  "album": "channel ORANGE",
+  "artist": "프랭크 오션",
+  "year": "2012"
+ },
+ "32-rating-spread-macmiller-kids": {
+  "album": "K.I.D.S.",
+  "artist": "맥 밀러",
+  "year": "2010"
+ },
+ "33-rating-spread-playboicarti-wlr": {
+  "album": "Whole Lotta Red",
+  "artist": "플레이보이 카티",
+  "year": "2020"
+ },
+ "34-rating-spread-stevelacy-apolloxxi": {
+  "album": "Apollo XXI",
+  "artist": "스티브 레이시",
+  "year": "2019"
+ },
+ "35-rating-spread-daftpunk-discovery": {
+  "album": "Discovery",
+  "artist": "다프트 펑크",
+  "year": "2001"
+ },
+ "36-rating-spread-yujaeha-love": {
+  "album": "사랑하기 때문에",
+  "artist": "유재하",
+  "year": "1987"
+ },
+ "37-rating-spread-jazzyfact-lifeslike": {
+  "album": "Lifes Like",
+  "artist": "재지팩트",
+  "year": "2010"
+ },
+ "38-rating-spread-250-ppong": {
+  "album": "뽕",
+  "artist": "250(이오공)",
+  "year": "2022"
+ },
+ "39-rating-spread-unnine-ordinary": {
+  "album": "가장 보통의 존재",
+  "artist": "언니네 이발관",
+  "year": "2008"
+ },
+ "41-rating-spread-cjamm-kung": {
+  "album": "킁",
+  "artist": "씨잼",
+  "year": "2019"
+ },
+ "42-rating-spread-beenzino-nowitzki": {
+  "album": "NOWITZKI",
+  "artist": "빈지노",
+  "year": "2023"
+ },
+ "43-rating-spread-blackskirts-201": {
+  "album": "201",
+  "artist": "검정치마",
+  "year": "2008"
+ },
+ "44-rating-spread-esens-anecdote": {
+  "album": "The Anecdote",
+  "artist": "이센스",
+  "year": "2015"
+ },
+ "45-rating-spread-leemoonsae-4": {
+  "album": "이문세 4집",
+  "artist": "이문세",
+  "year": "1987"
+ },
+ "46-rating-spread-beatles-abbeyroad": {
+  "album": "Abbey Road",
+  "artist": "비틀즈",
+  "year": "1969"
+ },
+ "47-rating-spread-michaeljackson-thriller": {
+  "album": "Thriller",
+  "artist": "마이클 잭슨",
+  "year": "1982"
+ },
+ "48-rating-spread-radiohead-okcomputer": {
+  "album": "OK Computer",
+  "artist": "라디오헤드",
+  "year": "1997"
+ },
+ "49-rating-spread-nirvana-nevermind": {
+  "album": "Nevermind",
+  "artist": "너바나",
+  "year": "1991"
+ },
+ "50-rating-spread-milesdavis-kindofblue": {
+  "album": "Kind of Blue",
+  "artist": "마일스 데이비스",
+  "year": "1959"
+ },
+ "51-rating-spread-kanyewest-collegedropout": {
+  "album": "The College Dropout",
+  "artist": "칸예 웨스트",
+  "year": "2004"
+ },
+ "52-rating-spread-kanyewest-lateregistration": {
+  "album": "Late Registration",
+  "artist": "칸예 웨스트",
+  "year": "2005"
+ },
+ "53-rating-spread-kanyewest-graduation": {
+  "album": "Graduation",
+  "artist": "칸예 웨스트",
+  "year": "2007"
+ },
+ "54-rating-spread-kanyewest-808s": {
+  "album": "808s & Heartbreak",
+  "artist": "칸예 웨스트",
+  "year": "2008"
+ },
+ "55-rating-spread-kanyewest-mbdtf": {
+  "album": "My Beautiful Dark Twisted Fantasy",
+  "artist": "칸예 웨스트",
+  "year": "2010"
+ },
+ "56-rating-spread-kanyewest-yeezus": {
+  "album": "Yeezus",
+  "artist": "칸예 웨스트",
+  "year": "2013"
+ },
+ "57-rating-spread-kanyewest-tlop": {
+  "album": "The Life of Pablo",
+  "artist": "칸예 웨스트",
+  "year": "2016"
+ },
+ "58-rating-spread-kanyewest-ye": {
+  "album": "ye",
+  "artist": "칸예 웨스트",
+  "year": "2018"
+ },
+ "59-rating-spread-kanyewest-jik": {
+  "album": "JESUS IS KING",
+  "artist": "칸예 웨스트",
+  "year": "2019"
+ },
+ "60-rating-spread-kanyewest-donda": {
+  "album": "Donda",
+  "artist": "칸예 웨스트",
+  "year": "2021"
+ },
+ "61-rating-spread-outkast-stankonia": {
+  "album": "Stankonia",
+  "artist": "아웃캐스트",
+  "year": "2000"
+ },
+ "62-rating-spread-kendricklamar-tpab": {
+  "album": "To Pimp a Butterfly",
+  "artist": "켄드릭 라마",
+  "year": "2015"
+ },
+ "63-rating-spread-kendricklamar-gkmc": {
+  "album": "good kid, m.A.A.d city",
+  "artist": "켄드릭 라마",
+  "year": "2012"
+ },
+ "64-rating-spread-kendricklamar-damn": {
+  "album": "DAMN.",
+  "artist": "켄드릭 라마",
+  "year": "2017"
+ },
+ "65-rating-spread-tiffanyday-halo": {
+  "album": "HALO",
+  "artist": "티파니 데이",
+  "year": "2026"
+ }
+}

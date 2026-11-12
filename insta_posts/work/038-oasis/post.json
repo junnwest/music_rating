@@ -1,0 +1,70 @@
+{
+  "series": "명반 한 장",
+  "number": 38,
+  "captionInImage": true,
+  "caption": "2009년 형제의 싸움으로 멈춘 밴드가, 2025년 다시 무대에 섰습니다. 고양종합운동장에도요.\n\n오아시스. 데뷔 앨범부터 넵워스의 25만 명, 결별과 재결합까지 한 장씩 넘기며 확인해 보세요.\n\n오아시스 노래 중 가장 좋아하는 곡은 무엇인가요? 고양 공연에 다녀왔다면 그날 이야기도 들려주세요.",
+  "hashtags": "#오아시스 #Oasis #Wonderwall #MorningGlory #리암갤러거 #노엘갤러거 #재결합 #브릿팝",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "16년 만에 돌아온\n오아시스",
+      "photo": "assets/oasis-2025.jpg",
+      "credit": "Photo: Raph_PH, CC BY 4.0",
+      "focus": "55% 45%"
+    },
+    {
+      "type": "photo",
+      "title": "형제가 만든 밴드",
+      "art": "assets/art-definitely-maybe.jpg",
+      "credit": "Album cover: Definitely Maybe (Creation, 1994)",
+      "text": "오아시스는 영국 맨체스터에서 리엄과 노엘 갤러거 형제를 중심으로 만들어진 밴드입니다. 1994년 데뷔 앨범 Definitely Maybe로 영국 록의 한가운데에 섰습니다."
+    },
+    {
+      "type": "photo",
+      "title": "Wonderwall의 앨범",
+      "art": "assets/art-morning-glory.jpg",
+      "credit": "Album cover: (What's the Story) Morning Glory? (Creation, 1995)",
+      "text": "1995년 10월 2일, 두 번째 앨범 (What's the Story) Morning Glory?. 'Wonderwall'과 'Don't Look Back in Anger'가 실렸고, 전 세계에서 2,200만 장 넘게 팔렸습니다."
+    },
+    {
+      "type": "photo",
+      "title": "이틀에 25만 명",
+      "photo": "assets/knebworth.jpg",
+      "credit": "Photo: Mewerlack, CC BY-SA 3.0",
+      "text": "1996년 8월, 영국 넵워스에서 이틀 동안 연 공연에 하루 약 12만 5천 명, 모두 약 25만 명이 모였습니다. 영국에서 이 앨범은 지금까지 가장 많이 팔린 스튜디오 앨범으로 남아 있습니다."
+    },
+    {
+      "type": "photo",
+      "title": "멈췄다가, 다시",
+      "photo": "assets/gallaghers.jpg",
+      "credit": "Photo: LucaFazPhoto, CC BY-SA 4.0",
+      "focus": "50% 25%",
+      "text": "2009년 8월, 공연 직전 형제가 크게 다툰 뒤 노엘이 밴드를 떠나며 오아시스는 멈췄습니다. 2024년 8월 27일 재결합이 발표됐고, 영국·아일랜드 공연 표 140만 장에 약 1,400만 명이 몰렸습니다."
+    },
+    {
+      "type": "photo",
+      "title": "고양의 5만 5천 명",
+      "photo": "assets/goyang.jpg",
+      "credit": "Public domain",
+      "text": "재결합 투어는 2025년 7월 영국 카디프에서 시작해 14개국 41회 공연으로 이어졌습니다. 10월 21일 고양종합운동장 공연에는 5만 5천 명이 모였습니다."
+    },
+    {
+      "type": "grid",
+      "title": "한 곡만 고른다면?",
+      "items": [
+        {
+          "art": "assets/art-wonderwall.jpg",
+          "label": "리암이 부른 노래",
+          "name": "Wonderwall",
+          "credit": "Album cover: Wonderwall (Creation, 1995)"
+        },
+        {
+          "art": "assets/art-dlbia.jpg",
+          "label": "노엘이 부른 노래",
+          "name": "Don't Look Back in Anger",
+          "credit": "Album cover: Don't Look Back in Anger (Creation, 1996)"
+        }
+      ]
+    }
+  ]
+}

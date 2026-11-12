@@ -1,0 +1,63 @@
+{
+  "series": "그날의 음악사",
+  "number": 7,
+  "caption": "녹음 기능도 없는 카세트 플레이어가 음악 듣는 방식을 바꿨습니다.\n\n1979년 7월 1일, 소니 워크맨 발매. 거실과 자동차에 있던 음악이 처음으로 한 사람의 귀 안으로 들어온 순간을 한 장씩 넘기며 확인해 보세요.\n\n워크맨, 마이마이, CDP, MP3, 아이팟. 여러분의 첫 휴대용 음악 기기는 무엇이었나요?",
+  "hashtags": "#그날의음악사 #워크맨 #Walkman #Sony #카세트테이프 #1979 #음악사 #레트로",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "음악을 혼자 듣기 시작한 날",
+      "photo": "assets/tps-l2.jpg",
+      "credit": "Photo: Anna Gerdén, CC BY-SA 3.0"
+    },
+    {
+      "type": "photo",
+      "title": "비행기 안의 오페라",
+      "photo": "assets/ibuka.jpg",
+      "credit": "Public domain",
+      "text": "소니 워크맨의 시작은 공동 창업자 이부카 마사루의 요청이었다고 알려져 있습니다. 긴 비행 중에 음악을 듣고 싶던 그를 위해 휴대용 녹음기를 재생 전용 스테레오 기기로 고쳤다는 이야기입니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "녹음 버튼을 뺐다",
+      "photo": "assets/teardown-1.jpg",
+      "credit": "Photo: Dave Jones, CC BY 2.0",
+      "text": "당시 녹음 기능이 없는 카세트 기기는 결함에 가까웠고, 내부에서도 팔리지 않을 거라는 우려가 컸습니다. 워크맨은 녹음을 포기하는 대신 작은 크기와 스테레오 음질에 집중했어요."
+    },
+    {
+      "type": "photo",
+      "title": "헤드폰 잭이 두 개",
+      "photo": "assets/tps-l2-portrait.jpg",
+      "credit": "Photo: Binarysequence, CC BY-SA 4.0",
+      "text": "첫 워크맨에는 헤드폰 잭이 두 개였습니다. 둘이 함께 듣도록 한 설계. 주황색 '핫라인' 버튼을 누르면 소리가 줄고 옆 사람과 대화할 수 있었습니다. 이 기능들은 곧 사라집니다."
+    },
+    {
+      "type": "photo",
+      "title": "3만 3천 엔",
+      "photo": "assets/teardown-2.jpg",
+      "credit": "Photo: Dave Jones, CC BY 2.0",
+      "text": "출시 가격은 3만 3,000엔. 미국에서는 Soundabout, 영국에서는 Stowaway라는 이름으로 나오기도 했지만, 결국 '워크맨' 하나로 통일되며 휴대용 플레이어를 가리키는 말이 됐습니다."
+    },
+    {
+      "type": "table",
+      "title": "워크맨 연표",
+      "rows": [
+        [
+          "1979",
+          "첫 워크맨 발매"
+        ],
+        [
+          "~2010",
+          "카세트 워크맨 약 2억 2천만 대"
+        ],
+        [
+          "2010",
+          "일본 내 카세트 모델 생산 종료"
+        ]
+      ],
+      "text": "워크맨이 만든 '혼자, 걸으며, 헤드폰으로 듣는' 습관은 CD 플레이어와 MP3를 거쳐 지금의 무선 이어폰으로 이어집니다."
+    }
+  ],
+  "captionInImage": true
+}

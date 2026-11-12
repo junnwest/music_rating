@@ -1,0 +1,72 @@
+{
+  "series": "그날의 음악사",
+  "number": 16,
+  "caption": "담뱃갑보다 작은 테이프가 음악을 주머니에 넣었습니다.\n\n1963년 필립스가 공개한 콤팩트 카세트. 특허를 무료로 푼 결정이 어떻게 세계 표준과 믹스테이프 문화를 만들었는지, 한 장씩 넘기며 확인해 보세요.\n\n기억에 남는 믹스테이프가 있나요?",
+  "hashtags": "#그날의음악사 #카세트테이프 #Philips #믹스테이프 #1963 #아날로그 #레트로 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "카세트테이프의 탄생",
+      "photo": "assets/philips-vendomatic.jpg",
+      "credit": "Photo: Joost J. Bakker IJmuiden, CC BY 2.0"
+    },
+    {
+      "type": "photo",
+      "title": "주머니에 들어가는 테이프",
+      "photo": "assets/ottens-2007.jpg",
+      "credit": "Photo: Jordi Huisman, CC BY-SA 4.0",
+      "text": "카세트를 만든 건 필립스의 엔지니어 루 오텐스와 그의 팀입니다. 그는 재킷 주머니에 들어갈 크기의 나무 블록을 깎는 것에서 설계를 시작했다고 전해집니다. 사진은 2007년의 오텐스.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "1963년 베를린",
+      "photo": "assets/c120.jpg",
+      "credit": "Photo: Joxemai, CC BY-SA 4.0",
+      "text": "1963년 8월 30일, 베를린 라디오 전시회에서 콤팩트 카세트가 처음 공개됐습니다. 처음에는 음악보다 녹음기, 받아쓰기 용도에 가까웠고 음질도 높지 않았습니다."
+    },
+    {
+      "type": "photo",
+      "title": "특허를 무료로",
+      "photo": "assets/jvc-cassette.jpg",
+      "credit": "Public domain",
+      "text": "필립스는 이 규격을 다른 제조사들이 로열티 없이 쓰도록 허락했습니다. 여러 회사가 같은 규격으로 테이프와 기기를 만들면서 카세트는 세계 표준이 됐어요. 사진은 한국에서 만든 JVC 카세트."
+    },
+    {
+      "type": "photo",
+      "title": "믹스테이프의 시대",
+      "photo": "assets/mixtape-notes.jpg",
+      "credit": "Photo: antony_mayfield, CC BY 2.0",
+      "text": "녹음이 쉬운 카세트 덕에 누구나 자기만의 선곡을 만들 수 있었습니다. 좋아하는 곡을 골라 담고 손으로 곡 목록을 적은 믹스테이프. 1979년 워크맨이 나오며 카세트는 더 멀리 퍼집니다."
+    },
+    {
+      "type": "table",
+      "title": "카세트 연표",
+      "rows": [
+        [
+          "1962",
+          "첫 시제품"
+        ],
+        [
+          "1963",
+          "베를린 라디오 전시회 공개"
+        ],
+        [
+          "1966~",
+          "다른 제조사에 무료 라이선스"
+        ],
+        [
+          "1979",
+          "소니 워크맨 발매"
+        ]
+      ],
+      "text": "루 오텐스는 2021년 94세로 세상을 떠났습니다. 그는 이후 CD 개발에도 참여했습니다."
+    },
+    {
+      "type": "closing",
+      "title": "기억나는 믹스테이프는?",
+      "text": "누군가에게 받았거나 직접 만든 믹스테이프가 있나요? 첫 곡이 무엇이었는지 댓글로 알려주세요."
+    }
+  ]
+}

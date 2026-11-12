@@ -1,0 +1,73 @@
+{
+  "series": "한 곡 한 순간",
+  "number": 20,
+  "caption": "20초 남짓한 드럼 연주가 힙합의 뼈대가 됐습니다.\n\nJames Brown의 'Funky Drummer'(1970). 가장 많이 샘플링된 드럼 브레이크로 꼽히는 이 연주와, 그 연주로 한 푼도 받지 못한 드러머의 이야기를 한 장씩 넘기며 확인해 보세요.\n\n이 드럼, 어디서 들어봤나요?",
+  "hashtags": "#한곡한순간 #FunkyDrummer #JamesBrown #ClydeStubblefield #샘플링 #드럼브레이크 #힙합 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "가장 많이 쓰인 드럼",
+      "photo": "assets/james-brown-1970.png",
+      "credit": "Public domain",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "1969년 신시내티",
+      "photo": "assets/king-records.jpg",
+      "credit": "Public domain",
+      "text": "'Funky Drummer'는 1969년 11월 20일 오하이오주 신시내티에서 녹음됐습니다. 제임스 브라운의 밴드가 즉흥으로 이어간 잼에 가까운 곡입니다. 사진은 신시내티의 옛 킹 레코드 건물."
+    },
+    {
+      "type": "photo",
+      "title": "클라이드 스터블필드",
+      "photo": "assets/stubblefield.jpg",
+      "credit": "Photo: Paul VanDerWerf, CC BY 2.0",
+      "text": "곡 중간, 브라운이 드러머에게 연주를 맡기는 대목이 나옵니다. 이때 클라이드 스터블필드가 친 여덟 마디 드럼이 바로 그 브레이크입니다. 사진은 2005년의 스터블필드.",
+      "focus": "50% 30%"
+    },
+    {
+      "type": "photo",
+      "title": "샘플러 속의 브레이크",
+      "photo": "assets/sp1200.jpg",
+      "credit": "Public domain",
+      "text": "1980년대 샘플러가 보급되자 힙합 프로듀서들은 이 브레이크를 잘라 반복했습니다. 퍼블릭 에너미의 'Fight the Power'가 대표적인 예. 이후 1,000곡 넘게 쓰였다는 집계도 있습니다. 사진은 E-mu SP-1200."
+    },
+    {
+      "type": "photo",
+      "title": "받지 못한 저작권료",
+      "photo": "assets/james-brown-tulane.jpg",
+      "credit": "Public domain",
+      "text": "브라운은 밴드 연주자들에게 세션 비용만 주고 작곡 크레딧은 대부분 자신에게 돌렸습니다. 스터블필드는 이 브레이크로 저작권료를 받지 못했고, 2017년 세상을 떠났습니다. 사진은 1970년의 브라운."
+    },
+    {
+      "type": "table",
+      "title": "한눈에 보기",
+      "rows": [
+        [
+          "녹음",
+          "1969.11.20 · 신시내티"
+        ],
+        [
+          "발매",
+          "1970년 싱글"
+        ],
+        [
+          "드럼",
+          "클라이드 스터블필드"
+        ],
+        [
+          "브레이크",
+          "여덟 마디"
+        ]
+      ],
+      "text": "원곡 싱글은 발매 당시 큰 히트곡이 아니었습니다. 이 곡이 널리 알려진 건 샘플링 이후입니다."
+    },
+    {
+      "type": "closing",
+      "title": "어디서 들어봤나요?",
+      "text": "'Funky Drummer'의 드럼을 처음 알아챈 곡이 있나요? 댓글로 알려주세요."
+    }
+  ]
+}

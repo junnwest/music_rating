@@ -1,0 +1,192 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "arcticmonkeys__whateverpeoplesayiamthatswhatimnot",
+      "artist": "악틱 몽키즈",
+      "artist_en": "Arctic Monkeys",
+      "album": "Whatever People Say I Am, That's What I'm Not",
+      "year": "2006",
+      "art": "assets/arcticmonkeys__whateverpeoplesayiamthatswhatimnot.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 85,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 3541289
+      },
+      "matched": {
+        "lastfm": "16 entries, top: Arctic Monkeys — Whatever People Say I Am, That's What I'm Not"
+      },
+      "parts": {
+        "ratings": 85,
+        "reach": 100,
+        "recognition": 50
+      },
+      "grade": 78.5,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "arcticmonkeys__favouriteworstnightmare",
+      "artist": "악틱 몽키즈",
+      "artist_en": "Arctic Monkeys",
+      "album": "Favourite Worst Nightmare",
+      "year": "2007",
+      "art": "assets/arcticmonkeys__favouriteworstnightmare.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 82,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 3618700
+      },
+      "matched": {
+        "lastfm": "11 entries, top: Arctic Monkeys — Favourite Worst Nightmare"
+      },
+      "parts": {
+        "ratings": 82,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 70.44999999999999,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "arcticmonkeys__am",
+      "artist": "악틱 몽키즈",
+      "artist_en": "Arctic Monkeys",
+      "album": "AM",
+      "year": "2013",
+      "art": "assets/arcticmonkeys__am.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 71,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 4189181
+      },
+      "matched": {
+        "lastfm": "2 entries, top: Arctic Monkeys — AM"
+      },
+      "parts": {
+        "ratings": 71,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 63.85,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "arcticmonkeys__humbug",
+      "artist": "악틱 몽키즈",
+      "artist_en": "Arctic Monkeys",
+      "album": "Humbug",
+      "year": "2009",
+      "art": "assets/arcticmonkeys__humbug.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 78,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1641890
+      },
+      "matched": {
+        "lastfm": "8 entries, top: Arctic Monkeys — Humbug"
+      },
+      "parts": {
+        "ratings": 78,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 61.8,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "arcticmonkeys__tranquilitybasehotelcasino",
+      "artist": "악틱 몽키즈",
+      "artist_en": "Arctic Monkeys",
+      "album": "Tranquility Base Hotel & Casino",
+      "year": "2018",
+      "art": "assets/arcticmonkeys__tranquilitybasehotelcasino.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 73,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 682854
+      },
+      "matched": {
+        "lastfm": "10 entries, top: Arctic Monkeys — Tranquility Base Hotel & Casino"
+      },
+      "parts": {
+        "ratings": 73,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 58.8,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "arcticmonkeys__suckitandsee",
+      "artist": "악틱 몽키즈",
+      "artist_en": "Arctic Monkeys",
+      "album": "Suck It and See",
+      "year": "2011",
+      "art": "assets/arcticmonkeys__suckitandsee.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 67,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1230498
+      },
+      "matched": {
+        "lastfm": "6 entries, top: Arctic Monkeys — Suck It and See"
+      },
+      "parts": {
+        "ratings": 67,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 55.199999999999996,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "arcticmonkeys__thecar",
+      "artist": "악틱 몽키즈",
+      "artist_en": "Arctic Monkeys",
+      "album": "The Car",
+      "year": "2022",
+      "art": "assets/arcticmonkeys__thecar.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 64,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 572265
+      },
+      "matched": {
+        "lastfm": "1 entries, top: Arctic Monkeys — The Car"
+      },
+      "parts": {
+        "ratings": 64,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 53.4,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

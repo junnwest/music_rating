@@ -1,0 +1,83 @@
+{
+  "series": "한 곡 한 순간",
+  "number": 25,
+  "caption": "쿵, 쿵쿵, 탁. 대중음악에서 가장 많이 따라 한 드럼 인트로 중 하나.\n\nThe Ronettes의 'Be My Baby'(1963). 필 스펙터의 '월 오브 사운드'와 브라이언 윌슨이 평생 동경한 이 곡을 한 장씩 넘기며 확인해 보세요.\n\n이 드럼, 어디서 들어봤나요?",
+  "hashtags": "#한곡한순간 #BeMyBaby #TheRonettes #로네츠 #PhilSpector #WallofSound #드럼인트로 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "Be My Baby의 네 박자",
+      "photo": "assets/ronettes.jpg",
+      "credit": "Public domain",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "월 오브 사운드",
+      "photo": "assets/spector-1965.jpg",
+      "credit": "Public domain",
+      "text": "프로듀서 필 스펙터는 여러 대의 기타와 피아노, 현악기를 한꺼번에 녹음해 거대한 소리의 벽을 만들었습니다. 이 방식을 '월 오브 사운드'라고 불러요. 사진은 1965년의 스펙터.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "쿵, 쿵쿵, 탁",
+      "photo": "assets/drums.jpg",
+      "credit": "Public domain",
+      "text": "1963년 7월 로스앤젤레스 골드 스타 스튜디오. 곡을 여는 드럼은 세션 드러머 할 블레인이 쳤습니다. 원래 계획과 다르게 친 박자를 그대로 살렸다는 이야기가 전해집니다."
+    },
+    {
+      "type": "photo",
+      "title": "로니 스펙터의 목소리",
+      "photo": "assets/ronnie-1971.jpg",
+      "credit": "Public domain",
+      "text": "리드 보컬은 로네츠의 로니 스펙터(당시 로니 베넷). 두꺼운 소리의 벽 위로 떠오르는 그의 목소리가 곡의 중심입니다. 곡은 미국 차트 2위까지 올랐습니다.",
+      "focus": "50% 30%"
+    },
+    {
+      "type": "photo",
+      "title": "브라이언 윌슨의 교과서",
+      "photo": "assets/brian-2012.jpg",
+      "credit": "Photo: Takahiro Kyono, CC BY 2.0",
+      "text": "비치 보이스의 브라이언 윌슨은 이 곡을 '가장 위대한 레코드'라고 부르며 수없이 반복해 들었다고 말했습니다. Pet Sounds의 녹음에도 같은 세션 연주자들이 참여합니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "반세기 넘게 복제된 비트",
+      "photo": "assets/ronettes-1966.jpg",
+      "credit": "Public domain",
+      "text": "이 드럼 패턴은 이후 수많은 곡에서 다시 쓰였습니다. 도입부만 들어도 알아채는 사람이 많을 만큼, 대중음악의 공용어가 된 네 박자입니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "table",
+      "title": "한눈에 보기",
+      "rows": [
+        [
+          "발매",
+          "1963년"
+        ],
+        [
+          "프로듀서",
+          "필 스펙터"
+        ],
+        [
+          "드럼",
+          "할 블레인"
+        ],
+        [
+          "미국 최고",
+          "2위"
+        ]
+      ],
+      "text": "월 오브 사운드는 좁은 스튜디오에 많은 연주자를 모아 소리를 뭉치게 하는 방식이었습니다. 모노 라디오에서 크게 들리도록 설계된 소리입니다."
+    },
+    {
+      "type": "closing",
+      "title": "이 비트, 어디서?",
+      "text": "'Be My Baby'의 드럼 인트로를 빌려 쓴 곡 중 떠오르는 곡이 있나요? 댓글로 알려주세요."
+    }
+  ]
+}

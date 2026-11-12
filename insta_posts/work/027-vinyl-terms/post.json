@@ -1,0 +1,50 @@
+{
+  "series": "용어사전",
+  "number": 27,
+  "caption": "게이트폴드, 테스트 프레싱, 화이트 라벨. 레코드숍과 중고 장터에서 자주 보이는 말들입니다.\n\n알고 나면 판을 고르는 눈이 달라지는 바이닐 용어를 한 장씩 넘기며 확인해 보세요.\n\n여러분이 모으는 판이나 가장 아끼는 한 장을 댓글로 알려주세요.",
+  "hashtags": "#음악용어 #바이닐 #LP #게이트폴드 #테스트프레싱 #화이트라벨 #오비 #레코드",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "바이닐 용어 모음",
+      "photo": "assets/record-store.jpg",
+      "credit": "Public domain"
+    },
+    {
+      "type": "photo",
+      "title": "게이트폴드",
+      "photo": "assets/gatefold.jpg",
+      "credit": "Public domain",
+      "text": "책처럼 양쪽으로 펼쳐지는 재킷. 두 장짜리 앨범이나 큰 아트워크를 담을 때 씁니다."
+    },
+    {
+      "type": "photo",
+      "title": "테스트 프레싱",
+      "photo": "assets/test-pressing.jpg",
+      "credit": "Public domain",
+      "text": "공장에서 본격 생산 전에 몇 장만 먼저 찍는 판입니다. 음질과 결함을 확인하는 용도라 라벨에 제목 대신 '테스트 프레싱'과 번호만 적혀 있기도 해요. 수량이 적어 수집가들이 찾습니다."
+    },
+    {
+      "type": "photo",
+      "title": "화이트 라벨",
+      "photo": "assets/white-label.jpg",
+      "credit": "Photo: Marcus Andrews, CC BY-SA 3.0",
+      "text": "가운데 라벨이 흰 종이로 된 판. 테스트 프레싱, 라디오·DJ용 홍보반, 정식 발매 전에 먼저 도는 판이 이런 모습입니다. 클럽 음악에서는 익명으로 돌리는 판을 뜻하기도 합니다."
+    },
+    {
+      "type": "photo",
+      "title": "오비(帯)",
+      "photo": "assets/jp-singles.jpg",
+      "credit": "Photo: 能無しさん, CC BY-SA 3.0",
+      "text": "일본반 재킷 한쪽에 두르는 좁은 종이 띠. 제목과 가격, 해설이 일본어로 적혀 있습니다. 사고 나서 버리는 경우가 많아 오비가 온전히 남은 판은 값이 더 나갑니다."
+    },
+    {
+      "type": "photo",
+      "title": "한 면에 20분 남짓",
+      "photo": "assets/grooves.jpg",
+      "credit": "Public domain",
+      "text": "LP 한 면에는 보통 20분 남짓을 담습니다. 더 길게 담으려면 소리골 사이를 좁혀야 해서 음량과 저음을 줄여야 해요. 그래서 긴 앨범은 두 장으로 나눠 찍습니다."
+    }
+  ]
+}

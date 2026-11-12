@@ -1,0 +1,78 @@
+{
+  "series": "요즘 음악",
+  "number": 12,
+  "captionInImage": true,
+  "caption": "B주류초대석의 김간지, 본업이 드러머라는 거 알고 있었나요?\n\n2006년 결성된 디스코 밴드 술탄 오브 더 디스코. 글래스톤베리 무대에 선 한국 밴드에서 6년의 공백, 그리고 김간지의 제안으로 시작된 2026년의 복귀까지 한 장씩 넘기며 확인해 보세요.\n\n김간지를 어디서 처음 봤나요? 술탄의 노래 중 가장 좋아하는 곡도 댓글로 알려주세요.",
+  "hashtags": "#술탄오브더디스코 #SultanoftheDisco #김간지 #B주류초대석 #머니그라피 #신나는음악잘못된인생 #디스코 #한국밴드",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "김간지의 밴드,\n술탄 오브 더 디스코",
+      "photo": "assets/sultan-2016.jpg",
+      "credit": "Photo: Kiha & The Faces, CC BY 3.0",
+      "focus": "50% 30%"
+    },
+    {
+      "type": "photo",
+      "title": "본업은 드러머",
+      "photo": "assets/ss-31.jpg",
+      "credit": "Photo: May S. Young, CC BY-SA 2.0",
+      "focus": "88% 60%",
+      "text": "유튜브 머니그라피의 'B주류초대석'으로 얼굴을 알린 김간지. 영상마다 100만 회 넘게 재생되는 이 프로그램의 호스트이기 전에, 밴드 술탄 오브 더 디스코의 드러머입니다."
+    },
+    {
+      "type": "photo",
+      "title": "디스코 황금기를 데뷔 앨범으로",
+      "art": "assets/art-golden-age.jpg",
+      "credit": "Album cover: The Golden Age (BGBG Record, 2013)",
+      "text": "2006년 결성된 밴드는 디스코 전성기의 소울을 한국어로 옮겼습니다. 2013년 첫 정규 앨범 《The Golden Age》. 터번과 선글라스, 번쩍이는 가운 차림의 무대가 밴드의 얼굴이 됐습니다."
+    },
+    {
+      "type": "photo",
+      "title": "글래스톤베리에 선 한국 밴드",
+      "photo": "assets/ss-55.jpg",
+      "credit": "Photo: May S. Young, CC BY-SA 2.0",
+      "focus": "50% 35%",
+      "text": "2014년, 잠비나이 등과 함께 한국 밴드로는 처음 영국 글래스톤베리 페스티벌 무대에 올랐습니다. 같은 해 일본 서머소닉에도 섰고, 2016년 두 페스티벌에 다시 초청됐습니다."
+    },
+    {
+      "type": "photo",
+      "title": "디스코를 내려놓은 2집",
+      "art": "assets/art-aliens.jpg",
+      "credit": "Album cover: Aliens (2018)",
+      "text": "2018년 2집 《Aliens》에서는 화려한 디스코 대신 차분한 R&B 쪽으로 방향을 틀었습니다. 2020년 싱글 「Waiting For Your Calling Back」 이후, 밴드의 신곡은 6년 동안 나오지 않았습니다."
+    },
+    {
+      "type": "photo",
+      "title": "김간지가 다시 부른 밴드",
+      "photo": "assets/ss-58.jpg",
+      "credit": "Photo: May S. Young, CC BY-SA 2.0",
+      "focus": "50% 30%",
+      "text": "2026년 5월, 김간지의 제안으로 B주류초대석 비밀파티 무대에 7년 만의 완전체가 섰습니다. 1,500석이 매진됐고, 8월 펜타포트를 거쳐 6년 만의 신곡 「신나는 음악, 잘못된 인생」이 나왔습니다."
+    },
+    {
+      "type": "grid",
+      "title": "술탄을 처음 듣는다면",
+      "items": [
+        {
+          "art": "assets/art-golden-age.jpg",
+          "label": "2013 · 1집",
+          "name": "The Golden Age",
+          "credit": "Album cover: The Golden Age (BGBG Record, 2013)"
+        },
+        {
+          "art": "assets/art-aliens.jpg",
+          "label": "2018 · 2집",
+          "name": "Aliens",
+          "credit": "Album cover: Aliens (2018)"
+        },
+        {
+          "art": "assets/art-waiting.jpg",
+          "label": "2020 · 싱글",
+          "name": "Waiting For Your Calling Back",
+          "credit": "Album cover: Waiting For Your Calling Back (Sultan of the Disco, 2020)"
+        }
+      ]
+    }
+  ]
+}

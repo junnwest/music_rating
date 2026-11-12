@@ -1,0 +1,54 @@
+{
+  "series": "요즘 음악",
+  "number": 24,
+  "captionInImage": true,
+  "caption": "영어 가사가 거의 없는 한국 힙합 곡이 2015년 미국 힙합 신을 흔들었습니다.\n\n코홀트의 키스 에이프가 새해 첫날 올린 '잊지마'. 조회수, 표절 논란, SXSW 무대, 미국 래퍼들의 리믹스까지 한 장씩 넘기며 확인해 보세요.\n\n'잊지마'를 처음 들었을 때 기억나나요?",
+  "hashtags": "#키스에이프 #KeithApe #잊지마 #ItGMa #코홀트 #TheCohort #한국힙합 #오카시안",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "키스 에이프,\n미국을 흔든 '잊지마'",
+      "art": "assets/art-it-g-ma.jpg",
+      "credit": "Album cover: 잊지마 (2015)"
+    },
+    {
+      "type": "photo",
+      "title": "새해 첫날의 뮤직비디오",
+      "photo": "assets/okasian.jpg",
+      "credit": "Photo: Cohortseoul, CC BY-SA 3.0",
+      "focus": "50% 40%",
+      "text": "2015년 1월 1일, 힙합 크루 코홀트의 키스 에이프가 '잊지마'를 공개했습니다. 크루 동료 오카시안과 루타, 제이올데이, 그리고 일본 래퍼 코(KOHH)가 함께한 곡입니다."
+    },
+    {
+      "type": "photo",
+      "title": "말은 몰라도 퍼졌다",
+      "photo": "assets/keith-ape.png",
+      "credit": "Photo: glenjamn3, CC BY 3.0",
+      "focus": "50% 30%",
+      "text": "가사는 거의 한국어와 일본어였지만 뮤직비디오는 해외에서 빠르게 퍼졌습니다. 반년 만에 조회수 900만 회를 넘겼고, 미국 빌보드의 K팝 칼럼은 그해의 곡 5위로 꼽았습니다."
+    },
+    {
+      "type": "photo",
+      "title": "SXSW에서 뉴욕까지",
+      "photo": "assets/crowdsurfer.jpg",
+      "credit": "Photo: Lucius Kwok, CC BY-SA 2.0",
+      "focus": "50% 40%",
+      "text": "키스 에이프는 2015년 미국 텍사스의 음악 축제 SXSW 힙합 쇼케이스에 섰습니다. 뉴욕타임스는 그의 뉴욕 공연을 '거침없는 난장'이라고 소개했습니다."
+    },
+    {
+      "type": "photo",
+      "title": "미국 래퍼들의 리믹스",
+      "art": "assets/art-it-g-ma-remix.jpg",
+      "credit": "Album cover: IT G MA (remix) (2015)",
+      "text": "2015년 7월, 에이셉 퍼그와 와카 플로카 플레임 등 미국 래퍼 네 명이 참여한 리믹스가 나왔습니다. 한국 크루의 곡에 미국 래퍼들이 올라탄 장면이었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "88rising의 시작",
+      "photo": "assets/niki-2023.jpg",
+      "credit": "Photo: 88rising, CC BY-SA 4.0",
+      "text": "'잊지마' 영상은 미국의 매니저 션 미야시로에게도 닿았습니다. 그는 키스 에이프의 매니지먼트를 맡았고, 그의 회사 88rising은 이후 리치 브라이언, 조지, 니키 같은 아시아 음악가들을 세계에 알렸습니다.",
+      "focus": "50% 30%"
+    }
+  ]
+}

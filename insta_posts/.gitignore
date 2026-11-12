@@ -1,0 +1,22 @@
+node_modules/
+__pycache__/
+*.pyc
+*.log
+
+# Media: renders, photos, covers, audio. All re-renderable or re-fetchable, and Apple
+# preview clips / licensed photos shouldn't be redistributed. Code + data only.
+*.mp4
+*.mov
+*.m4a
+*.mp3
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+out/
+kenreelout/
+
+# Generated render scratch
+.reel.html

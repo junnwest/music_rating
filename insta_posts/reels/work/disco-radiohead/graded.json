@@ -1,0 +1,244 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "radiohead__inrainbows",
+      "artist": "라디오헤드",
+      "artist_en": "Radiohead",
+      "album": "In Rainbows",
+      "year": "2007",
+      "art": "assets/radiohead__inrainbows.jpg",
+      "inputs": {
+        "rym": 4.33,
+        "aoty_user": 93,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 4042640
+      },
+      "matched": {
+        "lastfm": "10 entries, top: Radiohead — In Rainbows"
+      },
+      "parts": {
+        "ratings": 89.8,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 75.13,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "radiohead__okcomputer",
+      "artist": "라디오헤드",
+      "artist_en": "Radiohead",
+      "album": "OK Computer",
+      "year": "1997",
+      "art": "assets/radiohead__okcomputer.jpg",
+      "inputs": {
+        "rym": 4.3,
+        "aoty_user": 93,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 4956858
+      },
+      "matched": {
+        "lastfm": "12 entries, top: Radiohead — OK Computer"
+      },
+      "parts": {
+        "ratings": 89.5,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 74.94999999999999,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "radiohead__kida",
+      "artist": "라디오헤드",
+      "artist_en": "Radiohead",
+      "album": "Kid A",
+      "year": "2000",
+      "art": "assets/radiohead__kida.jpg",
+      "inputs": {
+        "rym": 4.24,
+        "aoty_user": 90,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 3111287
+      },
+      "matched": {
+        "lastfm": "7 entries, top: Radiohead — Kid A"
+      },
+      "parts": {
+        "ratings": 87.4,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 73.69,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "radiohead__amoonshapedpool",
+      "artist": "라디오헤드",
+      "artist_en": "Radiohead",
+      "album": "A Moon Shaped Pool",
+      "year": "2016",
+      "art": "assets/radiohead__amoonshapedpool.jpg",
+      "inputs": {
+        "rym": 3.96,
+        "aoty_user": 88,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1209496
+      },
+      "matched": {
+        "lastfm": "12 entries, top: Radiohead — A Moon Shaped Pool"
+      },
+      "parts": {
+        "ratings": 83.6,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 65.16,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "radiohead__thebends",
+      "artist": "라디오헤드",
+      "artist_en": "Radiohead",
+      "album": "The Bends",
+      "year": "1995",
+      "art": "assets/radiohead__thebends.jpg",
+      "inputs": {
+        "rym": 3.89,
+        "aoty_user": 86,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 3787537
+      },
+      "matched": {
+        "lastfm": "5 entries, top: Radiohead — The Bends"
+      },
+      "parts": {
+        "ratings": 81.9,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 64.14,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "radiohead__hailtothethief",
+      "artist": "라디오헤드",
+      "artist_en": "Radiohead",
+      "album": "Hail to the Thief",
+      "year": "2003",
+      "art": "assets/radiohead__hailtothethief.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 81,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1893565
+      },
+      "matched": {
+        "lastfm": "9 entries, top: Radiohead — Hail to the Thief"
+      },
+      "parts": {
+        "ratings": 81,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 63.6,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "radiohead__amnesiac",
+      "artist": "라디오헤드",
+      "artist_en": "Radiohead",
+      "album": "Amnesiac",
+      "year": "2001",
+      "art": "assets/radiohead__amnesiac.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1949989
+      },
+      "matched": {
+        "lastfm": "9 entries, top: Radiohead — Amnesiac"
+      },
+      "parts": {
+        "ratings": 80,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 63,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "radiohead__thekingoflimbs",
+      "artist": "라디오헤드",
+      "artist_en": "Radiohead",
+      "album": "The King of Limbs",
+      "year": "2011",
+      "art": "assets/radiohead__thekingoflimbs.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 70,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1166357
+      },
+      "matched": {
+        "lastfm": "10 entries, top: Radiohead — The King of Limbs"
+      },
+      "parts": {
+        "ratings": 70,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 57,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "radiohead__pablohoney",
+      "artist": "라디오헤드",
+      "artist_en": "Radiohead",
+      "album": "Pablo Honey",
+      "year": "1993",
+      "art": "assets/radiohead__pablohoney.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 61,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 4156273
+      },
+      "matched": {
+        "lastfm": "9 entries, top: Radiohead — Pablo Honey"
+      },
+      "parts": {
+        "ratings": 61,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 51.6,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "series": "명반 한 장",
+  "number": 4,
+  "caption": "남의 노래를 부르던 스물두 살 포크 가수가, 자기 노래를 쓰는 작가가 된 앨범.\n\nBob Dylan의 두 번째 앨범 The Freewheelin' Bob Dylan(1963). 커버 사진부터 발매 직전 사라진 네 곡까지, 한 장씩 넘기며 확인해 보세요.\n\n처음 들은 딜런의 노래는 무엇인가요?",
+  "hashtags": "#명반 #BobDylan #밥딜런 #Freewheelin #포크 #1963 #BlowininTheWind #음악사",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "작곡가 딜런의 탄생",
+      "photo": "assets/cover.jpg",
+      "credit": "Public domain"
+    },
+    {
+      "type": "photo",
+      "title": "13곡 중 11곡이 자작곡",
+      "photo": "assets/dylan-nov-1963.jpg",
+      "credit": "Public domain",
+      "text": "1962년 데뷔작에 실린 자작곡은 두 곡. 1년 뒤 나온 이 앨범은 13곡 중 11곡이 딜런의 곡입니다. 'Blowin' in the Wind', 'Masters of War'가 모두 여기 실렸어요.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "기타와 하모니카, 목소리",
+      "photo": "assets/dylan-1963.jpg",
+      "credit": "Public domain",
+      "text": "대부분의 곡은 기타와 하모니카, 목소리만으로 녹음됐습니다. 편곡 없이 가사와 멜로디로 곡을 끌고 가는 방식. 사진은 1963년 컬럼비아 홍보 사진(Don Hunstein 촬영).",
+      "focus": "50% 30%"
+    },
+    {
+      "type": "photo",
+      "title": "존스 스트리트의 두 사람",
+      "photo": "assets/jones-street.jpg",
+      "credit": "Public domain",
+      "text": "커버 사진은 1963년 2월, 뉴욕 그리니치빌리지 존스 스트리트에서 찍었습니다. 딜런의 팔에 기대 걷는 사람은 당시 연인 수지 로톨로. 사진은 지금의 존스 스트리트."
+    },
+    {
+      "type": "photo",
+      "title": "발매 직전 사라진 네 곡",
+      "photo": "assets/ed-sullivan.jpg",
+      "credit": "Public domain",
+      "text": "발매 직전 네 곡이 새 녹음으로 교체됐습니다. 그중 한 곡은 CBS 에드 설리번 쇼에서 부르지 못하게 된 곡이라, 그게 이유였다는 추측이 있어요. 사진은 에드 설리번.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "노래가 된 시대",
+      "photo": "assets/baez-dylan.jpg",
+      "credit": "Public domain",
+      "text": "'Blowin' in the Wind'는 같은 해 피터, 폴 앤 메리의 커버로 히트하며 민권운동 시대의 노래가 됐습니다. 사진은 1963년 8월 워싱턴 행진의 조안 바에즈와 딜런."
+    },
+    {
+      "type": "table",
+      "title": "앨범 한눈에",
+      "rows": [
+        [
+          "발매",
+          "1963년 5월 27일"
+        ],
+        [
+          "레이블",
+          "Columbia"
+        ],
+        [
+          "자작곡",
+          "13곡 중 11곡"
+        ],
+        [
+          "커버",
+          "Don Hunstein"
+        ]
+      ],
+      "text": "처음 듣는다면 'Don't Think Twice, It's All Right'부터. 핑거피킹 기타와 체념 섞인 가사가 앨범의 온도를 잘 보여줍니다."
+    },
+    {
+      "type": "closing",
+      "title": "처음 들은 딜런의 노래는?",
+      "text": "여러분이 처음 들은 딜런의 노래는 무엇인가요? 댓글로 알려주세요."
+    }
+  ],
+  "captionInImage": true
+}

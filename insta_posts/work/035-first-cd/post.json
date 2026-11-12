@@ -1,0 +1,58 @@
+{
+  "series": "그날의 음악사",
+  "number": 35,
+  "caption": "세계 최초로 발매된 CD는 빌리 조엘의 앨범이었습니다.\n\n1982년 10월 1일, 일본에서 CD 플레이어와 함께 50여 장의 CD가 동시에 나왔습니다. 그중 '1번'이 된 한 장의 이야기를 넘기며 확인해 보세요.\n\n여러분이 처음 산 CD는 무엇인가요?",
+  "hashtags": "#그날의음악사 #CD #BillyJoel #빌리조엘 #52ndStreet #1982 #Sony #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "첫 번째 CD",
+      "photo": "assets/cdp-101.jpg",
+      "credit": "Photo: Alessandro Nassiri, CC BY-SA 4.0"
+    },
+    {
+      "type": "photo",
+      "title": "카탈로그 1번",
+      "credit": "Album cover: 52nd Street (Columbia, 1978)",
+      "text": "1982년 10월 1일 일본에서 발매된 CD 가운데 카탈로그 번호 1번은 미국 가수 빌리 조엘의 52nd Street였습니다. 그래서 '최초의 상업 CD'로 불립니다.",
+      "focus": "50% 25%",
+      "art": "assets/art-52nd-street.jpg"
+    },
+    {
+      "type": "photo",
+      "title": "1978년의 앨범",
+      "photo": "assets/joel-band.jpg",
+      "credit": "Public domain",
+      "text": "52nd Street는 원래 1978년 LP로 나온 앨범입니다. 'Honesty'가 실렸고 그래미 올해의 앨범상을 받았습니다. 4년 뒤 새 매체의 첫 번째 타이틀이 됐어요."
+    },
+    {
+      "type": "photo",
+      "title": "같은 날의 플레이어",
+      "photo": "assets/inside-cdp101.jpg",
+      "credit": "Photo: Atreyu, CC BY 2.5",
+      "text": "같은 날 소니의 첫 CD 플레이어 CDP-101도 나왔습니다. 음반은 소니 계열 레이블에서 발매돼, 플레이어와 음반이 한 회사 안에서 함께 출발했습니다."
+    },
+    {
+      "type": "photo",
+      "title": "가장 먼저 찍은 CD는 따로",
+      "photo": "assets/cd-shop.jpg",
+      "credit": "Public domain",
+      "text": "공장에서 가장 먼저 대량으로 찍은 CD는 ABBA의 『The Visitors』였다는 이야기도 있습니다. 다만 매장에 먼저 도착한 건 일본의 『52nd Street』였어요."
+    },
+    {
+      "type": "photo",
+      "title": "50장과 함께",
+      "photo": "assets/rm-101.jpg",
+      "credit": "Photo: Atreyu, CC BY 2.5",
+      "text": "이날 일본에서는 약 50장의 CD가 함께 발매됐습니다. 빌리 조엘의 앨범이 '최초'로 기억되는 건 카탈로그 번호 1번 덕분입니다."
+    },
+    {
+      "type": "photo",
+      "title": "원래는 전 세계 동시 출시",
+      "photo": "assets/cdp-101-museum.jpg",
+      "credit": "Photo: Alessandro Nassiri, CC BY-SA 4.0",
+      "text": "CD 플레이어는 원래 1982년 10월 1일 전 세계에 함께 나올 예정이었습니다. 필립스의 플레이어가 제때 준비되지 않아 일본에서 먼저 나왔고, 다른 나라에는 이듬해 3월에 나왔어요. 첫 플레이어의 값은 16만 8천 엔이었습니다."
+    }
+  ]
+}

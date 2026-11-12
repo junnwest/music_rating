@@ -1,0 +1,70 @@
+{
+  "series": "명반 한 장",
+  "number": 22,
+  "captionInImage": true,
+  "caption": "오래된 컴퓨터 한 대, 휴대폰으로 녹음한 목소리. 그렇게 만든 앨범이 해외 음악 팬들 사이에서 2021년의 명반이 됐습니다.\n\n얼굴 없는 서울의 음악가 파란노을과 To See the Next Part of the Dream 이야기를 한 장씩 넘기며 확인해 보세요.\n\n방 안에서 혼자 만든 음악 중 좋아하는 앨범이 있나요?",
+  "hashtags": "#파란노을 #Parannoul #ToSeetheNextPartoftheDream #슈게이즈 #shoegaze #베드룸팝 #한국인디 #명반",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "방 안에서 만든 명반,\n파란노을",
+      "art": "assets/art-tstnpotd.jpg",
+      "credit": "Album cover: To See the Next Part of the Dream (2021)"
+    },
+    {
+      "type": "photo",
+      "title": "얼굴 없는 음악가",
+      "art": "assets/art-downfall.jpg",
+      "credit": "Album cover: Downfall of the Neon Youth (2021)",
+      "text": "파란노을은 얼굴도 이름도 밝히지 않은 서울의 음악가입니다. 2021년 2월 23일, 두 번째 앨범 To See the Next Part of the Dream을 해외 음원 장터 밴드캠프에 혼자 올렸습니다."
+    },
+    {
+      "type": "photo",
+      "title": "낡은 컴퓨터와 갤럭시 S5",
+      "photo": "assets/galaxy-s5.jpg",
+      "credit": "Photo: Maurizio Pesce, CC BY 2.0",
+      "focus": "50% 40%",
+      "text": "앨범은 그의 방에서 오래된 컴퓨터 한 대로 몇 년에 걸쳐 만들어졌습니다. 악기는 거의 모두 컴퓨터 속 가상 악기, 목소리는 휴대폰 갤럭시 S5로 녹음했습니다."
+    },
+    {
+      "type": "photo",
+      "title": "슈게이즈란",
+      "photo": "assets/pedalboard.jpg",
+      "credit": "Photo: ArtBrom, CC BY-SA 2.0",
+      "text": "기타 소리를 겹겹이 쌓아 안개처럼 만드는 록 장르. 연주자가 발밑의 이펙터만 내려다본다고 해서 '신발을 응시한다'는 뜻의 이름이 붙었습니다. 파란노을의 목소리도 그 소리 아래 낮게 깔립니다."
+    },
+    {
+      "type": "photo",
+      "title": "해외에서 먼저 알아봤다",
+      "art": "assets/art-tstnpotd.jpg",
+      "credit": "Album cover: To See the Next Part of the Dream (2021)",
+      "text": "앨범은 해외 음악 평점 사이트 레이트 유어 뮤직의 첫 화면에 오르며 퍼졌고, 미국 매체 피치포크는 10점 만점에 8.0점을 줬습니다. 이 앨범을 발견한 해외 팬이 레이블을 차려 실물 음반을 냈습니다."
+    },
+    {
+      "type": "photo",
+      "title": "방에서 무대로",
+      "photo": "assets/parannoul-pentaport-2024.png",
+      "credit": "Photo: 올해의수상자, CC BY 4.0",
+      "focus": "50% 40%",
+      "text": "방 안의 음악가는 2022년 9월 첫 공연을 열었고, 2024년에는 펜타포트 록 페스티벌 무대에 섰습니다. 무대 뒤 화면에는 이 앨범의 하늘색 커버가 떠 있었습니다."
+    },
+    {
+      "type": "grid",
+      "title": "파란노을의 다음 앨범",
+      "items": [
+        {
+          "art": "assets/art-after-the-magic.jpg",
+          "label": "2023 · 3집",
+          "name": "After the Magic",
+          "credit": "Album cover: After the Magic (Parannoul, 2023)"
+        },
+        {
+          "art": "assets/art-sky-hundred.jpg",
+          "label": "2024 · 4집",
+          "name": "Sky Hundred",
+          "credit": "Album cover: Sky Hundred (Parannoul, 2024)"
+        }
+      ]
+    }
+  ]
+}

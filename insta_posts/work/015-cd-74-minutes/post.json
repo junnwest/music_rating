@@ -1,0 +1,52 @@
+{
+  "series": "그날의 음악사",
+  "number": 15,
+  "caption": "CD 한 장의 재생 시간은 74분. 베토벤 교향곡 9번 때문이라는 이야기, 들어보셨나요?\n\n유명한 설과 그 설에 반박하는 개발자의 증언까지, 한 장씩 넘기며 확인해 보세요.\n\n여러분이 처음 산 CD는 무엇인가요?",
+  "hashtags": "#그날의음악사 #CD #콤팩트디스크 #베토벤 #74분 #Sony #Philips #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "CD는 왜 74분일까",
+      "photo": "assets/cds.jpg",
+      "credit": "Photo: Dietmar Rabich, CC BY-SA 4.0"
+    },
+    {
+      "type": "photo",
+      "title": "소니와 필립스",
+      "photo": "assets/cdp-101.jpg",
+      "credit": "Photo: Alessandro Nassiri, CC BY-SA 4.0",
+      "text": "CD는 소니와 필립스가 함께 개발했습니다. 두 회사는 1979년 협력을 시작했고, 1982년 첫 CD 플레이어와 음반이 일본에서 나왔습니다."
+    },
+    {
+      "type": "photo",
+      "title": "베토벤 9번 설",
+      "photo": "assets/karajan.jpg",
+      "credit": "Photo: Posse, Edith, CC BY-SA 3.0 de",
+      "text": "널리 알려진 이야기에 따르면, 베토벤 교향곡 9번을 한 장에 담으려고 74분이 정해졌습니다. 제안한 사람은 소니 사장 오가 노리오, 그의 아내, 혹은 지휘자 카라얀이라는 설이 엇갈립니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "가장 느린 9번",
+      "photo": "assets/cd-shop.jpg",
+      "credit": "Public domain",
+      "text": "기준이 됐다는 연주는 1951년 지휘자 푸르트벵글러의 녹음으로, 약 74분입니다. 숫자가 딱 맞아떨어져 이 설은 오래 인기를 끌었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "개발자의 반론",
+      "photo": "assets/immink.jpg",
+      "credit": "Public domain",
+      "text": "필립스의 엔지니어 키스 이밍크는 이 설에 반박해 왔습니다. 필립스는 원래 약 11.5cm 크기를 준비했고, 최종 크기와 재생 시간은 두 회사의 사업적 협상으로 정해졌다는 설명입니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "가운데 구멍은 동전 크기",
+      "photo": "assets/dubbeltje.jpg",
+      "credit": "Public domain",
+      "text": "CD 가운데 구멍의 지름은 15mm. 필립스의 한 엔지니어가 네덜란드 10센트 동전 크기에 맞췄다는 이야기가 전해집니다. 이 크기는 이후 DVD와 블루레이에도 그대로 이어졌어요."
+    }
+  ]
+}

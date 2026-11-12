@@ -1,0 +1,57 @@
+{
+  "series": "용어사전",
+  "number": 37,
+  "caption": "정식으로 발매된 적 없는 음반, 부틀렉.\n\n불법으로 만들어졌지만 음악사에 흔적을 남긴 판들이 있습니다. 1969년의 하얀 앨범 한 장에서 시작해 한 장씩 넘기며 확인해 보세요.\n\n우연히 찾아 들은 라이브 실황이나 미발표 녹음이 있나요?",
+  "hashtags": "#음악용어 #부틀렉 #bootleg #BobDylan #밥딜런 #바이닐 #음반수집 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "부틀렉,\n몰래 찍은 음반",
+      "photo": "assets/white-label.jpg",
+      "credit": "Photo: Marcus Andrews, CC BY-SA 3.0"
+    },
+    {
+      "type": "photo",
+      "title": "부틀렉이란",
+      "photo": "assets/elvis-bootleg.png",
+      "credit": "Public domain",
+      "text": "아티스트나 음반사의 허락 없이 만든 음반을 부틀렉이라고 부릅니다. 미발표 녹음, 공연 실황, 방송 녹음 등이 주 재료입니다. 해적판(정식 음반의 불법 복제)과는 구분해서 씁니다."
+    },
+    {
+      "type": "photo",
+      "title": "1969년의 하얀 앨범",
+      "photo": "assets/gww.png",
+      "credit": "Public domain",
+      "text": "1969년 여름, 밥 딜런의 미발표 녹음을 담은 Great White Wonder가 미국 로스앤젤레스에서 나왔습니다. 흰 재킷에 제목만 도장으로 찍은 판. 최초의 유명한 록 부틀렉으로 꼽힙니다."
+    },
+    {
+      "type": "photo",
+      "title": "지하실의 테이프",
+      "photo": "assets/tape-reel.jpg",
+      "credit": "Photo: R. Henrik Nilsson, CC BY 4.0",
+      "text": "수록곡은 딜런이 우드스톡 인근 집 지하실에서 밴드와 녹음한 곡들과 1961년의 초기 녹음이었습니다. 복사가 거듭될수록 음질은 떨어졌지만, 팬들은 이 판을 구하려고 애썼어요."
+    },
+    {
+      "type": "photo",
+      "title": "쏟아진 부틀렉",
+      "photo": "assets/stones-bootleg.jpg",
+      "credit": "Photo: RoBes81, CC BY-SA 4.0",
+      "text": "그 뒤 비틀스, 롤링 스톤스 등 여러 밴드의 부틀렉이 잇따라 나왔습니다. 공연장에 녹음기를 몰래 들고 가 녹음한 실황반도 많았습니다."
+    },
+    {
+      "type": "photo",
+      "title": "공식이 된 부틀렉",
+      "photo": "assets/dylan-1965-b.jpg",
+      "credit": "Public domain",
+      "text": "부틀렉의 인기는 결국 정식 발매로 이어졌습니다. 밥 딜런은 1991년부터 미발표곡을 모은 공식 음반 시리즈의 이름을 아예 The Bootleg Series로 붙였습니다."
+    },
+    {
+      "type": "photo",
+      "title": "도난당한 녹음",
+      "photo": "assets/minidisc.jpg",
+      "credit": "Photo: Kuha455405, CC BY-SA 3.0",
+      "text": "2019년, 라디오헤드의 OK Computer 시절 미공개 녹음이 도난당했습니다. 범인이 15만 달러를 요구하자, 밴드는 18시간 분량의 녹음을 18일 동안 18파운드에 직접 팔았어요. 수익은 기후 단체에 기부했습니다."
+    }
+  ]
+}

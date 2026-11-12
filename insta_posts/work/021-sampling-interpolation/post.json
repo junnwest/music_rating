@@ -1,0 +1,74 @@
+{
+  "series": "용어사전",
+  "number": 21,
+  "caption": "남의 곡을 빌리는 두 가지 방법, 샘플링과 인터폴레이션.\n\n원래 녹음을 잘라 쓰는지, 다시 연주하는지에 따라 필요한 허락도 달라집니다. 한 장씩 넘기며 확인해 보세요.\n\n샘플을 듣고 원곡을 찾아 들은 경험이 있나요?",
+  "hashtags": "#음악용어 #샘플링 #인터폴레이션 #저작권 #힙합 #프로듀서 #음악제작 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "샘플링과 인터폴레이션",
+      "photo": "assets/akai-samplers.jpg",
+      "credit": "Photo: John Athayde, CC BY 2.0"
+    },
+    {
+      "type": "photo",
+      "title": "샘플링은 잘라 쓰기",
+      "photo": "assets/sp1200.jpg",
+      "credit": "Public domain",
+      "text": "샘플링은 원곡의 실제 녹음을 잘라 새 곡에 넣는 방식입니다. 드럼 한 마디, 보컬 한 줄처럼 원래 소리를 그대로 가져와 반복하거나 변형합니다."
+    },
+    {
+      "type": "photo",
+      "title": "인터폴레이션은 다시 연주",
+      "photo": "assets/studio.jpg",
+      "credit": "Photo: H. Michael Miley, CC BY-SA 2.0",
+      "text": "인터폴레이션은 원곡의 멜로디나 가사를 새로 연주하고 다시 부르는 방식입니다. 원래 녹음 파일은 쓰지 않고, 곡의 일부만 새 녹음으로 옮겨옵니다."
+    },
+    {
+      "type": "photo",
+      "title": "두 개의 권리",
+      "photo": "assets/julie-andrews.jpg",
+      "credit": "Photo: Los Angeles Times, CC BY 4.0",
+      "text": "곡에는 두 가지 권리가 있습니다. 녹음 자체의 권리와 작곡의 권리. 샘플링은 보통 둘 다 허락을 받아야 하고, 인터폴레이션은 작곡 쪽 허락이 중심이 됩니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "'7 rings'의 경우",
+      "credit": "Album cover: 7 rings (Republic, 2019)",
+      "text": "아리아나 그란데의 '7 rings'(2019)는 뮤지컬 『사운드 오브 뮤직』의 'My Favorite Things' 멜로디를 다시 불렀습니다. 작곡 저작권료의 90%가 원곡 쪽에 돌아갔다고 보도됐어요.",
+      "art": "assets/art-7-rings.jpg"
+    },
+    {
+      "type": "grid",
+      "title": "원곡과 샘플, 같이 듣기",
+      "items": [
+        {
+          "art": "assets/art-discovery.jpg",
+          "label": "원곡 · 다프트 펑크 · 2001",
+          "name": "Harder, Better, Faster, Stronger",
+          "credit": "Album cover: Discovery (Daft Punk, 2001)"
+        },
+        {
+          "art": "assets/art-graduation.jpg",
+          "label": "샘플 · 칸예 웨스트 · 2007",
+          "name": "Stronger",
+          "credit": "Album cover: Graduation (Kanye West, 2007)"
+        },
+        {
+          "art": "assets/art-remapping.jpg",
+          "label": "원곡 · 에픽하이 · 2007",
+          "name": "러브 러브 러브",
+          "credit": "Album cover: Remapping the Human Soul (Epik High, 2007)"
+        },
+        {
+          "art": "assets/art-k-flip-plus.jpg",
+          "label": "샘플 · 식케이·릴 모쉬핏 · 2025",
+          "name": "LOV3",
+          "credit": "Album cover: K-FLIP+ (Sik-K & Lil Moshpit, 2025)"
+        }
+      ]
+    }
+  ]
+}

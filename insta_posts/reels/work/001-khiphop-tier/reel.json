@@ -1,0 +1,18 @@
+{
+  "type": "tier",
+  "title": "한국 힙합 명반 티어",
+  "sub": "반박 시 님 말이 맞음",
+  "end": "여러분의 S티어는?",
+  "tiers": ["S", "A", "B"],
+  "items": [
+    { "tier": "B", "art": "assets/remapping.jpg", "name": "Remapping the Human Soul", "artist": "에픽하이", "year": "2007", "credit": "Album cover: Remapping the Human Soul (Epik High, 2007)" },
+    { "tier": "B", "art": "assets/2manyhomes.jpg", "name": "2 Many Homes 4 1 Kid", "artist": "저스디스", "year": "2019", "credit": "Album cover: 2 Many Homes 4 1 Kid (JUSTHIS, 2019)" },
+    { "tier": "A", "art": "assets/taxi-driver.jpg", "name": "Taxi Driver", "artist": "다이나믹 듀오", "year": "2004", "credit": "Album cover: Taxi Driver (Dynamic Duo, 2004)" },
+    { "tier": "A", "art": "assets/2426.jpg", "name": "24:26", "artist": "빈지노", "year": "2012", "credit": "Album cover: 24:26 (Beenzino, 2012)" },
+    { "tier": "A", "art": "assets/yanghwa.jpg", "name": "양화", "artist": "딥플로우", "year": "2015", "credit": "Album cover: 양화 (Deepflow, 2015)" },
+    { "tier": "S", "art": "assets/garion.jpg", "name": "가리온", "artist": "가리온", "year": "2004", "credit": "Album cover: 가리온 (Garion, 2004)" },
+    { "tier": "S", "art": "assets/anecdote.jpg", "name": "The Anecdote", "artist": "이센스", "year": "2015", "credit": "Album cover: The Anecdote (E SENS, 2015)" }
+  ],
+  "caption": "한국 힙합 명반, 세 줄로 나눠봤습니다.\n\n가리온 1집부터 이센스 The Anecdote까지. 순서에 동의하지 않는다면 댓글로 여러분의 티어를 알려주세요.\n\n여러분의 S티어는?",
+  "hashtags": "#한국힙합 #명반 #티어리스트 #이센스 #가리온 #빈지노 #다이나믹듀오 #에픽하이 #저스디스 #딥플로우"
+}

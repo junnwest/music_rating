@@ -1,0 +1,166 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "hyukoh__23",
+      "artist": "혁오",
+      "artist_en": "HYUKOH",
+      "album": "23",
+      "year": "2017",
+      "art": "assets/hyukoh__23.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 77,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 116577
+      },
+      "matched": {
+        "lastfm": "2 entries, top: HYUKOH — 23"
+      },
+      "parts": {
+        "ratings": 77,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 67.44999999999999,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "hyukoh__aaa",
+      "artist": "혁오",
+      "artist_en": "HYUKOH",
+      "album": "AAA",
+      "year": "2024",
+      "art": "assets/hyukoh__aaa.jpg",
+      "inputs": {
+        "rym": 3.41,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 70421
+      },
+      "matched": {
+        "lastfm": "4 entries, top: HYUKOH — AAA"
+      },
+      "parts": {
+        "ratings": 74.1,
+        "reach": 96.192554697351,
+        "recognition": 0
+      },
+      "grade": 58.88888320460264,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "hyukoh__24howtofindtrueloveandhappiness",
+      "artist": "혁오",
+      "artist_en": "HYUKOH",
+      "album": "24 : How to find true love and happiness",
+      "year": "2018",
+      "art": "assets/hyukoh__24howtofindtrueloveandhappiness.jpg",
+      "inputs": {
+        "rym": 3.28,
+        "aoty_user": 75,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 83621
+      },
+      "matched": {
+        "lastfm": "12 entries, top: HYUKOH — 24 : How to find true love and happiness"
+      },
+      "parts": {
+        "ratings": 70.3,
+        "reach": 98.05788392127268,
+        "recognition": 0
+      },
+      "grade": 56.8886825881909,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "hyukoh__22",
+      "artist": "혁오",
+      "artist_en": "HYUKOH",
+      "album": "22",
+      "year": "2015",
+      "art": "assets/hyukoh__22.jpg",
+      "inputs": {
+        "rym": 3.27,
+        "aoty_user": 74,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 99706
+      },
+      "matched": {
+        "lastfm": "2 entries, top: HYUKOH — 22"
+      },
+      "parts": {
+        "ratings": 69.7,
+        "reach": 99.96803234005978,
+        "recognition": 0
+      },
+      "grade": 56.815204851008964,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "hyukoh__20",
+      "artist": "혁오",
+      "artist_en": "HYUKOH",
+      "album": "20",
+      "year": "2014",
+      "art": "assets/hyukoh__20.jpg",
+      "inputs": {
+        "rym": 3.1,
+        "aoty_user": 73,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 131468
+      },
+      "matched": {
+        "lastfm": "2 entries, top: HYUKOH — 20"
+      },
+      "parts": {
+        "ratings": 67.5,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 55.5,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "hyukoh__사랑으로throughlove",
+      "artist": "혁오",
+      "artist_en": "HYUKOH",
+      "album": "사랑으로 (through love)",
+      "year": "2020",
+      "art": "assets/hyukoh__사랑으로throughlove.jpg",
+      "inputs": {
+        "rym": 3.46,
+        "aoty_user": 73,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 8
+      },
+      "matched": {
+        "lastfm": "3 entries, top: HYUKOH — 사랑으로 (through love)"
+      },
+      "parts": {
+        "ratings": 71.1,
+        "reach": 0,
+        "recognition": 0
+      },
+      "grade": 42.66,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

@@ -1,0 +1,270 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "yerinbaek__ourloveisgreat",
+      "artist": "백예린",
+      "artist_en": "Yerin Baek",
+      "album": "Our love is great",
+      "year": "2019",
+      "art": "assets/yerinbaek__ourloveisgreat.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 2,
+        "lastfm_listeners": 95166
+      },
+      "matched": {
+        "lastfm": "10 entries, top: Yerin Baek — Our love is great"
+      },
+      "parts": {
+        "ratings": 80,
+        "reach": 99.46204538771045,
+        "recognition": 50
+      },
+      "grade": 75.41930680815656,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "yerinbaek__everyletterisentyou",
+      "artist": "백예린",
+      "artist_en": "Yerin Baek",
+      "album": "Every letter I sent you.",
+      "year": "2019",
+      "art": "assets/yerinbaek__everyletterisentyou.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 82,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 147561
+      },
+      "matched": {
+        "lastfm": "15 entries, top: Yerin Baek — Every letter I sent you."
+      },
+      "parts": {
+        "ratings": 82,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 70.44999999999999,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "iu__palette",
+      "artist": "아이유",
+      "artist_en": "IU",
+      "album": "Palette",
+      "year": "2017",
+      "art": "assets/iu__palette.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 509918
+      },
+      "matched": {
+        "lastfm": "7 entries, top: IU — Palette"
+      },
+      "parts": {
+        "ratings": 80,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 69.25,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "akmu__play",
+      "artist": "악동뮤지션",
+      "artist_en": "AKMU",
+      "album": "PLAY",
+      "year": "2014",
+      "art": "assets/akmu__play.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 75,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 125709
+      },
+      "matched": {
+        "lastfm": "1 entries, top: AKMU — Play"
+      },
+      "parts": {
+        "ratings": 75,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 66.25,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "iu__lilac",
+      "artist": "아이유",
+      "artist_en": "IU",
+      "album": "LILAC",
+      "year": "2021",
+      "art": "assets/iu__lilac.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 73,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 9287
+      },
+      "matched": {
+        "lastfm": "2 entries, top: Julius — Lilac"
+      },
+      "parts": {
+        "ratings": 73,
+        "reach": 74.19688613870082,
+        "recognition": 25
+      },
+      "grade": 61.179532920805116,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "leechanhyuk__eros",
+      "artist": "이찬혁",
+      "artist_en": "Lee Chan Hyuk",
+      "album": "EROS",
+      "year": "2025",
+      "art": "assets/leechanhyuk__eros.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 72,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 12518
+      },
+      "matched": {
+        "lastfm": "2 entries, top: LEE CHANHYUK — EROS"
+      },
+      "parts": {
+        "ratings": 72,
+        "reach": 77.43837368043194,
+        "recognition": 25
+      },
+      "grade": 61.065756052064785,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "neonbunny__seoulight",
+      "artist": "야광토끼",
+      "artist_en": "Neon Bunny",
+      "album": "Seoulight",
+      "year": "2011",
+      "art": "assets/neonbunny__seoulight.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 70,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 6465
+      },
+      "matched": {
+        "lastfm": "10 entries, top: Neon Bunny — Seoulight"
+      },
+      "parts": {
+        "ratings": 70,
+        "reach": 70.26421323041032,
+        "recognition": 25
+      },
+      "grade": 58.789631984561545,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "jangpilsoon__soonyeight소길花",
+      "artist": "장필순",
+      "artist_en": "Jang Pil Soon",
+      "album": "soony eight : 소길花",
+      "year": "2018",
+      "art": "assets/jangpilsoon__soonyeight소길花.jpg",
+      "inputs": {
+        "rym": 3.52,
+        "aoty_user": 77,
+        "aoty_used": false,
+        "award_wins": 2,
+        "lastfm_listeners": 88
+      },
+      "matched": {
+        "lastfm": "4 entries, top: 장필순 — Soony Eight : 소길花"
+      },
+      "parts": {
+        "ratings": 70.4,
+        "reach": 23.612066803754217,
+        "recognition": 50
+      },
+      "grade": 58.281810020563135,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "leechanhyuk__error",
+      "artist": "이찬혁",
+      "artist_en": "Lee Chan Hyuk",
+      "album": "ERROR",
+      "year": "2022",
+      "art": "assets/leechanhyuk__error.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 66,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 17316
+      },
+      "matched": {
+        "lastfm": "1 entries, top: LEE CHANHYUK — ERROR"
+      },
+      "parts": {
+        "ratings": 66,
+        "reach": 80.96118942852797,
+        "recognition": 25
+      },
+      "grade": 57.9941784142792,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "buskerbusker__버스커버스커",
+      "artist": "버스커 버스커",
+      "artist_en": "Busker Busker",
+      "album": "버스커 버스커",
+      "year": "2012",
+      "art": "assets/buskerbusker__버스커버스커.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 71,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 1290
+      },
+      "matched": {
+        "lastfm": "3 entries, top: 버스커 버스커 — 버스커 버스커"
+      },
+      "parts": {
+        "ratings": 71,
+        "reach": 52.76474275748122,
+        "recognition": 25
+      },
+      "grade": 56.76471141362219,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

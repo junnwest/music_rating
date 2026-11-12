@@ -1,0 +1,69 @@
+{
+  "series": "한국 음반",
+  "number": 19,
+  "caption": "건전가요로 뽑혔다가 금지곡이 된 노래가 있습니다.\n\n김민기가 쓴 '아침이슬'. 노래의 운명과 그 뒤로 이어진 김민기의 길을 한 장씩 넘기며 확인해 보세요.\n\n'아침이슬', '상록수', '가을편지'. 김민기의 노래 중 가장 먼저 떠오르는 곡은 무엇인가요?",
+  "hashtags": "#한국음반 #김민기 #아침이슬 #양희은 #학전 #지하철1호선 #한국포크 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "아침이슬의 김민기",
+      "credit": "Album cover: 김민기 (대도레코드, 1971)",
+      "art": "assets/art-kim-min-ki-1971.jpg"
+    },
+    {
+      "type": "photo",
+      "title": "미대생의 노래",
+      "photo": "assets/snu-old-site.jpg",
+      "credit": "Public domain",
+      "text": "'아침이슬'은 서울대 미대생이던 김민기가 1970년에 쓴 곡입니다. 그림을 그리던 반지하 방에서 만들었다고 전해집니다."
+    },
+    {
+      "type": "photo",
+      "title": "양희은의 목소리로",
+      "photo": "assets/yang-hee-eun.jpg",
+      "credit": "Photo: 본인, CC BY-SA 3.0",
+      "text": "노래를 처음 세상에 알린 건 1971년 양희은의 데뷔 음반입니다. 곡이 알려지자 김민기도 같은 해 자신의 1집에 이 노래를 실었습니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "photo",
+      "title": "건전가요에서 금지곡으로",
+      "photo": "assets/gwanghwamun-1971.jpg",
+      "credit": "Public domain",
+      "text": "'아침이슬'은 1971년 정부가 건전가요로 뽑기도 한 노래였습니다. 하지만 시위 현장에서 불리며 1975년 금지곡이 됐습니다. 김민기의 1집도 발매 이듬해 압수됐어요."
+    },
+    {
+      "type": "photo",
+      "title": "학전의 30여 년",
+      "photo": "assets/daehangno.jpg",
+      "credit": "Photo: Gipe0001, CC BY-SA 3.0",
+      "text": "김민기는 1991년 서울 대학로에 소극장 학전을 열었습니다. 수많은 가수와 배우가 이 무대를 거쳐 갔고, 학전은 2024년 3월 33년 만에 문을 닫았습니다."
+    },
+    {
+      "type": "photo",
+      "title": "지하철 1호선",
+      "photo": "assets/subway-map.jpg",
+      "credit": "Photo: skinnylawyer, California, USA, CC BY-SA 2.0",
+      "text": "1994년 그가 번안하고 연출한 뮤지컬 『지하철 1호선』이 학전에서 막을 올렸습니다. 이후 수천 회 공연되며 한국 소극장 뮤지컬의 대표작이 됐습니다."
+    },
+    {
+      "type": "grid",
+      "title": "아침이슬을 다시 듣는다면",
+      "items": [
+        {
+          "art": "assets/art-kim-min-ki-1971.jpg",
+          "label": "김민기 · 1971",
+          "name": "김민기 1집",
+          "credit": "Album cover: 김민기 (대도레코드, 1971)"
+        },
+        {
+          "art": "assets/art-yang-hee-eun-1.jpg",
+          "label": "양희은 · 1971",
+          "name": "양희은 1집",
+          "credit": "Album cover: 양희은 고운노래 모음 (1971)"
+        }
+      ]
+    }
+  ]
+}

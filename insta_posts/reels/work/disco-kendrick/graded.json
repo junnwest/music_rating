@@ -1,0 +1,166 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "kendricklamar__topimpabutterfly",
+      "artist": "켄드릭 라마",
+      "artist_en": "Kendrick Lamar",
+      "album": "To Pimp a Butterfly",
+      "year": "2015",
+      "art": "assets/kendricklamar__topimpabutterfly.jpg",
+      "inputs": {
+        "rym": 4.37,
+        "aoty_user": 95,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 2486222
+      },
+      "matched": {
+        "lastfm": "38 entries, top: Kendrick Lamar — To Pimp a Butterfly"
+      },
+      "parts": {
+        "ratings": 91.2,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 75.97,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kendricklamar__mrmoralethebigsteppers",
+      "artist": "켄드릭 라마",
+      "artist_en": "Kendrick Lamar",
+      "album": "Mr. Morale & the Big Steppers",
+      "year": "2022",
+      "art": "assets/kendricklamar__mrmoralethebigsteppers.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 87,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 2289078
+      },
+      "matched": {
+        "lastfm": "40 entries, top: Kendrick Lamar — Mr. Morale & the Big Steppers"
+      },
+      "parts": {
+        "ratings": 87,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 73.44999999999999,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kendricklamar__damn",
+      "artist": "켄드릭 라마",
+      "artist_en": "Kendrick Lamar",
+      "album": "DAMN.",
+      "year": "2017",
+      "art": "assets/kendricklamar__damn.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 85,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 3331303
+      },
+      "matched": {
+        "lastfm": "30 entries, top: Kendrick Lamar — DAMN."
+      },
+      "parts": {
+        "ratings": 85,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 72.25,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kendricklamar__gnx",
+      "artist": "켄드릭 라마",
+      "artist_en": "Kendrick Lamar",
+      "album": "GNX",
+      "year": "2024",
+      "art": "assets/kendricklamar__gnx.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 81,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 2305130
+      },
+      "matched": {
+        "lastfm": "42 entries, top: Kendrick Lamar — GNX"
+      },
+      "parts": {
+        "ratings": 81,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 69.85,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kendricklamar__goodkidmaadcity",
+      "artist": "켄드릭 라마",
+      "artist_en": "Kendrick Lamar",
+      "album": "good kid, m.A.A.d city",
+      "year": "2012",
+      "art": "assets/kendricklamar__goodkidmaadcity.jpg",
+      "inputs": {
+        "rym": 4.33,
+        "aoty_user": 94,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 2597004
+      },
+      "matched": {
+        "lastfm": "30 entries, top: Kendrick Lamar — good kid, m.A.A.d city"
+      },
+      "parts": {
+        "ratings": 90.3,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 69.18,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kendricklamar__section80",
+      "artist": "켄드릭 라마",
+      "artist_en": "Kendrick Lamar",
+      "album": "Section.80",
+      "year": "2011",
+      "art": "assets/kendricklamar__section80.jpg",
+      "inputs": {
+        "rym": 3.64,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1695545
+      },
+      "matched": {
+        "lastfm": "41 entries, top: Kendrick Lamar — Section.80"
+      },
+      "parts": {
+        "ratings": 76.4,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 60.84,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

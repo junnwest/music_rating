@@ -1,0 +1,71 @@
+{
+  "series": "한 곡 한 순간",
+  "number": 36,
+  "caption": "6초짜리 드럼 연주가 장르 몇 개를 만들었습니다.\n\nThe Winstons의 'Amen, Brother'(1969) 속 드럼 브레이크, 이른바 '아멘 브레이크'. 가장 많이 샘플링된 녹음 중 하나로 꼽히는 이 연주를 한 장씩 넘기며 확인해 보세요.\n\n아멘 브레이크를 처음 알아챈 곡은?",
+  "hashtags": "#한곡한순간 #AmenBreak #TheWinstons #드럼브레이크 #정글 #드럼앤베이스 #샘플링 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "6초의 아멘 브레이크",
+      "photo": "assets/drums.jpg",
+      "credit": "Public domain"
+    },
+    {
+      "type": "photo",
+      "title": "싱글의 B면",
+      "photo": "assets/amen-single.jpg",
+      "credit": "Public domain",
+      "text": "1969년 소울 그룹 더 윈스턴스가 싱글 'Color Him Father'를 냈습니다. 그 B면에 실린 연주곡이 'Amen, Brother'. 곡 중간에 드러머 그레고리 콜먼의 짧은 독주가 나옵니다."
+    },
+    {
+      "type": "photo",
+      "title": "힙합의 샘플",
+      "photo": "assets/sp1200.jpg",
+      "credit": "Public domain",
+      "text": "1980년대 힙합 프로듀서들이 이 드럼 구간을 샘플러로 잘라 반복하기 시작했습니다. 6초 남짓한 네 마디가 수많은 곡의 뼈대가 됐어요. 사진은 E-mu SP-1200."
+    },
+    {
+      "type": "photo",
+      "title": "빨라진 아멘",
+      "photo": "assets/akai-samplers.jpg",
+      "credit": "Photo: John Athayde, CC BY 2.0",
+      "text": "1990년대 영국에서는 이 브레이크를 훨씬 빠르게 돌리고 잘게 쪼개 재배열했습니다. 이 소리가 정글과 드럼 앤 베이스라는 장르의 핵심이 됩니다. 사진은 아카이 샘플러."
+    },
+    {
+      "type": "photo",
+      "title": "받지 못한 돈",
+      "photo": "assets/dnb-djs.jpg",
+      "credit": "Photo: Alkivar, CC BY-SA 2.5",
+      "text": "윈스턴스는 이 샘플로 저작권료를 받지 못했습니다. 리더 리처드 스펜서는 1996년에야 사용 사실을 알았고, 드러머 콜먼은 2006년 어렵게 생을 마쳤다고 알려져 있습니다."
+    },
+    {
+      "type": "table",
+      "title": "한눈에 보기",
+      "rows": [
+        [
+          "원곡",
+          "'Amen, Brother' (1969)"
+        ],
+        [
+          "연주",
+          "그레고리 콜먼"
+        ],
+        [
+          "길이",
+          "약 6~7초"
+        ],
+        [
+          "영향",
+          "힙합 · 정글 · 드럼 앤 베이스"
+        ]
+      ],
+      "text": "2015년 영국의 DJ들이 모금 운동을 벌여 리처드 스펜서에게 2만 파운드가 넘는 돈을 전달했습니다."
+    },
+    {
+      "type": "closing",
+      "title": "처음 알아챈 곡은?",
+      "text": "아멘 브레이크를 처음 알아챈 곡이 있나요? 댓글로 알려주세요."
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "series": "음악 상식",
+  "number": 17,
+  "captionInImage": true,
+  "caption": "요즘 노래는 전주가 거의 없이 바로 노래가 시작됩니다. 기분 탓이 아닙니다.\n\n30년 동안의 히트곡을 분석한 연구, 그리고 '스트리밍 때문'이라는 말이 반만 맞는 이유까지 한 장씩 넘기며 확인해 보세요.\n\n전주가 길어도 끝까지 듣게 되는 곡이 있나요?",
+  "hashtags": "#음악상식 #인트로 #전주 #스트리밍 #히트곡 #노래길이 #스킵 #음악연구",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "노래 전주가\n사라진 이유",
+      "photo": "assets/metro-listening.jpg",
+      "credit": "Photo: Casey Hugelfink, CC BY-SA 2.0",
+      "focus": "50% 35%"
+    },
+    {
+      "type": "photo",
+      "title": "20초에서 5초로",
+      "photo": "assets/ohio-state.jpg",
+      "credit": "Photo: Nheyob, CC BY-SA 3.0",
+      "text": "2017년 미국 오하이오주립대의 한 연구가 1986~2015년 미국 히트곡 톱10을 분석했습니다. 1980년대 중반 평균 20초가 넘던 전주가 2010년대에는 약 5초로, 78% 줄었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "더 빠르게, 더 짧게",
+      "photo": "assets/metronome.jpg",
+      "credit": "Photo: Vincent Quach (Invincible), CC BY-SA 3.0",
+      "text": "같은 기간 히트곡의 평균 템포는 약 8% 빨라졌습니다. 제목은 한 단어짜리가 늘었고, 노래가 시작된 뒤 제목이 처음 나오는 시점도 약 18% 앞당겨졌습니다."
+    },
+    {
+      "type": "photo",
+      "title": "30초 안에 붙잡아야",
+      "photo": "assets/music-app.jpg",
+      "credit": "Photo: Santeri Viinamäki, CC BY-SA 4.0",
+      "text": "스트리밍 서비스는 보통 30초 넘게 들어야 한 번의 재생으로 셉니다. 그 전에 넘기면 수익도 없습니다. 노래가 첫 몇 초 안에 귀를 붙잡아야 하는 이유입니다."
+    },
+    {
+      "type": "photo",
+      "title": "스트리밍 탓만은 아니다",
+      "photo": "assets/stopwatch.jpg",
+      "credit": "Photo: Ansgar Koreng, CC BY-SA 4.0",
+      "text": "다만 연구자는 스트리밍만으로는 설명이 안 된다고 했습니다. 이 변화는 스트리밍 이전부터 시작됐고, 곡을 쉽게 건너뛰게 만든 건 CD도 마찬가지였다는 설명입니다."
+    },
+    {
+      "type": "photo",
+      "title": "노래도 짧아졌다",
+      "photo": "assets/radio-dj.jpg",
+      "credit": "Photo: Infrogmation of New Orleans, CC BY-SA 3.0",
+      "text": "곡 길이도 줄었습니다. 음악 데이터 회사 차트메트릭에 따르면 2024년 스포티파이 차트 곡의 평균 길이는 약 3분으로, 2019년보다 30초가량 짧아졌습니다."
+    },
+    {
+      "type": "photo",
+      "title": "5초 안에 넘긴다",
+      "photo": "assets/phone-listening.jpg",
+      "credit": "Photo: Vu Hoang, CC BY 2.0",
+      "text": "2014년 스포티파이 재생 기록 분석에 따르면, 재생된 곡의 약 24%가 첫 5초 안에 넘겨졌습니다. 끝까지 듣지 않고 넘긴 비율은 48.6%. 모바일에서는 넘기는 비율이 더 높았습니다."
+    }
+  ]
+}

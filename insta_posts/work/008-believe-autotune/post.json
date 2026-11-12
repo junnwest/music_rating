@@ -1,0 +1,75 @@
+{
+  "series": "그날의 음악사",
+  "number": 8,
+  "caption": "원래는 '들키지 않게' 음정을 고치는 도구였습니다.\n\n1998년 Cher의 'Believe'는 오토튠을 일부러 과하게 걸어, 기계처럼 꺾이는 목소리를 곡의 훅으로 만들었습니다. 석유 탐사 기술에서 시작된 이 소리의 이야기를 한 장씩 넘기며 확인해 보세요.\n\n오토튠은 반칙일까요? 오토튠이 가장 잘 쓰였다고 생각하는 곡도 댓글로 알려주세요.",
+  "hashtags": "#그날의음악사 #오토튠 #AutoTune #Cher #Believe #1998 #음악제작 #음악사",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "오토튠이 들리기 시작한 날",
+      "art": "assets/art-believe.jpg",
+      "credit": "Album cover: Believe (single, Warner, 1998)"
+    },
+    {
+      "type": "photo",
+      "title": "석유 탐사에서 온 기술",
+      "photo": "assets/seismic-plotter.jpg",
+      "credit": "Public domain",
+      "text": "오토튠을 만든 앤디 힐데브랜드는 석유회사 엑손에서 지진파로 석유를 찾던 엔지니어였습니다. 그 파형 분석 기술을 음정 교정에 응용해 1997년 오토튠을 내놓았어요."
+    },
+    {
+      "type": "photo",
+      "title": "교정 속도를 0으로",
+      "photo": "assets/miking.jpg",
+      "credit": "Photo: RezaXstudiO, CC BY-SA 3.0",
+      "text": "오토튠에는 음정을 얼마나 빨리 고칠지 정하는 설정이 있습니다. 1998년 Cher의 'Believe' 제작진은 이 값을 0으로 뒀습니다. 음 사이의 미끄러짐이 사라지고 목소리가 계단처럼 꺾였습니다."
+    },
+    {
+      "type": "photo",
+      "title": "보코더라고 둘러댔다",
+      "photo": "assets/vocoder-korg.jpg",
+      "credit": "Photo: Michael Calore, CC BY 2.0",
+      "text": "제작진은 한동안 이 소리를 보코더, 즉 목소리를 기계음으로 바꾸는 장비의 효과라고 설명했습니다. 비법을 지키려 했다는 게 정설. 비밀은 곧 풀렸고, 'Cher 이펙트'라는 별명으로 퍼졌어요.",
+      "focus": "50% 50%"
+    },
+    {
+      "type": "photo",
+      "title": "52세의 1위",
+      "photo": "assets/cher-1999-b.jpg",
+      "credit": "Photo: GerbenBosma, CC BY-SA 4.0",
+      "text": "'Believe'는 미국 빌보드 핫 100 1위에 올랐습니다. 당시 52세였던 Cher는 핫 100 1위에 오른 최고령 여성 가수 기록을 세웁니다.",
+      "focus": "50% 25%"
+    },
+    {
+      "type": "grid",
+      "title": "오토튠을 더 듣고 싶다면",
+      "items": [
+        {
+          "art": "assets/art-discovery.jpg",
+          "label": "다프트 펑크 · 2001",
+          "name": "Discovery",
+          "credit": "Album cover: Discovery (Daft Punk, 2001)"
+        },
+        {
+          "art": "assets/art-epiphany.jpg",
+          "label": "티페인 · 2007",
+          "name": "Epiphany",
+          "credit": "Album cover: Epiphany (T-Pain, 2007)"
+        },
+        {
+          "art": "assets/art-carter-3.jpg",
+          "label": "릴 웨인 · 2008",
+          "name": "Tha Carter III",
+          "credit": "Album cover: Tha Carter III (Lil Wayne, 2008)"
+        },
+        {
+          "art": "assets/art-astroworld.jpg",
+          "label": "트래비스 스캇 · 2018",
+          "name": "ASTROWORLD",
+          "credit": "Album cover: ASTROWORLD (Travis Scott, 2018)"
+        }
+      ]
+    }
+  ],
+  "captionInImage": true
+}

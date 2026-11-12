@@ -1,0 +1,1366 @@
+{
+ "08-rating-spread-arcticam": {
+  "critics": [
+   [
+    "Metacritic",
+    81
+   ],
+   [
+    "Album of the Year",
+    81
+   ],
+   [
+    "AnyDecentMusic?",
+    81
+   ],
+   [
+    "IZM",
+    70
+   ]
+  ],
+  "users": [
+   [
+    "Melon",
+    92
+   ],
+   [
+    "Album of the Year",
+    71
+   ]
+  ],
+  "source": "summary card (read by eye)",
+  "critic_avg": 78.25,
+  "user_avg": 81.5,
+  "overall": 80
+ },
+ "10-rating-spread-szasos": {
+  "critics": [
+   [
+    "Metacritic",
+    90
+   ],
+   [
+    "Pitchfork",
+    87
+   ],
+   [
+    "The Guardian",
+    80
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    79
+   ],
+   [
+    "Rate Your Music",
+    67
+   ]
+  ],
+  "source": "summary card (read by eye)",
+  "critic_avg": 85.66666666666667,
+  "user_avg": 73.0,
+  "overall": 79
+ },
+ "11-rating-spread-tylerigor": {
+  "critics": [
+   [
+    "The Independent",
+    100
+   ],
+   [
+    "Album of the Year",
+    85
+   ],
+   [
+    "The Guardian",
+    60
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    90
+   ],
+   [
+    "Rate Your Music",
+    82
+   ]
+  ],
+  "source": "summary card (read by eye)",
+  "critic_avg": 81.66666666666667,
+  "user_avg": 86.0,
+  "overall": 84
+ },
+ "12-rating-spread-badbunnyverano": {
+  "critics": [
+   [
+    "Metacritic",
+    85
+   ],
+   [
+    "Pitchfork",
+    84
+   ],
+   [
+    "Rolling Stone",
+    70
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    71
+   ],
+   [
+    "Rate Your Music",
+    64
+   ]
+  ],
+  "source": "summary card (read by eye)",
+  "critic_avg": 79.66666666666667,
+  "user_avg": 67.5,
+  "overall": 74
+ },
+ "13-rating-spread-fionafetch": {
+  "critics": [
+   [
+    "Pitchfork",
+    100
+   ],
+   [
+    "The Guardian",
+    100
+   ],
+   [
+    "Metacritic",
+    98
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    86
+   ],
+   [
+    "Rate Your Music",
+    76
+   ]
+  ],
+  "source": "summary card (read by eye)",
+  "critic_avg": 99.33333333333333,
+  "user_avg": 81.0,
+  "overall": 90
+ },
+ "15-rating-spread-wavetoearth": {
+  "critics": [],
+  "users": [
+   [
+    "Melon",
+    100
+   ],
+   [
+    "Album of the Year",
+    80
+   ],
+   [
+    "Rate Your Music",
+    70
+   ]
+  ],
+  "source": "summary card (read by eye)",
+  "critic_avg": null,
+  "user_avg": 83.33333333333333,
+  "overall": 83
+ },
+ "16-rating-spread-baekyerin": {
+  "critics": [],
+  "users": [
+   [
+    "Melon",
+    92
+   ],
+   [
+    "Album of the Year",
+    92
+   ],
+   [
+    "Rate Your Music",
+    72
+   ]
+  ],
+  "source": "summary card (read by eye)",
+  "critic_avg": null,
+  "user_avg": 85.33333333333333,
+  "overall": 85
+ },
+ "17-rating-spread-kidmillibeige": {
+  "critics": [],
+  "users": [
+   [
+    "Melon",
+    98
+   ],
+   [
+    "Album of the Year",
+    72
+   ],
+   [
+    "Rate Your Music",
+    68
+   ]
+  ],
+  "source": "summary card (read by eye)",
+  "critic_avg": null,
+  "user_avg": 79.33333333333333,
+  "overall": 79
+ },
+ "18-rating-spread-silicagel": {
+  "critics": [],
+  "users": [
+   [
+    "Melon",
+    100
+   ],
+   [
+    "Album of the Year",
+    68
+   ],
+   [
+    "Rate Your Music",
+    62
+   ]
+  ],
+  "source": "summary card (read by eye)",
+  "critic_avg": null,
+  "user_avg": 76.66666666666667,
+  "overall": 77
+ },
+ "27-rating-spread-frankocean-blonde": {
+  "critics": [
+   [
+    "Metacritic",
+    87.0
+   ],
+   [
+    "Album of the Year",
+    87.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    89.0
+   ],
+   [
+    "Rate Your Music",
+    82.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 87.0,
+  "user_avg": 85.5,
+  "overall": 86
+ },
+ "28-rating-spread-lanadelrey-nfr": {
+  "critics": [
+   [
+    "Metacritic",
+    87.0
+   ],
+   [
+    "Pitchfork",
+    94.0
+   ]
+  ],
+  "users": [
+   [
+    "Rate Your Music",
+    77.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 90.5,
+  "user_avg": 77.0,
+  "overall": 84
+ },
+ "29-rating-spread-cigarettesaftersex": {
+  "critics": [
+   [
+    "Metacritic",
+    75.0
+   ],
+   [
+    "AnyDecentMusic?",
+    75.0
+   ],
+   [
+    "Album of the Year",
+    74.0
+   ]
+  ],
+  "users": [
+   [
+    "Melon",
+    98.0
+   ],
+   [
+    "Album of the Year",
+    71.0
+   ],
+   [
+    "Rate Your Music",
+    63.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 74.66666666666667,
+  "user_avg": 77.33333333333333,
+  "overall": 76
+ },
+ "30-rating-spread-charlixcx-brat": {
+  "critics": [
+   [
+    "Metacritic",
+    95.0
+   ],
+   [
+    "Album of the Year",
+    90.0
+   ],
+   [
+    "AnyDecentMusic?",
+    87.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    84.0
+   ],
+   [
+    "Rate Your Music",
+    77.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 90.66666666666667,
+  "user_avg": 80.5,
+  "overall": 86
+ },
+ "31-rating-spread-frankocean-channelorange": {
+  "critics": [
+   [
+    "Metacritic",
+    92.0
+   ],
+   [
+    "Album of the Year",
+    90.0
+   ],
+   [
+    "AnyDecentMusic?",
+    89.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    87.0
+   ],
+   [
+    "Rate Your Music",
+    78.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 90.33333333333333,
+  "user_avg": 82.5,
+  "overall": 86
+ },
+ "32-rating-spread-macmiller-kids": {
+  "critics": [
+   [
+    "AllMusic",
+    70.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    77.0
+   ],
+   [
+    "Best Ever Albums",
+    74.0
+   ],
+   [
+    "Rate Your Music",
+    68.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 70.0,
+  "user_avg": 73.0,
+  "overall": 72
+ },
+ "33-rating-spread-playboicarti-wlr": {
+  "critics": [
+   [
+    "Pitchfork",
+    83.0
+   ],
+   [
+    "Metacritic",
+    75.0
+   ],
+   [
+    "Album of the Year",
+    69.0
+   ],
+   [
+    "Beats Per Minute",
+    27.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    73.0
+   ],
+   [
+    "Rate Your Music",
+    68.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 63.5,
+  "user_avg": 70.5,
+  "overall": 67
+ },
+ "34-rating-spread-stevelacy-apolloxxi": {
+  "critics": [
+   [
+    "Metacritic",
+    81.0
+   ],
+   [
+    "Album of the Year",
+    74.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    70.0
+   ],
+   [
+    "Rate Your Music",
+    59.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 77.5,
+  "user_avg": 64.5,
+  "overall": 71
+ },
+ "35-rating-spread-daftpunk-discovery": {
+  "critics": [
+   [
+    "Album of the Year",
+    80.0
+   ],
+   [
+    "Metacritic",
+    74.0
+   ]
+  ],
+  "users": [
+   [
+    "Melon",
+    98.0
+   ],
+   [
+    "Album of the Year",
+    91.0
+   ],
+   [
+    "Rate Your Music",
+    83.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 77.0,
+  "user_avg": 90.66666666666667,
+  "overall": 84
+ },
+ "36-rating-spread-yujaeha-love": {
+  "critics": [],
+  "users": [
+   [
+    "Melon",
+    98.0
+   ],
+   [
+    "Album of the Year",
+    83.0
+   ],
+   [
+    "Rate Your Music",
+    74.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": null,
+  "user_avg": 85.0,
+  "overall": 85
+ },
+ "37-rating-spread-jazzyfact-lifeslike": {
+  "critics": [
+   [
+    "IZM",
+    80.0
+   ]
+  ],
+  "users": [
+   [
+    "Melon",
+    98.0
+   ],
+   [
+    "Album of the Year",
+    83.0
+   ],
+   [
+    "Rate Your Music",
+    76.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 80.0,
+  "user_avg": 85.66666666666667,
+  "overall": 83
+ },
+ "38-rating-spread-250-ppong": {
+  "critics": [],
+  "users": [
+   [
+    "Melon",
+    98.0
+   ],
+   [
+    "Album of the Year",
+    77.0
+   ],
+   [
+    "Rate Your Music",
+    69.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": null,
+  "user_avg": 81.33333333333333,
+  "overall": 81
+ },
+ "39-rating-spread-unnine-ordinary": {
+  "critics": [
+   [
+    "음악취향Y",
+    90.0
+   ],
+   [
+    "IZM",
+    80.0
+   ],
+   [
+    "weiv",
+    80.0
+   ]
+  ],
+  "users": [
+   [
+    "Melon",
+    98.0
+   ],
+   [
+    "Album of the Year",
+    81.0
+   ],
+   [
+    "Rate Your Music",
+    76.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 83.33333333333333,
+  "user_avg": 85.0,
+  "overall": 84
+ },
+ "41-rating-spread-cjamm-kung": {
+  "critics": [
+   [
+    "리드머",
+    80.0
+   ]
+  ],
+  "users": [
+   [
+    "Melon",
+    96.0
+   ],
+   [
+    "Album of the Year",
+    84.0
+   ],
+   [
+    "Rate Your Music",
+    72.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 80.0,
+  "user_avg": 84.0,
+  "overall": 82
+ },
+ "42-rating-spread-beenzino-nowitzki": {
+  "critics": [
+   [
+    "리드머",
+    90.0
+   ],
+   [
+    "IZM",
+    80.0
+   ]
+  ],
+  "users": [
+   [
+    "Melon",
+    98.0
+   ],
+   [
+    "Album of the Year",
+    74.0
+   ],
+   [
+    "Rate Your Music",
+    70.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 85.0,
+  "user_avg": 80.66666666666667,
+  "overall": 83
+ },
+ "43-rating-spread-blackskirts-201": {
+  "critics": [
+   [
+    "IZM",
+    70.0
+   ]
+  ],
+  "users": [
+   [
+    "Melon",
+    98.0
+   ],
+   [
+    "Album of the Year",
+    82.0
+   ],
+   [
+    "Rate Your Music",
+    73.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 70.0,
+  "user_avg": 84.33333333333333,
+  "overall": 77
+ },
+ "44-rating-spread-esens-anecdote": {
+  "critics": [
+   [
+    "리드머",
+    90.0
+   ],
+   [
+    "IZM",
+    80.0
+   ]
+  ],
+  "users": [
+   [
+    "Melon",
+    94.0
+   ],
+   [
+    "Album of the Year",
+    85.0
+   ],
+   [
+    "Rate Your Music",
+    75.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 85.0,
+  "user_avg": 84.66666666666667,
+  "overall": 85
+ },
+ "45-rating-spread-leemoonsae-4": {
+  "critics": [
+   [
+    "IZM",
+    80.0
+   ]
+  ],
+  "users": [
+   [
+    "Melon",
+    98.0
+   ],
+   [
+    "Album of the Year",
+    75.0
+   ],
+   [
+    "Rate Your Music",
+    71.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 80.0,
+  "user_avg": 81.33333333333333,
+  "overall": 81
+ },
+ "46-rating-spread-beatles-abbeyroad": {
+  "critics": [
+   [
+    "Album of the Year",
+    100.0
+   ]
+  ],
+  "users": [
+   [
+    "Best Ever Albums",
+    92.0
+   ],
+   [
+    "Album of the Year",
+    92.0
+   ],
+   [
+    "Rate Your Music",
+    86.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 100.0,
+  "user_avg": 90.0,
+  "overall": 95
+ },
+ "47-rating-spread-michaeljackson-thriller": {
+  "critics": [
+   [
+    "Album of the Year",
+    97.0
+   ],
+   [
+    "AllMusic",
+    100.0
+   ],
+   [
+    "Rolling Stone",
+    80.0
+   ]
+  ],
+  "users": [
+   [
+    "Melon",
+    100.0
+   ],
+   [
+    "Album of the Year",
+    91.0
+   ],
+   [
+    "Rate Your Music",
+    81.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 92.33333333333333,
+  "user_avg": 90.66666666666667,
+  "overall": 92
+ },
+ "48-rating-spread-radiohead-okcomputer": {
+  "critics": [
+   [
+    "Pitchfork",
+    100.0
+   ],
+   [
+    "Select",
+    100.0
+   ],
+   [
+    "Album of the Year",
+    95.0
+   ],
+   [
+    "Rolling Stone",
+    80.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    93.0
+   ],
+   [
+    "Rate Your Music",
+    86.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 93.75,
+  "user_avg": 89.5,
+  "overall": 92
+ },
+ "49-rating-spread-nirvana-nevermind": {
+  "critics": [
+   [
+    "Album of the Year",
+    91.0
+   ],
+   [
+    "Pitchfork",
+    100.0
+   ],
+   [
+    "NME",
+    90.0
+   ],
+   [
+    "Rolling Stone",
+    60.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    90.0
+   ],
+   [
+    "Rate Your Music",
+    81.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 85.25,
+  "user_avg": 85.5,
+  "overall": 85
+ },
+ "50-rating-spread-milesdavis-kindofblue": {
+  "critics": [
+   [
+    "Album of the Year",
+    100.0
+   ],
+   [
+    "AllMusic",
+    100.0
+   ],
+   [
+    "Pitchfork",
+    100.0
+   ],
+   [
+    "Penguin Guide to Jazz",
+    100.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    90.0
+   ],
+   [
+    "Rate Your Music",
+    85.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 100.0,
+  "user_avg": 87.5,
+  "overall": 94
+ },
+ "51-rating-spread-kanyewest-collegedropout": {
+  "critics": [
+   [
+    "Metacritic",
+    87.0
+   ],
+   [
+    "Pitchfork",
+    82.0
+   ],
+   [
+    "Album of the Year",
+    81.0
+   ],
+   [
+    "Rolling Stone",
+    70.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    91.0
+   ],
+   [
+    "Rate Your Music",
+    83.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 80.0,
+  "user_avg": 87.0,
+  "overall": 84
+ },
+ "52-rating-spread-kanyewest-lateregistration": {
+  "critics": [
+   [
+    "Metacritic",
+    85.0
+   ],
+   [
+    "Album of the Year",
+    84.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    90.0
+   ],
+   [
+    "Rate Your Music",
+    81.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 84.5,
+  "user_avg": 85.5,
+  "overall": 85
+ },
+ "53-rating-spread-kanyewest-graduation": {
+  "critics": [
+   [
+    "Rolling Stone",
+    90.0
+   ],
+   [
+    "Spin",
+    80.0
+   ],
+   [
+    "Metacritic",
+    79.0
+   ],
+   [
+    "NME",
+    60.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    87.0
+   ],
+   [
+    "Rate Your Music",
+    76.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 77.25,
+  "user_avg": 81.5,
+  "overall": 79
+ },
+ "54-rating-spread-kanyewest-808s": {
+  "critics": [
+   [
+    "Metacritic",
+    75.0
+   ],
+   [
+    "Album of the Year",
+    74.0
+   ],
+   [
+    "AnyDecentMusic?",
+    73.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    80.0
+   ],
+   [
+    "Rate Your Music",
+    72.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 74.0,
+  "user_avg": 76.0,
+  "overall": 75
+ },
+ "55-rating-spread-kanyewest-mbdtf": {
+  "critics": [
+   [
+    "Metacritic",
+    94.0
+   ],
+   [
+    "Album of the Year",
+    91.0
+   ],
+   [
+    "AnyDecentMusic?",
+    88.0
+   ],
+   [
+    "Pitchfork",
+    100.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    89.0
+   ],
+   [
+    "Rate Your Music",
+    82.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 93.25,
+  "user_avg": 85.5,
+  "overall": 89
+ },
+ "56-rating-spread-kanyewest-yeezus": {
+  "critics": [
+   [
+    "Metacritic",
+    84.0
+   ],
+   [
+    "Album of the Year",
+    83.0
+   ],
+   [
+    "Pitchfork",
+    95.0
+   ],
+   [
+    "The Times",
+    80.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    84.0
+   ],
+   [
+    "Rate Your Music",
+    77.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 85.5,
+  "user_avg": 80.5,
+  "overall": 83
+ },
+ "57-rating-spread-kanyewest-tlop": {
+  "critics": [
+   [
+    "Album of the Year",
+    77.0
+   ],
+   [
+    "Metacritic",
+    75.0
+   ],
+   [
+    "AnyDecentMusic?",
+    74.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    84.0
+   ],
+   [
+    "Rate Your Music",
+    77.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 75.33333333333333,
+  "user_avg": 80.5,
+  "overall": 78
+ },
+ "58-rating-spread-kanyewest-ye": {
+  "critics": [
+   [
+    "Album of the Year",
+    65.0
+   ],
+   [
+    "Metacritic",
+    64.0
+   ],
+   [
+    "AnyDecentMusic?",
+    61.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    80.0
+   ],
+   [
+    "Rate Your Music",
+    68.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 63.333333333333336,
+  "user_avg": 74.0,
+  "overall": 69
+ },
+ "59-rating-spread-kanyewest-jik": {
+  "critics": [
+   [
+    "Album of the Year",
+    54.0
+   ],
+   [
+    "Metacritic",
+    53.0
+   ],
+   [
+    "AnyDecentMusic?",
+    49.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    55.0
+   ],
+   [
+    "Rate Your Music",
+    47.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 52.0,
+  "user_avg": 51.0,
+  "overall": 52
+ },
+ "60-rating-spread-kanyewest-donda": {
+  "critics": [
+   [
+    "Album of the Year",
+    59.0
+   ],
+   [
+    "AnyDecentMusic?",
+    54.0
+   ],
+   [
+    "Metacritic",
+    53.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    72.0
+   ],
+   [
+    "Rate Your Music",
+    65.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 55.333333333333336,
+  "user_avg": 68.5,
+  "overall": 62
+ },
+ "61-rating-spread-outkast-stankonia": {
+  "critics": [
+   [
+    "Alternative Press",
+    100.0
+   ],
+   [
+    "Metacritic",
+    95.0
+   ],
+   [
+    "Album of the Year",
+    90.0
+   ],
+   [
+    "NME",
+    90.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    88.0
+   ],
+   [
+    "Rate Your Music",
+    79.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 93.75,
+  "user_avg": 83.5,
+  "overall": 89
+ },
+ "62-rating-spread-kendricklamar-tpab": {
+  "critics": [
+   [
+    "Metacritic",
+    96.0
+   ],
+   [
+    "Album of the Year",
+    95.0
+   ],
+   [
+    "AnyDecentMusic?",
+    93.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    95.0
+   ],
+   [
+    "Rate Your Music",
+    88.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 94.66666666666667,
+  "user_avg": 91.5,
+  "overall": 93
+ },
+ "63-rating-spread-kendricklamar-gkmc": {
+  "critics": [
+   [
+    "Metacritic",
+    91.0
+   ],
+   [
+    "Album of the Year",
+    90.0
+   ],
+   [
+    "AnyDecentMusic?",
+    86.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    94.0
+   ],
+   [
+    "Rate Your Music",
+    87.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 89.0,
+  "user_avg": 90.5,
+  "overall": 90
+ },
+ "64-rating-spread-kendricklamar-damn": {
+  "critics": [
+   [
+    "Metacritic",
+    95.0
+   ],
+   [
+    "Album of the Year",
+    93.0
+   ],
+   [
+    "AnyDecentMusic?",
+    91.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    85.0
+   ],
+   [
+    "Rate Your Music",
+    73.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 93.0,
+  "user_avg": 79.0,
+  "overall": 86
+ },
+ "65-rating-spread-tiffanyday-halo": {
+  "critics": [
+   [
+    "Pitchfork",
+    69.0
+   ],
+   [
+    "Album of the Year",
+    60.0
+   ],
+   [
+    "The Needle Drop",
+    50.0
+   ]
+  ],
+  "users": [
+   [
+    "Album of the Year",
+    78.0
+   ],
+   [
+    "Rate Your Music",
+    70.0
+   ]
+  ],
+  "source": "caption.txt",
+  "critic_avg": 59.666666666666664,
+  "user_avg": 74.0,
+  "overall": 67
+ }
+}

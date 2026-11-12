@@ -1,0 +1,71 @@
+{
+  "series": "요즘 음악",
+  "number": 20,
+  "captionInImage": true,
+  "caption": "5년 전에 나온 밴드 노래가 요즘 차트를 거꾸로 오르고 있습니다. 챌린지도 방송도 없이.\n\n리도어 '영원은 그렇듯'의 역주행, 그리고 그 뒤에 있는 밴드 붐을 한 장씩 넘기며 확인해 보세요.\n\n공연장이나 페스티벌에서 처음 알게 된 밴드가 있나요?",
+  "hashtags": "#리도어 #Redoor #영원은그렇듯 #역주행 #밴드붐 #데이식스 #실리카겔 #잔나비",
+  "slides": [
+    {
+      "type": "cover",
+      "title": "챌린지 없이 역주행한 리도어",
+      "art": "assets/art-forever.jpg",
+      "credit": "Album cover: 영원은 그렇듯 (2021)"
+    },
+    {
+      "type": "photo",
+      "title": "5년 전 노래가 차트 6위로",
+      "photo": "assets/festival-night.jpg",
+      "credit": "Photo: Shixart1985, CC BY 2.0",
+      "focus": "50% 45%",
+      "text": "밴드 리도어의 '영원은 그렇듯'은 2021년 1월에 나온 곡입니다. 2025년 5월 스포티파이 한국 차트에 172위로 처음 들어온 뒤 조금씩 올라, 2026년 9월 주간 6위까지 올랐습니다."
+    },
+    {
+      "type": "photo",
+      "title": "방송도, 챌린지도 없이",
+      "photo": "assets/jannabi-festival.png",
+      "credit": "Photo: Danbi'nin Kore Mutfağı, CC BY-SA 4.0",
+      "focus": "50% 50%",
+      "text": "방송 출연도, 유명인의 추천도, 숏폼 챌린지도 없었습니다. 공연과 입소문이 전부였어요. 8월 전주 페스티벌 무대가 있던 주에는 이 곡의 주간 재생이 약 11% 늘었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "먼저 길을 낸 밴드들",
+      "photo": "assets/day6-2018.jpg",
+      "credit": "Photo: Nine Stars, CC BY 3.0",
+      "focus": "50% 30%",
+      "text": "리도어 앞에는 데이식스와 잔나비, 실리카겔이 있었습니다. 데이식스의 옛 곡들이 차트를 거꾸로 올랐고, 실리카겔은 2023년 멜론뮤직어워드 무대에 서며 밴드 붐의 상징이 됐습니다."
+    },
+    {
+      "type": "photo",
+      "title": "무대가 늘었다",
+      "photo": "assets/silica-gel-2022.jpg",
+      "credit": "Photo: SBS Radio (에라오), CC BY 3.0",
+      "focus": "50% 30%",
+      "text": "2024년 상반기에만 20여 개의 대중음악 페스티벌이 열렸고, 2023년 공연 티켓 거래액은 1조 원을 넘었습니다. 평론가들은 아이돌 음악에 대한 피로감도 이유로 꼽습니다."
+    },
+    {
+      "type": "grid",
+      "title": "리도어 다음으로",
+      "items": [
+        {
+          "art": "assets/art-day6-gravity.jpg",
+          "label": "데이식스 · 2019",
+          "name": "한 페이지가 될 수 있게",
+          "credit": "Album cover: The Book of Us: Gravity (JYP, 2019)"
+        },
+        {
+          "art": "assets/art-jannabi-legend.jpg",
+          "label": "잔나비 · 2019",
+          "name": "주저하는 연인들을 위해",
+          "credit": "Album cover: 전설 (Peponi Music, 2019)"
+        },
+        {
+          "art": "assets/art-no-pain.jpg",
+          "label": "실리카겔 · 2022",
+          "name": "NO PAIN",
+          "credit": "Album cover: NO PAIN (Silica Gel, 2022)"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,608 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "artist": "250",
+      "artist_en": "250",
+      "album": "뽕",
+      "year": "2023",
+      "art": "assets/20.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 4,
+        "lastfm_listeners": 8113,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "2 entries, top: 250 — PPONG",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 72.72953689944632,
+        "recognition": 100
+      },
+      "grade": 89.77357633729237,
+      "draft": true
+    },
+    {
+      "artist": "이센스",
+      "artist_en": "E SENS",
+      "album": "The Anecdote",
+      "year": "2016",
+      "art": "assets/13.jpg",
+      "inputs": {
+        "rym": 3.77,
+        "aoty_critic": null,
+        "aoty_user": 85,
+        "kma_wins": 2,
+        "lastfm_listeners": 4736,
+        "deezer_fans": 26
+      },
+      "matched": {
+        "lastfm": "6 entries, top: E SENS — The Anecdote",
+        "deezer": "E Sens — The Anecdote"
+      },
+      "parts": {
+        "ratings": 80.2,
+        "reach": 66.88529234287158,
+        "recognition": 50
+      },
+      "grade": 70.65279385143074,
+      "draft": false
+    },
+    {
+      "artist": "가리온",
+      "artist_en": "Garion",
+      "album": "가리온 2",
+      "year": "2011",
+      "art": "assets/08.jpg",
+      "inputs": {
+        "rym": 3.48,
+        "aoty_critic": null,
+        "aoty_user": 82,
+        "kma_wins": 3,
+        "lastfm_listeners": 94,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "4 entries, top: 가리온 — 가리온 2",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": 75.8,
+        "reach": 24.328196339992463,
+        "recognition": 75
+      },
+      "grade": 67.87922945099886,
+      "draft": false
+    },
+    {
+      "artist": "빈지노",
+      "artist_en": "Beenzino",
+      "album": "NOWITZKI",
+      "year": "2024",
+      "art": "assets/21.jpg",
+      "inputs": {
+        "rym": 3.52,
+        "aoty_critic": null,
+        "aoty_user": 74,
+        "kma_wins": 2,
+        "lastfm_listeners": 14847,
+        "deezer_fans": 161
+      },
+      "matched": {
+        "lastfm": "11 entries, top: Beenzino — Nowitzki",
+        "deezer": "Beenzino — NOWITZKI"
+      },
+      "parts": {
+        "ratings": 72.2,
+        "reach": 79.29096771327046,
+        "recognition": 50
+      },
+      "grade": 67.71364515699057,
+      "draft": false
+    },
+    {
+      "artist": "3호선 버터플라이",
+      "artist_en": "3rd Line Butterfly",
+      "album": "Dreamtalk",
+      "year": "2013",
+      "art": "assets/10.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 2,
+        "lastfm_listeners": 6237,
+        "deezer_fans": 53
+      },
+      "matched": {
+        "lastfm": "7 entries, top: 3rd Line Butterfly — dreamtalk",
+        "deezer": "3rd Line Butterfly — Dreamtalk"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 69.8743936012783,
+        "recognition": 50
+      },
+      "grade": 57.45289760047936,
+      "draft": true
+    },
+    {
+      "artist": "언니네 이발관",
+      "artist_en": "Sister's Barbershop",
+      "album": "가장 보통의 존재",
+      "year": "2009",
+      "art": "assets/06.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 2,
+        "lastfm_listeners": 3361,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "11 entries, top: 언니네 이발관 — 가장 보통의 존재",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 63.16171281173693,
+        "recognition": 50
+      },
+      "grade": 54.93564230440135,
+      "draft": true
+    },
+    {
+      "artist": "마이 앤트 메리",
+      "artist_en": "My Aunt Mary",
+      "album": "Just Pop",
+      "year": "2005",
+      "art": "assets/02.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 2,
+        "lastfm_listeners": 2767,
+        "deezer_fans": 6
+      },
+      "matched": {
+        "lastfm": "7 entries, top: My Aunt Mary — Just Pop",
+        "deezer": "My Aunt Mary — Just Pop"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 61.050228978523805,
+        "recognition": 50
+      },
+      "grade": 54.143835866946425,
+      "draft": true
+    },
+    {
+      "artist": "백예린",
+      "artist_en": "Yerin Baek",
+      "album": "Our love is great",
+      "year": "2020",
+      "art": "assets/17.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 95166,
+        "deezer_fans": 208
+      },
+      "matched": {
+        "lastfm": "10 entries, top: Yerin Baek — Our love is great",
+        "deezer": "Yerin Baek — Our Love is Great"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 99.46204538771045,
+        "recognition": 25
+      },
+      "grade": 52.923267020391414,
+      "draft": true
+    },
+    {
+      "artist": "로로스",
+      "artist_en": "Loro's",
+      "album": "W.A.N.D.Y",
+      "year": "2015",
+      "art": "assets/12.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 2,
+        "lastfm_listeners": 1817,
+        "deezer_fans": 5
+      },
+      "matched": {
+        "lastfm": "6 entries, top: Loro's — W.A.N.D.Y",
+        "deezer": "Loro's — W.A.N.D.Y"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 56.48387318270086,
+        "recognition": 50
+      },
+      "grade": 52.431452443512825,
+      "draft": true
+    },
+    {
+      "artist": "이랑",
+      "artist_en": "Lang Lee",
+      "album": "늑대가 나타났다",
+      "year": "2022",
+      "art": "assets/19.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 2,
+        "lastfm_listeners": 334,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "2 entries, top: Lang Lee — 늑대가 나타났다",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 38.093661670289116,
+        "recognition": 50
+      },
+      "grade": 45.535123126358414,
+      "draft": true
+    },
+    {
+      "artist": "추다혜차지스",
+      "artist_en": "Chudahye Chagis",
+      "album": "소수민족",
+      "year": "2026",
+      "art": "assets/23.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 2,
+        "lastfm_listeners": 174,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "2 entries, top: CHUDAHYE CHAGIS — 소수민족",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 31.013731207064986,
+        "recognition": 50
+      },
+      "grade": 42.88014920264937,
+      "draft": true
+    },
+    {
+      "artist": "스왈로우",
+      "artist_en": "Swallow",
+      "album": "Aresco",
+      "year": "2007",
+      "art": "assets/04.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 2,
+        "lastfm_listeners": 131,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "4 entries, top: Swallow — Aresco",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 27.931782391394112,
+        "recognition": 50
+      },
+      "grade": 41.72441839677279,
+      "draft": true
+    },
+    {
+      "artist": "두번째 달",
+      "artist_en": "2nd Moon",
+      "album": "두번째 달",
+      "year": "2006",
+      "art": "assets/03.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 5548,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "13 entries, top: 2nd Moon — 두번째 달",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 68.60341131003118,
+        "recognition": 25
+      },
+      "grade": 41.351279241261686,
+      "draft": true
+    },
+    {
+      "artist": "윤영배",
+      "artist_en": "Yoon Young Bae",
+      "album": "위험한 세계",
+      "year": "2014",
+      "art": "assets/11.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 2,
+        "lastfm_listeners": 113,
+        "deezer_fans": 1
+      },
+      "matched": {
+        "lastfm": "1 entries, top: 윤영배 — 위험한 세계",
+        "deezer": "윤영배 — 위험한 세계"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 26.326961087085486,
+        "recognition": 50
+      },
+      "grade": 41.122610407657056,
+      "draft": true
+    },
+    {
+      "artist": "장기하와 얼굴들",
+      "artist_en": "Kiha & The Faces",
+      "album": "장기하와 얼굴들",
+      "year": "2012",
+      "art": "assets/09.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 1888,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "2 entries, top: 장기하와 얼굴들 — 장기하와 얼굴들",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 56.90004974905125,
+        "recognition": 25
+      },
+      "grade": 36.962518655894215,
+      "draft": true
+    },
+    {
+      "artist": "이적",
+      "artist_en": "Lee Juck",
+      "album": "나무로 만든 노래",
+      "year": "2008",
+      "art": "assets/05.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 1669,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "5 entries, top: 이적 — 나무로 만든 노래",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 55.56140841698116,
+        "recognition": 25
+      },
+      "grade": 36.46052815636793,
+      "draft": true
+    },
+    {
+      "artist": "서울전자음악단",
+      "artist_en": "Seoul Electric Band",
+      "album": "Life Is Strange",
+      "year": "2010",
+      "art": "assets/07.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 832,
+        "deezer_fans": 4
+      },
+      "matched": {
+        "lastfm": "2 entries, top: 서울전자음악단 — Life Is Strange",
+        "deezer": "서울전자음악단 Seoul Electric Band — 인생은 이상하다 Life Is Strange (Bonus Track Version)"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 48.0030831572681,
+        "recognition": 25
+      },
+      "grade": 33.62615618397554,
+      "draft": true
+    },
+    {
+      "artist": "단편선 순간들",
+      "artist_en": "Danpyunsun and the Moments",
+      "album": "음악만세",
+      "year": "2025",
+      "art": "assets/22.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 459,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "3 entries, top: 단편선 순간들 — 음악만세",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 41.54531713843153,
+        "recognition": 25
+      },
+      "grade": 31.204493926911823,
+      "draft": true
+    },
+    {
+      "artist": "더더",
+      "artist_en": "The The",
+      "album": "The The Band",
+      "year": "2004",
+      "art": "assets/01.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 411,
+        "deezer_fans": 1
+      },
+      "matched": {
+        "lastfm": "13 entries, top: 더더 — The The Band",
+        "deezer": "더더 — The the Band"
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 40.346045546901735,
+        "recognition": 25
+      },
+      "grade": 30.75476708008815,
+      "draft": true
+    },
+    {
+      "artist": "장필순",
+      "artist_en": "Jang Pil Soon",
+      "album": "soony eight : 소길花",
+      "year": "2019",
+      "art": "assets/16.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 88,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "4 entries, top: 장필순 — Soony Eight : 소길花",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 23.612066803754217,
+        "recognition": 25
+      },
+      "grade": 24.47952505140783,
+      "draft": true
+    },
+    {
+      "artist": "정밀아",
+      "artist_en": "Jung Mila",
+      "album": "청파소나타",
+      "year": "2021",
+      "art": "assets/18.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 69,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "1 entries, top: 정밀아 — 청파소나타",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 20.97122726843138,
+        "recognition": 25
+      },
+      "grade": 23.489210225661765,
+      "draft": true
+    },
+    {
+      "artist": "조동진",
+      "artist_en": "Cho Dong Jin",
+      "album": "나무가 되어",
+      "year": "2017",
+      "art": "assets/14.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 67,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "1 entries, top: 조동진 — 나무가 되어",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 20.65187006752066,
+        "recognition": 25
+      },
+      "grade": 23.369451275320248,
+      "draft": true
+    },
+    {
+      "artist": "강태구",
+      "artist_en": "Kang Tae Gu",
+      "album": "bleu",
+      "year": "2018",
+      "art": "assets/15.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_critic": null,
+        "aoty_user": null,
+        "kma_wins": 1,
+        "lastfm_listeners": 49,
+        "deezer_fans": null
+      },
+      "matched": {
+        "lastfm": "1 entries, top: 강태구 — bleu",
+        "deezer": null
+      },
+      "parts": {
+        "ratings": null,
+        "reach": 17.25490200071284,
+        "recognition": 25
+      },
+      "grade": 22.095588250267312,
+      "draft": true
+    }
+  ]
+}

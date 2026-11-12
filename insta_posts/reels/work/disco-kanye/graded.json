@@ -1,0 +1,296 @@
+{
+  "weights": {
+    "ratings": 0.6,
+    "reach": 0.15,
+    "recognition": 0.25
+  },
+  "generated": "2026-11-07",
+  "albums": [
+    {
+      "id": "kanyewest__thecollegedropout",
+      "artist": "칸예 웨스트",
+      "artist_en": "Kanye West",
+      "album": "The College Dropout",
+      "year": "2004",
+      "art": "assets/kanyewest__thecollegedropout.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 91,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 2698875
+      },
+      "matched": {
+        "lastfm": "34 entries, top: Kanye West — The College Dropout"
+      },
+      "parts": {
+        "ratings": 91,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 75.85,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kanyewest__lateregistration",
+      "artist": "칸예 웨스트",
+      "artist_en": "Kanye West",
+      "album": "Late Registration",
+      "year": "2005",
+      "art": "assets/kanyewest__lateregistration.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 90,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 3169452
+      },
+      "matched": {
+        "lastfm": "37 entries, top: Kanye West — Late Registration"
+      },
+      "parts": {
+        "ratings": 90,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 75.25,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kanyewest__mybeautifuldarktwistedfantasy",
+      "artist": "칸예 웨스트",
+      "artist_en": "Kanye West",
+      "album": "My Beautiful Dark Twisted Fantasy",
+      "year": "2010",
+      "art": "assets/kanyewest__mybeautifuldarktwistedfantasy.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 89,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 3713474
+      },
+      "matched": {
+        "lastfm": "34 entries, top: Kanye West — My Beautiful Dark Twisted Fantasy"
+      },
+      "parts": {
+        "ratings": 89,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 74.65,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kanyewest__graduation",
+      "artist": "칸예 웨스트",
+      "artist_en": "Kanye West",
+      "album": "Graduation",
+      "year": "2007",
+      "art": "assets/kanyewest__graduation.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 87,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 4393996
+      },
+      "matched": {
+        "lastfm": "23 entries, top: Kanye West — Graduation"
+      },
+      "parts": {
+        "ratings": 87,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 73.44999999999999,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kanyewest__yeezus",
+      "artist": "칸예 웨스트",
+      "artist_en": "Kanye West",
+      "album": "Yeezus",
+      "year": "2013",
+      "art": "assets/kanyewest__yeezus.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 84,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 2611234
+      },
+      "matched": {
+        "lastfm": "36 entries, top: Kanye West — Yeezus"
+      },
+      "parts": {
+        "ratings": 84,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 65.4,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kanyewest__thelifeofpablo",
+      "artist": "칸예 웨스트",
+      "artist_en": "Kanye West",
+      "album": "The Life of Pablo",
+      "year": "2016",
+      "art": "assets/kanyewest__thelifeofpablo.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 84,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 2418967
+      },
+      "matched": {
+        "lastfm": "32 entries, top: Kanye West — The Life of Pablo"
+      },
+      "parts": {
+        "ratings": 84,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 65.4,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kanyewest__808sheartbreak",
+      "artist": "칸예 웨스트",
+      "artist_en": "Kanye West",
+      "album": "808s & Heartbreak",
+      "year": "2008",
+      "art": "assets/kanyewest__808sheartbreak.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 3197059
+      },
+      "matched": {
+        "lastfm": "37 entries, top: Kanye West — 808s & Heartbreak"
+      },
+      "parts": {
+        "ratings": 80,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 63,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kanyewest__ye",
+      "artist": "칸예 웨스트",
+      "artist_en": "Kanye West",
+      "album": "ye",
+      "year": "2018",
+      "art": "assets/kanyewest__ye.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 80,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1936489
+      },
+      "matched": {
+        "lastfm": "2 entries, top: Kanye West — ye"
+      },
+      "parts": {
+        "ratings": 80,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 63,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kanyewest__donda",
+      "artist": "칸예 웨스트",
+      "artist_en": "Kanye West",
+      "album": "Donda",
+      "year": "2021",
+      "art": "assets/kanyewest__donda.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 72,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 1666409
+      },
+      "matched": {
+        "lastfm": "33 entries, top: Kanye West — Donda"
+      },
+      "parts": {
+        "ratings": 72,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 58.199999999999996,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kanyewest__jesusisking",
+      "artist": "칸예 웨스트",
+      "artist_en": "Kanye West",
+      "album": "Jesus Is King",
+      "year": "2019",
+      "art": "assets/kanyewest__jesusisking.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 55,
+        "aoty_used": true,
+        "award_wins": 1,
+        "lastfm_listeners": 1306124
+      },
+      "matched": {
+        "lastfm": "27 entries, top: Kanye West — JESUS IS KING"
+      },
+      "parts": {
+        "ratings": 55,
+        "reach": 100,
+        "recognition": 25
+      },
+      "grade": 54.25,
+      "draft": false,
+      "no_lastfm": false
+    },
+    {
+      "id": "kanyewest__bully",
+      "artist": "칸예 웨스트",
+      "artist_en": "Kanye West",
+      "album": "Bully",
+      "year": "2025",
+      "art": "assets/kanyewest__bully.jpg",
+      "inputs": {
+        "rym": null,
+        "aoty_user": 62,
+        "aoty_used": true,
+        "award_wins": 0,
+        "lastfm_listeners": 638402
+      },
+      "matched": {
+        "lastfm": "11 entries, top: Kanye West — BULLY"
+      },
+      "parts": {
+        "ratings": 62,
+        "reach": 100,
+        "recognition": 0
+      },
+      "grade": 52.199999999999996,
+      "draft": false,
+      "no_lastfm": false
+    }
+  ]
+}

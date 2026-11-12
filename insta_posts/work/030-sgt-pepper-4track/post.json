@@ -1,0 +1,60 @@
+{
+  "series": "그날의 음악사",
+  "number": 30,
+  "caption": "비틀스의 『Sgt. Pepper's Lonely Hearts Club Band』는 트랙 4개짜리 녹음기로 만들어졌습니다.\n\n악기와 목소리를 몇 번이고 겹쳐 쌓은 이 앨범이 어떻게 녹음됐는지, 한 장씩 넘기며 확인해 보세요.\n\n이 앨범에서 가장 좋아하는 곡은?",
+  "hashtags": "#그날의음악사 #TheBeatles #비틀스 #SgtPepper #AbbeyRoad #4트랙 #녹음 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "트랙 4개로 만든 비틀스 명반",
+      "art": "assets/art-sgt-pepper.jpg",
+      "credit": "Album cover: Sgt. Pepper's Lonely Hearts Club Band (Parlophone, 1967)"
+    },
+    {
+      "type": "photo",
+      "title": "4트랙 녹음기 두 대",
+      "photo": "assets/studer-j37.jpg",
+      "credit": "Photo: Josephenus P. Riley, CC BY 2.0",
+      "text": "비틀스는 1966년 11월부터 1967년 4월까지 애비 로드 스튜디오에서 이 앨범을 녹음했습니다. 쓸 수 있는 건 4트랙 녹음기. 테이프 하나에 따로 담을 수 있는 소리가 네 줄뿐이었습니다."
+    },
+    {
+      "type": "photo",
+      "title": "트랙을 합쳐 자리를 만들다",
+      "photo": "assets/beatles-martin-1966.jpg",
+      "credit": "Public domain",
+      "text": "트랙이 다 차면 네 줄을 한 줄로 합쳐 다른 녹음기로 옮기고, 비워진 자리에 새 소리를 더했습니다. 이 과정을 되풀이하며 수십 개의 소리를 겹쳐 쌓았어요."
+    },
+    {
+      "type": "photo",
+      "title": "스무 살의 엔지니어",
+      "photo": "assets/emerick.jpg",
+      "credit": "Photo: Eddie Janssens, CC BY-SA 4.0",
+      "text": "녹음을 맡은 엔지니어 제프 에머릭은 당시 스무 살 남짓. 마이크 위치와 테이프 속도를 바꾸는 실험으로 이 앨범의 소리를 만들었습니다.",
+      "focus": "50% 30%"
+    },
+    {
+      "type": "photo",
+      "title": "공연을 그만둔 밴드",
+      "photo": "assets/studio2-door.jpg",
+      "credit": "Photo: MrJamesAckerley, CC BY 2.0",
+      "text": "비틀스는 1966년 8월을 끝으로 공연을 그만뒀습니다. 그 뒤 스튜디오는 곡을 연주하는 곳이 아니라 곡을 만드는 곳이 됐어요. 녹음 대부분은 애비 로드의 2번 스튜디오에서 이뤄졌습니다."
+    },
+    {
+      "type": "photo",
+      "title": "1967년 발매",
+      "photo": "assets/beatles-mar-1967.jpg",
+      "credit": "Public domain",
+      "text": "앨범은 1967년 5월 말 영국에서 발매됐습니다. 애비 로드에 8트랙 녹음기가 들어온 건 이듬해. 그때까지는 4트랙 녹음기 두 대를 오가며 소리를 쌓았습니다.",
+      "focus": "50% 30%"
+    },
+    {
+      "type": "photo",
+      "title": "커버에서 지워진 간디",
+      "photo": "assets/gandhi-1931.jpg",
+      "credit": "Public domain",
+      "text": "앨범 커버에는 수십 명의 유명인이 등장합니다. 간디도 원래 그 자리에 있었지만, 인도에서 문제가 될 것을 걱정한 음반사 EMI 회장의 요청으로 지워졌습니다.",
+      "focus": "50% 25%"
+    }
+  ]
+}

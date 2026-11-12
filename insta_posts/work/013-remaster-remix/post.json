@@ -1,0 +1,50 @@
+{
+  "series": "용어사전",
+  "number": 13,
+  "caption": "재발매반 스티커의 'Remastered', 'Remixed', 'Reissue'. 비슷해 보이지만 뜻이 전혀 다릅니다.\n\n세 단어는 원본을 어디까지 다시 만졌는지를 알려주는 말입니다. 한 장씩 넘기며 확인해 보세요.\n\n원본보다 좋았던, 혹은 실망스러웠던 재발매반이 있나요?",
+  "hashtags": "#음악용어 #리마스터 #리믹스 #리이슈 #재발매 #바이닐 #음반 #음악사",
+  "captionInImage": true,
+  "slides": [
+    {
+      "type": "cover",
+      "title": "리마스터, 리믹스, 리이슈",
+      "photo": "assets/2inch-tape.jpg",
+      "credit": "Photo: Crcroth, CC BY-SA 3.0"
+    },
+    {
+      "type": "photo",
+      "title": "리이슈는 다시 찍는 것",
+      "photo": "assets/record-shop.jpg",
+      "credit": "Photo: assillo, CC BY 2.0",
+      "text": "리이슈(reissue)는 절판된 음반을 다시 발매하는 것. 소리는 원래 그대로인 경우가 많고, 포장이나 해설지만 바뀌기도 합니다. 재발매반이라고 모두 소리가 달라지는 건 아닙니다."
+    },
+    {
+      "type": "photo",
+      "title": "리마스터는 마감만 다시",
+      "photo": "assets/tape-reel.jpg",
+      "credit": "Photo: R. Henrik Nilsson, CC BY 4.0",
+      "text": "리마스터는 완성된 스테레오 원본으로 마스터링만 다시 한 것입니다. 곡 안의 균형은 그대로 두고 음량, 음색, 잡음을 손봅니다. 음량만 키워서 오히려 답답해진 리마스터도 있어요."
+    },
+    {
+      "type": "photo",
+      "title": "리믹스는 처음부터 다시",
+      "photo": "assets/studer-j37.jpg",
+      "credit": "Photo: Josephenus P. Riley, CC BY 2.0",
+      "text": "리믹스는 악기별로 따로 녹음된 원본 테이프로 돌아가 믹싱부터 다시 하는 작업입니다. 보컬과 악기의 균형, 좌우 배치까지 달라질 수 있습니다."
+    },
+    {
+      "type": "photo",
+      "title": "2019년의 애비 로드",
+      "credit": "Album cover: Abbey Road (Apple, 1969)",
+      "text": "비틀스 Abbey Road의 50주년판은 리믹스입니다. 프로듀서 조지 마틴의 아들 자일스 마틴이 원본 테이프로 새 스테레오 믹스를 만들었어요.",
+      "art": "assets/art-abbey-road.jpg"
+    },
+    {
+      "type": "photo",
+      "title": "AI로 분리한 목소리",
+      "art": "assets/art-now-and-then.jpg",
+      "credit": "Album cover: Now and Then (Apple Corps, 2023)",
+      "text": "2023년 비틀스의 마지막 신곡 'Now and Then'은 1970년대 후반 존 레논의 피아노 데모에서 시작됐습니다. 피아노에 묻힌 목소리를 피터 잭슨 팀이 기계 학습 기술로 분리해 냈고, 같은 기술은 비틀스 앨범의 새 리믹스에도 쓰였습니다."
+    }
+  ]
+}
