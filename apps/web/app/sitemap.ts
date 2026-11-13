@@ -1,11 +1,20 @@
 import type { MetadataRoute } from 'next';
+import {
+  ALBUM_COUNT_FALLBACK,
+  ARTIST_COUNT_FALLBACK,
+  ARTIST_OVERFLOW_BASE,
+  SITEMAP_PAGE_SIZE as PAGE_SIZE,
+  sitemapIds,
+  tableCount as fetchCount,
+} from '../lib/sitemapPages';
 
 // Companion to the robots.ts relaxation -- feeds Google the pages actually worth proactively
 // discovering, without inviting an immediate mass-crawl of the full catalog (the same "~2.3M
 // dynamic pages, each a real Supabase-backed render" cost concern robots.ts documents).
 //
-// Included: static content pages, every artist (49k rows -- comfortably cheap), every album
-// (~414k rows, paginated into ~45k-row sitemap files per Google's 50k/file limit).
+// Included: static content pages, every artist (~114k rows), every album (~814k rows), each
+// paginated into 45k-row sitemap files per Google's 50k/file limit. See lib/sitemapPages.ts for
+// which id holds what.
 //
 // Deliberately EXCLUDED: individual song (/song/[id]) pages. recordings is ~3.16M rows -- by far
 // the largest and (for a search query) lowest marginal-value content type here, since someone
@@ -18,7 +27,6 @@ const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 // www, not the bare apex -- see layout.tsx's matching comment. Every URL listed in these
 // sitemaps needs to resolve directly, with no redirect hop, for Google's sitemap fetcher.
 const BASE_URL = 'https://www.sillajuku.com';
-const PAGE_SIZE = 45000; // headroom under Google's 50,000-URL-per-sitemap-file limit
 const REST_CHUNK = 1000; // conservative assumption for PostgREST's default max rows/request
 
 const STATIC_PATHS: { path: string; priority: number }[] = [
@@ -76,55 +84,38 @@ async function fetchIdRange(table: string, offset: number, limit: number): Promi
   return results;
 }
 
-async function fetchCount(table: string, fallback: number): Promise<number> {
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=id`, {
-      headers: {
-        apikey: ANON_KEY,
-        Authorization: `Bearer ${ANON_KEY}`,
-        Prefer: 'count=exact',
-        'Range-Unit': 'items',
-        Range: '0-0',
-      },
-      next: { revalidate: 3600 },
-    });
-    const contentRange = res.headers.get('content-range');
-    if (!contentRange) return fallback;
-    const total = contentRange.split('/')[1];
-    return total === '*' || !total ? fallback : parseInt(total, 10);
-  } catch {
-    return fallback;
-  }
-}
-
-// id 0: static pages + all artists. id 1+: one page of albums each.
 export async function generateSitemaps() {
-  const albumCount = await fetchCount('release_groups', 420000);
-  const albumPageCount = Math.max(1, Math.ceil(albumCount / PAGE_SIZE));
-  return [{ id: 0 }, ...Array.from({ length: albumPageCount }, (_, i) => ({ id: i + 1 }))];
+  return (await sitemapIds()).map((id) => ({ id }));
 }
 
-export default async function sitemap({ id }: { id: number }): Promise<MetadataRoute.Sitemap> {
+async function artistEntries(page: number): Promise<MetadataRoute.Sitemap> {
+  const artistCount = await fetchCount('artists', ARTIST_COUNT_FALLBACK);
+  const offset = page * PAGE_SIZE;
+  const limit = Math.max(0, Math.min(PAGE_SIZE, artistCount - offset));
+  const artistIds = await fetchIdRange('artists', offset, limit);
+  return artistIds.map((artistId) => ({
+    url: `${BASE_URL}/artist/${artistId}`,
+    changeFrequency: 'weekly',
+    priority: 0.6,
+  }));
+}
+
+export default async function sitemap({ id: rawId }: { id: number | string }): Promise<MetadataRoute.Sitemap> {
+  const id = Number(rawId);
+
   if (id === 0) {
     const staticEntries: MetadataRoute.Sitemap = STATIC_PATHS.map(({ path, priority }) => ({
       url: `${BASE_URL}${path}`,
       changeFrequency: 'daily',
       priority,
     }));
-
-    const artistCount = await fetchCount('artists', 50000);
-    const artistIds = await fetchIdRange('artists', 0, artistCount);
-    const artistEntries: MetadataRoute.Sitemap = artistIds.map((artistId) => ({
-      url: `${BASE_URL}/artist/${artistId}`,
-      changeFrequency: 'weekly',
-      priority: 0.6,
-    }));
-
-    return [...staticEntries, ...artistEntries];
+    return [...staticEntries, ...(await artistEntries(0))];
   }
 
+  if (id > ARTIST_OVERFLOW_BASE) return artistEntries(id - ARTIST_OVERFLOW_BASE);
+
   const offset = (id - 1) * PAGE_SIZE;
-  const albumCount = await fetchCount('release_groups', 420000);
+  const albumCount = await fetchCount('release_groups', ALBUM_COUNT_FALLBACK);
   const limit = Math.max(0, Math.min(PAGE_SIZE, albumCount - offset));
   const albumIds = await fetchIdRange('release_groups', offset, limit);
   return albumIds.map((albumId) => ({

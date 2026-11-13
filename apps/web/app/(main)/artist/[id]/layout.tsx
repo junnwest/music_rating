@@ -43,12 +43,19 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   const { name } = await fetchArtist(params.id);
   const pageTitle = `${name} — sillajuku`;
   const description = `Explore ${name}'s discography, community ratings, and reviews on sillajuku.`;
+  // Name-slug URLs (anything that isn't an artists.id uuid) are noindex, follow (2026-11-12).
+  // They're a name search, not a canonical page -- the uuid page is the one in the sitemap -- and
+  // old links carrying raw Spotify artist ids land here too, which got pages titled
+  // "0K4MGKGmjtdIE0W3GkGmyU — sillajuku" into Google's index. `follow` keeps the album links on
+  // them crawlable.
+  const isUuid = UUID_RE.test(decodeURIComponent(params.id));
 
   return {
     title: pageTitle,
     description,
     openGraph: { title: pageTitle, description },
     twitter: { title: pageTitle, description },
+    ...(isUuid ? {} : { robots: { index: false, follow: true } }),
   };
 }
 

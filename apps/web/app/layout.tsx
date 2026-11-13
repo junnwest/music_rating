@@ -14,9 +14,17 @@ const jakarta = Plus_Jakarta_Sans({
   variable: '--font-jakarta',
 });
 
+// Descriptive on purpose (2026-11-12): the old title/description ("sillajuku" / "Every record
+// you've loved.") never said music, albums or ratings, so the homepage had nothing to rank on for
+// "music rating app"-type searches. Pages with their own generateMetadata (album, artist, charts,
+// mix, profile) override this; the rest inherit it.
+const SITE_TITLE = 'sillajuku — Rate albums & map your music taste';
+const SITE_DESCRIPTION =
+  'Rate and review albums and songs, see what the community thinks, and map your music taste. 앨범과 곡을 평가하고 리뷰하며 나만의 음악 취향 지도를 만들어 보세요.';
+
 export const metadata: Metadata = {
-  title: 'sillajuku',
-  description: 'Every record you\'ve loved.',
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
   // www, not the bare apex -- sillajuku.com 307-redirects to www.sillajuku.com at the
   // infrastructure level, so the bare apex is never actually where content is served from.
   // Matters beyond cosmetics: Google's sitemap fetcher (unlike a browser) doesn't reliably
@@ -24,16 +32,16 @@ export const metadata: Metadata = {
   // Console -- confirmed live (apex returns 307, www returns 200 directly, no hop).
   metadataBase: new URL('https://www.sillajuku.com'),
   openGraph: {
-    title: 'sillajuku',
-    description: 'Every record you\'ve loved.',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     url: 'https://www.sillajuku.com',
     siteName: 'sillajuku',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'sillajuku',
-    description: 'Every record you\'ve loved.',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
   },
   // Safari's Smart App Banner: "Open" if the app is installed, "Get" if not. Complements
   // IosAppRedirect, which only fires once per session.
