@@ -53,6 +53,10 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-11-12 (Mac) — Web SEO fixes: artist sitemap split, descriptive homepage title, raw-ID artist pages noindexed. Pushed to main (Vercel deploy).** Details in SESSIONS.
+> - **After deploy:** in Search Console → Sitemaps, submit `/sitemap/1001.xml` and `/sitemap/1002.xml` (new artist files; robots.txt lists them too), and check `/sitemap/0.xml` now reads "Success" with ~45k URLs.
+> - **Open (not done):** robots.txt still blocks ChatGPT-User / PerplexityBot (AI assistants can't fetch the site on demand); the homepage has no server-rendered content (feed loads client-side); no `WebSite` JSON-LD.
+
 > **2026-11-06 (Mac) — Shared page links now open in the app (Universal Links); app-shared rating links fixed on web; post notifications open the author's profile at the post. Pushed (`b4001ee`).** Details in SESSIONS.
 > - **Before it works:** deploy the web (the AASA file is what lets iOS open these links in the app; Apple's CDN can take up to ~a day to pick it up, or delete and reinstall the app), then install the new iOS build on the iPhone.
 > - **To try on the iPhone:** tap an album, artist, profile, post and Mix link (e.g. from Messages/Notes). Each should open that page on Home. Your own profile link goes to the Profile tab. An old `sillajuku.com/r/<id>` link should open the post too, in the app and on the web (it redirects to `/post/<id>`).

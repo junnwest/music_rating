@@ -4,6 +4,17 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-11-12 (Mac) — Web SEO: checked an AI-search critique of the site against the code and live site; fixed three things (pushed).**
+
+- **Sitemap 0 was over Google's limit.** It held the static pages plus every artist: 114,180 URLs, against Google's 50,000-per-file cap, so the file (homepage and charts included) was likely being rejected. It was written when artists were ~49k. New `lib/sitemapPages.ts` holds the id scheme, shared by `app/sitemap.ts` and `app/robots.ts` (robots used to copy the album page math). Ids: 0 = static + artists [0, 45k); 1..N = albums (unchanged); 1001+ = remaining artists, 45k each, at a fixed base so they don't shift as albums grow. Checked on the local dev server: 0 → 45,010 URLs, 1001 → 45,000, 1002 → 24,298, 114,298 unique artists, robots.txt lists 0–19, 1001 and 1002. (A first run showed 23k duplicates; this Mac's `.next` fetch cache held stale chunks from Sep 11, and artist uuids are random so inserts shift offsets. Gone after the background revalidation. Same exposure existed before the change.) Dev serves these at `/sitemap.xml/<id>`, prod at `/sitemap/<id>.xml`.
+- **Homepage title/description said nothing about music.** `app/layout.tsx`: "sillajuku" / "Every record you've loved." → "sillajuku — Rate albums & map your music taste" plus an en+ko description. Pages with their own metadata (album, artist, charts, mix, profile) still override it.
+- **Raw-ID artist pages were indexed.** Any non-uuid `/artist/<x>` is treated as a name search, so old links with Spotify ids rendered "0K4MGKGmjtdIE0W3GkGmyU — sillajuku" with a 200 and got indexed. `artist/[id]/layout.tsx` now marks every non-uuid artist URL `noindex, follow` (the uuid page is the canonical one, in the sitemap). Verified: uuid page has no robots meta; `/artist/IU` and the Spotify-id URL get `noindex, follow`.
+- **Claims that were wrong:** the site isn't web-only (iOS 1.1 is live, Smart App Banner on), and Organization / MusicGroup / AggregateRating JSON-LD already existed.
+- **Not changed (flagged):** robots.txt still blocks ChatGPT-User and PerplexityBot along with the training crawlers (2026-07-30, Vercel CPU), which is why AI assistants can't read the site when asked; homepage content is client-rendered; no `WebSite` JSON-LD.
+- `tsc` clean for the changed files (the existing taste-map d3/three errors remain on this Mac).
+
+---
+
 **2026-11-09 (Windows) — Housekeeping: uncommitted work committed and pushed.** No app changes this session (it was spent on Instagram reels, outside this repo). Committed what had been sitting uncommitted on Windows: `1722be4` (iOS `sillajuku://open` early return, from 11-05) and `7aecb8d` (10-12 catalogue clean-up code: `release_group_mbid_aliases` migration, `repair-empty-release-groups.ts`, `mb-ingest`/`mb-client`/`dedup-by-duration`/cover/audit script changes, plus docs). The one-off dumps in `apps/web/scripts/data/` and `apps/ios/AppStoreScreenshots/samples/` were left uncommitted on purpose. Pipeline still running (restarted 11-04) with its watchdog; next health check due 2026-11-11.
 
 ---
