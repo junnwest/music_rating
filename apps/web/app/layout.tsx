@@ -18,9 +18,10 @@ const jakarta = Plus_Jakarta_Sans({
 // you've loved.") never said music, albums or ratings, so the homepage had nothing to rank on for
 // "music rating app"-type searches. Pages with their own generateMetadata (album, artist, charts,
 // mix, profile) override this; the rest inherit it.
-const SITE_TITLE = 'sillajuku — Rate albums & map your music taste';
-const SITE_DESCRIPTION =
-  'Rate and review albums and songs, see what the community thinks, and map your music taste. 앨범과 곡을 평가하고 리뷰하며 나만의 음악 취향 지도를 만들어 보세요.';
+// Kept within Naver Search Advisor's limits (title <= 40 chars, description <= 80). The homepage
+// has its own en/ko version in app/(main)/page.tsx.
+const SITE_TITLE = 'sillajuku — Rate albums, map your taste';
+const SITE_DESCRIPTION = 'Rate and review albums, see community scores, and map your music taste.';
 
 export const metadata: Metadata = {
   title: SITE_TITLE,
