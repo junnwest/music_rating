@@ -53,6 +53,8 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-11-16 (Mac, later) — Album sitemaps 9–18 were being served empty (database timeout on deep row offsets); sitemaps rebuilt to slice by uuid range. Pushed.** All 25 files now 38–39k URLs; 853,734 albums + 114,298 artists, matching the tables. **After deploy:** submit `/sitemap/20.xml`–`22.xml` (new) in Google Search Console and Naver, resubmit the rest in Naver. Details in SESSIONS.
+
 > **2026-11-16 (Mac) — Album and artist pages render on the server (real content in the first HTML), and in Korean for Korean visitors. Pushed to main (Vercel deploy).** Details in SESSIONS.
 > - **After deploy:** fetch an album and an artist page with `curl -H "Accept-Language: ko-KR"` and check the HTML has the score, tracklist / discography and Korean labels. Watch Vercel Active CPU for a few days (album pages now render ~6 more cached queries).
 > - **Open:** homepage still has no server-rendered intro (it's a cached static page; adding one is separate); `<html lang>` is always `en`; pre-existing hydration warning on every page from the root layout's JSON-LD `<script>` (`type` mismatch).
