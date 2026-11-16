@@ -46,6 +46,9 @@ export const metadata: Metadata = {
   // Safari's Smart App Banner: "Open" if the app is installed, "Get" if not. Complements
   // IosAppRedirect, which only fires once per session.
   itunes: { appId: '6785741603' },
+  // Naver Search Advisor ownership check (2026-11-16). A public token, not
+  // a secret -- removing it un-verifies the site in Search Advisor.
+  verification: { other: { 'naver-site-verification': '4fdce961fdfeedd0ce54d3d306cfe14916a09153' } },
 };
 
 // Site-wide Organization markup (not homepage-only) -- this represents the publisher/brand
