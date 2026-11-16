@@ -49,7 +49,12 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   // www, not the bare apex -- see layout.tsx's matching comment. Confirmed live: submitting the
   // apex version to Search Console showed "Couldn't fetch" (sillajuku.com 307-redirects to
   // www.sillajuku.com, and Google's sitemap fetcher doesn't reliably follow that hop).
-  const sitemaps = (await sitemapIds()).map((id) => `https://www.sillajuku.com/sitemap/${id}.xml`);
+  // The index first (app/sitemap_index.xml), then each file directly as before -- listing both is
+  // allowed, and keeps the files discoverable if the index ever fails.
+  const sitemaps = [
+    'https://www.sillajuku.com/sitemap_index.xml',
+    ...(await sitemapIds()).map((id) => `https://www.sillajuku.com/sitemap/${id}.xml`),
+  ];
 
   return {
     rules: [
