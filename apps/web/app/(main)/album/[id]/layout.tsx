@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { albumCommunityScoresServer, communityStats } from '../../../../lib/sj/serverCatalog';
+import { getServerLang } from '../../../../lib/i18n/server';
 
 // Every page on the site previously shared the root layout's static title/description
 // ("sillajuku" / "Every record you've loved.") -- Google was substituting its own titles/
@@ -37,29 +39,13 @@ async function fetchRelease(id: string): Promise<ReleaseRow | null> {
   }
 }
 
-// Same formula the page itself uses for its own displayed "community avg" (see page.tsx's
-// `scored` computation) -- structured data has to match what's actually shown on the page, not an
-// independently-computed number, or it risks a Google manual action for misleading markup. Capped
-// at 2000 rows: this is an average, not the display list, so a bounded sample is fine even for a
-// very popular album, and keeps this from ever becoming an unbounded fetch.
+// The same scores and formula the page shows (lib/sj/serverCatalog.ts) -- structured data has to
+// match what's actually on the page, or it risks a Google manual action for misleading markup.
+// get_album_community_scores includes private accounts (anonymously), like the page's own number;
+// this used to read `ratings` directly, which RLS filters down to public accounts.
 async function fetchRatingStats(releaseGroupId: string): Promise<{ count: number; average: number | null }> {
-  try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/ratings?release_group_id=eq.${releaseGroupId}&select=score&limit=2000`,
-      {
-        headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
-        next: { revalidate: 3600 },
-      }
-    );
-    const rows: { score: number | null }[] = await res.json();
-    const scored = (Array.isArray(rows) ? rows : [])
-      .map((r) => r.score)
-      .filter((s): s is number => s != null);
-    if (scored.length === 0) return { count: 0, average: null };
-    return { count: scored.length, average: scored.reduce((a, b) => a + b, 0) / scored.length };
-  } catch {
-    return { count: 0, average: null };
-  }
+  const { count, avg } = communityStats(await albumCommunityScoresServer(releaseGroupId));
+  return { count, average: avg };
 }
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
@@ -75,9 +61,16 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
     release.release_group_type === 'ep' ? 'EP' : release.release_group_type === 'single' ? 'Single' : 'Album';
   const { count } = await fetchRatingStats(params.id);
 
-  const pageTitle = `${title} by ${artist} — sillajuku`;
-  const description =
-    count > 0
+  // Korean for Korean visitors / crawlers, same guess as the page body (ServerLanguage).
+  const ko = getServerLang() === 'ko';
+  const typeKo =
+    release.release_group_type === 'ep' ? 'EP' : release.release_group_type === 'single' ? '싱글' : '앨범';
+  const pageTitle = ko ? `${artist} - ${title} 평점 · 리뷰 — sillajuku` : `${title} by ${artist} — sillajuku`;
+  const description = ko
+    ? count > 0
+      ? `${artist}의 ${typeKo} ${title}${year ? ` (${year})` : ''}. sillajuku에서 ${count.toLocaleString()}명이 평가했어요. 평점과 리뷰를 보고 직접 평가해 보세요.`
+      : `${artist}의 ${typeKo} ${title}${year ? ` (${year})` : ''} 평점과 리뷰. sillajuku에서 직접 평가해 보세요.`
+    : count > 0
       ? `Rate ${title} by ${artist}${year ? ` (${year})` : ''}. ${typeLabel} rated by ${count.toLocaleString()} ${count === 1 ? 'person' : 'people'} on sillajuku.`
       : `Rate ${title} by ${artist}${year ? ` (${year})` : ''} on sillajuku — every record you've loved, documented.`;
 

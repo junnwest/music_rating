@@ -20,12 +20,15 @@ interface LanguageContextValue {
   lang: Lang;
   setLang: (l: Lang) => void;
   t: (key: string) => string;
+  /** False until the provider has read the stored / browser language (first effect). */
+  settled: boolean;
 }
 
 const LanguageContext = createContext<LanguageContextValue>({
   lang: 'en',
   setLang: () => {},
   t: (key) => key,
+  settled: false,
 });
 
 function browserLang(): Lang {
@@ -34,6 +37,7 @@ function browserLang(): Lang {
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>('en');
+  const [settled, setSettled] = useState(false);
 
   // Set during render, not in an effect, so children rendering in this same
   // pass (which call displayName) already see the right language — an effect
@@ -52,6 +56,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       setLangState(detected);
       document.cookie = `sj-lang=${detected}; path=/; max-age=31536000; SameSite=Lax`;
     }
+    setSettled(true);
   }, []);
 
   function setLang(l: Lang) {
@@ -63,10 +68,32 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const t = (key: string) => lookup(dicts[lang], key);
 
   return (
-    <LanguageContext.Provider value={{ lang, setLang, t }}>
+    <LanguageContext.Provider value={{ lang, setLang, t, settled }}>
       {children}
     </LanguageContext.Provider>
   );
+}
+
+/**
+ * Renders its subtree in the server's language guess (lib/i18n/server.ts:
+ * the sj-lang cookie, else Accept-Language) until the provider above has
+ * settled, then defers to it. Wraps the album and artist pages (2026-11-12) so
+ * their server HTML is Korean for Korean visitors and crawlers instead of
+ * always English (the provider can only start at 'en' on the server). The
+ * first client render uses the same guess, so hydration matches.
+ *
+ * Only on routes that already render per request: reading cookies in the root
+ * layout instead would make every cached page (home, charts, help) dynamic.
+ */
+export function ServerLanguage({ lang, children }: { lang: Lang; children: ReactNode }) {
+  const parent = useContext(LanguageContext);
+  const override = !parent.settled && parent.lang !== lang;
+  // Same render-time call as the provider's, for displayName (Hangul vs Latin).
+  if (override) setDisplayLanguage(lang);
+  // Always the same Provider element (only its value changes): swapping it for a
+  // fragment once settled would remount the whole page and drop its state.
+  const value = override ? { ...parent, lang, t: (key: string) => lookup(dicts[lang], key) } : parent;
+  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
 export function useLanguage() {

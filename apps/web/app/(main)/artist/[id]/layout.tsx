@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { getServerLang } from '../../../../lib/i18n/server';
 
 // See album/[id]/layout.tsx for why this exists. The artist route accepts either a real
 // artists.id (uuid) or a raw artist-name slug (page.tsx's own `isId` check) -- mirrored here.
@@ -42,7 +43,11 @@ async function fetchArtist(rawId: string): Promise<ArtistInfo> {
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
   const { name } = await fetchArtist(params.id);
   const pageTitle = `${name} — sillajuku`;
-  const description = `Explore ${name}'s discography, community ratings, and reviews on sillajuku.`;
+  // Korean for Korean visitors / crawlers, same guess as the page body (ServerLanguage).
+  const description =
+    getServerLang() === 'ko'
+      ? `${name}의 디스코그래피와 앨범별 커뮤니티 평점, 리뷰를 sillajuku에서 확인하세요.`
+      : `Explore ${name}'s discography, community ratings, and reviews on sillajuku.`;
   // Name-slug URLs (anything that isn't an artists.id uuid) are noindex, follow (2026-11-12).
   // They're a name search, not a canonical page -- the uuid page is the one in the sitemap -- and
   // old links carrying raw Spotify artist ids land here too, which got pages titled
