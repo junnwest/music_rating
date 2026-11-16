@@ -53,9 +53,13 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-11-16 (Mac) — Album and artist pages render on the server (real content in the first HTML), and in Korean for Korean visitors. Pushed to main (Vercel deploy).** Details in SESSIONS.
+> - **After deploy:** fetch an album and an artist page with `curl -H "Accept-Language: ko-KR"` and check the HTML has the score, tracklist / discography and Korean labels. Watch Vercel Active CPU for a few days (album pages now render ~6 more cached queries).
+> - **Open:** homepage still has no server-rendered intro (it's a cached static page; adding one is separate); `<html lang>` is always `en`; pre-existing hydration warning on every page from the root layout's JSON-LD `<script>` (`type` mismatch).
+
 > **2026-11-12 (Mac) — Web SEO fixes: artist sitemap split, descriptive homepage title, raw-ID artist pages noindexed. Pushed to main (Vercel deploy).** Details in SESSIONS.
 > - **After deploy:** in Search Console → Sitemaps, submit `/sitemap/1001.xml` and `/sitemap/1002.xml` (new artist files; robots.txt lists them too), and check `/sitemap/0.xml` now reads "Success" with ~45k URLs.
-> - **Open (not done):** robots.txt still blocks ChatGPT-User / PerplexityBot (AI assistants can't fetch the site on demand); the homepage has no server-rendered content (feed loads client-side); no `WebSite` JSON-LD.
+> - **Open (not done):** robots.txt still blocks ChatGPT-User / PerplexityBot (AI assistants can't fetch the site on demand); no `WebSite` JSON-LD. (Album/artist server rendering: see 2026-11-16.)
 
 > **2026-11-06 (Mac) — Shared page links now open in the app (Universal Links); app-shared rating links fixed on web; post notifications open the author's profile at the post. Pushed (`b4001ee`).** Details in SESSIONS.
 > - **Before it works:** deploy the web (the AASA file is what lets iOS open these links in the app; Apple's CDN can take up to ~a day to pick it up, or delete and reinstall the app), then install the new iOS build on the iPhone.
