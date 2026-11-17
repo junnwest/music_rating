@@ -39,7 +39,7 @@ import { Jimp, distance } from 'jimp';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { getDB } from './itunes-ingest-core';
 import { searchAlbums } from './deezer-client';
-import { searchAlbum as itunesSearchAlbum } from './itunes-client';
+import { searchAlbum as itunesSearchAlbum, fetchDiscography } from './itunes-client';
 
 const argv = process.argv.slice(2);
 const arg = (f: string, d?: string) => { const i = argv.indexOf(f); return i >= 0 && argv[i + 1] ? argv[i + 1] : d; };
@@ -73,14 +73,32 @@ async function readImage(url: string): Promise<Awaited<ReturnType<typeof Jimp.re
   } catch { return null; }
 }
 
-interface RgRow { id: string; title: string; artist_display: string; native_title: string | null; cover_url: string; prestige_score: number | null; }
+interface RgRow { id: string; title: string; artist_display: string; native_title: string | null; cover_url: string; prestige_score: number | null; primary_artist_id: string | null; }
+
+// Apple's free-text search often returns nothing for real Korean releases (see discover-itunes-recency.ts),
+// which made this audit skip the very album in its header: 오보에 "needs 2 sources" (2026-11-17). When the
+// search misses and we know the artist's Apple id, match the album in their discography instead -- on the
+// title or the native title, the same loose overlap used for Deezer above.
+const discoCache = new Map<number, Awaited<ReturnType<typeof fetchDiscography>>>();
+async function itunesFromDiscography(rg: RgRow) {
+  if (!rg.primary_artist_id) return null;
+  const { data } = await db.from('artists').select('itunes_artist_id').eq('id', rg.primary_artist_id).maybeSingle();
+  const aid = (data as { itunes_artist_id: number | null } | null)?.itunes_artist_id;
+  if (!aid) return null;
+  if (!discoCache.has(aid)) discoCache.set(aid, await fetchDiscography(aid));
+  const strip = (t: string) => t.replace(/\s*-\s*(Single|EP)$/i, '');
+  const albums = discoCache.get(aid)!;
+  return albums.find(a => normLoose(strip(a.collectionName)) === normLoose(rg.title))
+    ?? albums.find(a => !!rg.native_title && normLoose(strip(a.collectionName)) === normLoose(rg.native_title))
+    ?? null;
+}
 
 async function main() {
   console.log(`\n  CAA cover QC — sampling ${ALL ? 'ALL' : 'prestige'} CAA-covered releases (limit ${LIMIT}), flag distance > ${THRESHOLD}\n`);
 
   // Prestige-first sample (most user-visible). CAA URLs are coverartarchive.org / archive.org.
   let q = db.from('release_groups')
-    .select('id, title, artist_display, native_title, cover_url, prestige_score')
+    .select('id, title, artist_display, native_title, cover_url, prestige_score, primary_artist_id')
     .or('cover_url.ilike.%coverartarchive%,cover_url.ilike.%archive.org%');
   /* --ids checks specific release groups. A reported wrong cover should not have to be prestigious
      enough to reach the top of a sweep, and the type filter is dropped for it too: a single can carry
@@ -105,7 +123,7 @@ async function main() {
     // Two INDEPENDENT cross-source covers for the same album.
     const dzHits = await searchAlbums(rg.artist_display, rg.title, 5);
     const dzHit = dzHits.find(h => overlap(h.artist, rg.artist_display) && (overlap(h.title, rg.title) || overlap(h.title, rg.native_title ?? '')));
-    const itAlbum = await itunesSearchAlbum(rg.title, rg.artist_display, null);
+    const itAlbum = (await itunesSearchAlbum(rg.title, rg.artist_display, null)) ?? (await itunesFromDiscography(rg));
     const itCover = itAlbum?.artworkUrl100 ? itAlbum.artworkUrl100.replace('100x100bb', '600x600bb') : null;
     if (!dzHit?.cover || !itCover) { insufficient++; console.log('need 2 sources — skip'); continue; }
 

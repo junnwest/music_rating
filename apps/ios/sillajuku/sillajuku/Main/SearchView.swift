@@ -892,6 +892,37 @@ class SearchViewModel {
         lastLoggedQuery = q
         struct LogBody: Encodable { let query: String; let platform: String }
         await WebAPI.post("/api/search/popular", body: LogBody(query: q, platform: "ios"))
+        logNearMiss(q)
+    }
+
+    // NEAR MISS: results came back, but none of them is the thing typed. search() only logs a miss
+    // when every section is empty, so a real gap hid behind partial matches: "earfzilla" (2026-11-16,
+    // an Irish rapper MB has but we didn't) matched other names' fragments and was never logged, so
+    // the misses lane never looked for him. Logged here, on the settled debounce, not in search():
+    // that one fires on every 300ms pause and would log prefixes ("earf", "earfz").
+    //
+    // Safe to widen because the misses lane (scripts/pipeline.ts tryMisses) skips names we already
+    // hold, needs a confident unambiguous MB match, and only takes its Deezer fallback when
+    // db_count is 0 -- this logs the real result count, so it never triggers that fallback.
+    // Exact-title hits on albums/songs also count as found: "pirouette" is an album, not a gap.
+    private func logNearMiss(_ q: String) {
+        guard !isSearching, query.trimmingCharacters(in: .whitespaces) == q else { return }
+        let total = albumResults.count + artistResults.count + songResults.count
+        guard total > 0 else { return }   // the all-empty case is search()'s own miss
+        let norm = { (s: String) in s.lowercased().filter { $0.isLetter || $0.isNumber } }
+        let nq = norm(q)
+        guard !nq.isEmpty else { return }
+        let artistHit = artistResults.contains { a in
+            ([a.name, a.nameNative].compactMap { $0 } + (a.aliases ?? [])).contains { norm($0) == nq }
+        }
+        let titleHit = albumResults.contains { r in
+            [r.title, r.titleNative].compactMap { $0 }.contains { norm($0) == nq }
+        } || songResults.contains { norm($0.title) == nq }
+        guard !artistHit && !titleHit else { return }
+        let missQuery = q.lowercased()
+        Task { try? await supabase.from("search_misses")
+            .insert(SearchMiss(query: missQuery, type: "ios_search_near", db_count: total))
+            .execute() }
     }
 
     // Raced against a timeout below -- this step alone has no dedicated

@@ -107,9 +107,11 @@ function pickAlbum(results: any[], title: string, artist: string): ItunesAlbum |
 }
 
 /** Find the best-matching album for (title, artist), trying US then the store rotation. */
-export async function searchAlbum(title: string, artist: string, nativeLang: string | null): Promise<ItunesAlbum | null> {
+export async function searchAlbum(title: string, artist: string, nativeLang: string | null, maxStores = Infinity): Promise<ItunesAlbum | null> {
   const term = encodeURIComponent(`${title} ${artist}`);
-  for (const store of [null, ...orderedStores(nativeLang)]) {
+  // maxStores: the RECENCY lane caps this (store-agnostic + the native store) — each throttled URL can
+  // cost ~70s in retries, and a full 6-store rotation over several seeds stalled one artist for 10 min.
+  for (const store of [null, ...orderedStores(nativeLang)].slice(0, maxStores)) {
     const c = store ? `&country=${store}` : '';
     const data = await itunesGet(`${ITUNES_BASE}/search?term=${term}&entity=album&limit=5${c}`);
     const hit = data && pickAlbum(data.results ?? [], title, artist);
@@ -137,11 +139,32 @@ export async function searchArtist(name: string): Promise<{ artistId: number; ar
 
 const NOISE_RE = /\b(sped[- ]up|slowed|remix(?:es)?|instrumental|karaoke|off[- ]vocal|mr\.?|inst\.?)\b/i;
 /** An artist's albums (filters obvious noise editions). */
+const isAlbum = (r: any) =>
+  r.wrapperType === 'collection' && r.collectionType === 'Album' &&
+  !(NOISE_RE.test(r.collectionName ?? '') && (r.trackCount ?? 0) <= 3);
+
 export async function fetchDiscography(itunesArtistId: number): Promise<ItunesAlbum[]> {
   const data = await itunesGet(`${ITUNES_BASE}/lookup?id=${itunesArtistId}&entity=album&limit=200`);
-  return (data?.results ?? []).filter((r: any) =>
-    r.wrapperType === 'collection' && r.collectionType === 'Album' &&
-    !(NOISE_RE.test(r.collectionName ?? '') && (r.trackCount ?? 0) <= 3)) as ItunesAlbum[];
+  return (data?.results ?? []).filter(isAlbum) as ItunesAlbum[];
+}
+
+/** For the RECENCY lane: the artist's NEWEST albums (`sort=recent`, so the 200 cap can never drop a new
+ *  release), plus the artist's own Apple name (the lookup's `artist` row). Apple lists joint releases
+ *  ("Panda Gomm & Young B") under every credited artist, so the caller needs that name to tell a joint
+ *  credit from a feature. */
+export async function fetchRecentDiscography(itunesArtistId: number): Promise<{ artistName: string | null; albums: ItunesAlbum[] }> {
+  const data = await itunesGet(`${ITUNES_BASE}/lookup?id=${itunesArtistId}&entity=album&limit=200&sort=recent`);
+  const results: any[] = data?.results ?? [];
+  const artistRow = results.find(r => r.wrapperType === 'artist' && r.artistId === itunesArtistId);
+  return { artistName: artistRow?.artistName ?? null, albums: results.filter(isAlbum) as ItunesAlbum[] };
+}
+
+/** Look up known collection ids (up to ~50 in one call) → their collections, in any order. Uses the
+ *  lookup endpoint, which keeps answering while the search endpoint returns empty under throttling. */
+export async function lookupCollections(collectionIds: number[]): Promise<ItunesAlbum[]> {
+  if (!collectionIds.length) return [];
+  const data = await itunesGet(`${ITUNES_BASE}/lookup?id=${collectionIds.join(',')}`);
+  return (data?.results ?? []).filter((r: any) => r.wrapperType === 'collection') as ItunesAlbum[];
 }
 
 function mapTracks(results: any[]): ItunesTrack[] {

@@ -230,6 +230,23 @@ function pickNative(detail: MbArtistDetail): string | null {
   return null;
 }
 
+/** A release dated within the last RECENT_DAYS, or in the future. MusicBrainz data for such a release is
+ *  still settling: editions, tracklists and cover art get added in the weeks around the release date. */
+export const RECENT_DAYS = 45;
+export function isRecentDate(d: string | null | undefined): boolean {
+  if (!d) return false;
+  const t = Date.parse(d.length === 4 ? `${d}-12-31` : d.length === 7 ? `${d}-28` : d);
+  return Number.isFinite(t) && t >= Date.now() - RECENT_DAYS * 86_400_000;
+}
+
+/** HEAD-check a URL (following CAA's redirects). Any network failure counts as not resolving. */
+async function urlResolves(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(15_000) });
+    return res.ok;
+  } catch { return false; }
+}
+
 const rankCountry = (c: string | null) => (c === 'KR' ? 0 : c === 'JP' ? 1 : c === 'US' ? 2 : 3);
 
 // Representative edition: Official → earliest date → region KR>JP>US → most complete.
@@ -273,6 +290,7 @@ async function findOrCreateArtistByMbid(db: DB, detail: MbArtistDetail): Promise
       await db.from('artists').update({ country: detail.country })
         .eq('id', existing.artist_id).is('country', null);
     }
+    await healArtistNames(db, existing.artist_id as string, detail);
     return { id: existing.artist_id as string, isNew: false };
   }
 
@@ -307,18 +325,45 @@ async function findOrCreateArtistByMbid(db: DB, detail: MbArtistDetail): Promise
     return { id: winner, isNew: false };
   }
 
+  await upsertMbAliases(db, id, detail);
+  return { id, isNew: true };
+}
+
+async function upsertMbAliases(db: DB, artistId: string, detail: MbArtistDetail): Promise<void> {
   const seen = new Set<string>();
   const aliasRows = [{ name: detail.name, locale: null as string | null, primary: true }, ...detail.aliases]
     .filter(a => a.name && !seen.has(a.name) && seen.add(a.name))
     .map(a => ({
-      artist_id: id, alias: a.name, alias_norm: normalizeStr(a.name),
+      artist_id: artistId, alias: a.name, alias_norm: normalizeStr(a.name),
       locale: a.locale ?? null, script: scriptOf(a.name),
       primary_for_locale: !!a.primary, source: 'musicbrainz',
     }));
   if (aliasRows.length) {
     await db.from('artist_aliases').upsert(aliasRows, { onConflict: 'artist_id,alias', ignoreDuplicates: true });
   }
-  return { id, isNew: true };
+}
+
+/**
+ * Keep an EXISTING artist's aliases and native name in step with MusicBrainz.
+ *
+ * Aliases used to be written only when the artist row was created. MusicBrainz editors add native-script
+ * aliases later, so an artist ingested before that stayed findable only by its Latin name. Reported
+ * 2026-11-16: Bassagong was ingested 06-30 with the single alias "Bassagong"; MB now carries the primary
+ * ko_KR alias 뱃사공, and searching 뱃사공 returned nothing. Additive only: new aliases are inserted
+ * (existing rows untouched) and name_native is filled only while it is NULL, so a curated value is never
+ * overwritten. Uses the getArtist() response the caller already holds -- no extra MB request.
+ */
+export async function healArtistNames(db: DB, artistId: string, detail: MbArtistDetail): Promise<void> {
+  try {
+    await upsertMbAliases(db, artistId, detail);
+    const native = pickNative(detail);
+    if (native) {
+      await db.from('artists').update({ name_native: native, native_language: detectLanguage(native) })
+        .eq('id', artistId).is('name_native', null);
+    }
+  } catch (e) {
+    console.warn(`  [names] ${detail.name}: ${(e as Error).message}`);  // best-effort: never fails an ingest
+  }
 }
 
 async function findOrCreateReleaseGroup(db: DB, rg: MbReleaseGroup, primaryArtistId: string): Promise<string> {
@@ -467,9 +512,18 @@ async function ingestEditionFromPrefetched(
   // front even though an edition does; HEAD-checking here would add a ~1.5s CAA redirect per
   // release group and is not worth it inside the ingest loop, so repairing that residue is the
   // covers backfill's job (it already HEAD-checks) rather than ingest's.
-  const coverUrl = rep.coverFront
+  //
+  // EXCEPT FOR A RECENT RELEASE. CAA designates a group's front lazily, so for weeks after release the
+  // group endpoint can 404 while the edition already has art. Reported 2026-11-16: 2hollis "Pirouette"
+  // (out 11-11) rendered no cover -- its release had front art, its release-group URL was a 404. Groups
+  // that are new are few, so for those (and only those) the group URL is HEAD-checked and the edition's
+  // own front is used when it does not resolve.
+  let coverUrl = rep.coverFront
     ? `https://coverartarchive.org/release-group/${rg.id}/front-500`
     : null;
+  if (coverUrl && isRecentDate(rg.firstReleaseDate ?? rep.date) && !(await urlResolves(coverUrl))) {
+    coverUrl = `https://coverartarchive.org/release/${rep.id}/front-500`;
+  }
 
   const releaseId = randomUUID();
   const { error: upErr } = await db.from('releases').upsert({
@@ -504,8 +558,16 @@ async function ingestEditionFromPrefetched(
   await db.from('releases').update({ is_canonical: false })
     .eq('release_group_id', rgId).eq('is_canonical', true).neq('id', releaseDbId);
 
-  // The group's display cover = its canonical edition's cover.
-  if (coverUrl) await db.from('release_groups').update({ cover_url: coverUrl }).eq('id', rgId);
+  // The group's display cover = its canonical edition's cover -- but only over an EMPTY cover or one
+  // that CAA itself supplied. A cover repointed to Deezer/iTunes (audit-caa-covers --apply,
+  // audit-cover-health, a hand fix) was repointed because the CAA image was wrong or dead, and the old
+  // unconditional write put it straight back on the artist's next full re-poll. That is how YANGHONGWON
+  // "오보에" (3 STEPS FORWARD, 2 STEPS BACK) regressed to the wrong CAA image after being fixed twice
+  // (07-09, 09-28): his MB group count went 11 -> 13, the full re-ingest ran, and this line overwrote it.
+  if (coverUrl) {
+    await db.from('release_groups').update({ cover_url: coverUrl })
+      .eq('id', rgId).or('cover_url.is.null,cover_url.like.https://coverartarchive.org/%');
+  }
 
   const tracks = rep.tracks;           // already fetched in the bulk artist-releases call
   if (batched) return writeTracksBatched(db, releaseDbId, tracks, primaryArtistId);

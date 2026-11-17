@@ -38,7 +38,7 @@
  * cleanly: stale 'processing' rows are reset to 'pending' on startup.
  */
 
-import { getDB, resolveArtist, ingestArtist, nextCheckAt, HeavilyFeaturedError, type DB } from './mb-ingest';
+import { getDB, resolveArtist, ingestArtist, nextCheckAt, HeavilyFeaturedError, healArtistNames, RECENT_DAYS, type DB } from './mb-ingest';
 import { normalizeStr } from './itunes-ingest-core';
 import { embedReleaseGroupsBatch, embeddingsEnabled } from './mb-enrich';
 import { listenBrainzTopUp } from './mb-discover';
@@ -48,7 +48,9 @@ import { gapfillGroups, gapfillSkippedArtists, MigrationNeeded } from './mb-gapf
 import { runDeezerFallback, pickArtistBridged, ingestDeezerArtist } from './mb-deezer-fallback';
 import { searchArtists as dzSearchArtists } from './deezer-client';
 import { ItunesBlockedError, resetBlock, itunesBlocked } from './itunes-client';
-import { mbLastActivityAt, countArtistReleaseGroups, MbUnavailableError } from './mb-client';
+import { mbLastActivityAt, countArtistReleaseGroups, getArtist, MbUnavailableError } from './mb-client';
+// Countries whose artists normally have a native-script name (Hangul / kana-kanji / hanzi).
+const NATIVE_NAME_COUNTRIES = new Set(['KR', 'KP', 'JP', 'CN', 'TW', 'HK']);
 import { SEED } from './seed-artists';
 import { scanArtistRecency, type RecencyArtist } from './discover-itunes-recency';
 import { scanArtistRecencySpotify, type RecencyArtist as RecencyArtistSpotify } from './discover-spotify-recency';
@@ -170,6 +172,18 @@ const RECENCY_POLL_MS   = envInt('RECENCY_POLL_MS', 600_000);   // 10m between c
 const RECENCY_SINCE_MONTHS = envInt('RECENCY_SINCE_MONTHS', 12);
 const RECONCILE_POLL_MS = envInt('RECONCILE_POLL_MS', 86_400_000); // daily
 const RECENCY_STATE = path.resolve('scripts/pipeline-recency-state.json');
+// Tiered pass (2026-11-10). The id-cursor sweep above reaches any one artist only about once a month
+// (~70k artists at 25 per 10 min), so a new release from an artist people actually follow could sit
+// missing for weeks (asdf by 기리보이/씨잼/블랙넛, out 11-04, still absent 11-10). Before each sweep batch,
+// the lane now re-scans artists in the freshness tiers 'hot' (every RECENCY_HOT_DAYS) and 'active'
+// (every RECENCY_ACTIVE_DAYS), oldest scan first, up to RECENCY_TIER_BATCH per cycle. While that
+// backlog is large (first run: ~15k artists), cycles repeat after RECENCY_CATCHUP_MS (20s) instead of the
+// full poll interval. Last-scan times live in RECENCY_TIER_STATE ({artistId: ISO}).
+const RECENCY_HOT_DAYS    = envInt('RECENCY_HOT_DAYS', 2);
+const RECENCY_ACTIVE_DAYS = envInt('RECENCY_ACTIVE_DAYS', 7);
+const RECENCY_TIER_BATCH  = envInt('RECENCY_TIER_BATCH', 25);
+const RECENCY_CATCHUP_MS  = envInt('RECENCY_CATCHUP_MS', 20_000);
+const RECENCY_TIER_STATE = path.resolve('scripts/pipeline-recency-tier-state.json');
 
 // ── RECENCY-SPOTIFY lane: a second, independent MB-lag bridge alongside the iTunes one.
 // Added 2026-09-02 after checking 9 releases confirmed absent from BOTH MusicBrainz and
@@ -443,12 +457,31 @@ async function refreshArtist(db: DB, a: { id: string; name: string; mbid: string
   //
   // FAIL-SAFE IN EVERY DIRECTION: no stored count, no count returned, or the request throwing all
   // fall through to the full re-ingest. The fast path is taken only on a positive match.
+  //
+  // A COUNT CANNOT SEE A RELEASE THAT IS STILL SETTLING. The count changes when a new group appears, not
+  // when an existing group gains its full edition, tracklist or cover -- and around a release date that
+  // is exactly what happens. Reported 2026-11-16: 2hollis "Pirouette" was ingested 09-28 from its
+  // pre-order edition (2 tracks); MB later added the 16-track editions, the count never moved, and the
+  // album stayed 2 tracks with no cover. The newreleases lane already flags artists with recent groups;
+  // this makes that flag lead somewhere. An artist with a group dated in the last RECENT_DAYS (or in the
+  // future) therefore always takes the full path.
+  //
+  // NATIVE NAMES ride on the cheap path too: an East Asian artist with no native name gets one getArtist
+  // (aliases) per re-poll until MB supplies one -- see healArtistNames. Bassagong / 뱃사공, same day.
   let mbCount: number | null = null;
   try {
-    const { data: prev } = await db.from('artists').select('mb_rg_count').eq('id', a.id).maybeSingle();
-    const stored = (prev as { mb_rg_count: number | null } | null)?.mb_rg_count ?? null;
+    const { data: prev } = await db.from('artists').select('mb_rg_count, name_native, country').eq('id', a.id).maybeSingle();
+    const p = prev as { mb_rg_count: number | null; name_native: string | null; country: string | null } | null;
+    const stored = p?.mb_rg_count ?? null;
+    const since = new Date(Date.now() - RECENT_DAYS * 86_400_000).toISOString().slice(0, 10);
+    const { count: recent } = await db.from('release_groups').select('id', { count: 'exact', head: true })
+      .eq('primary_artist_id', a.id).gte('first_release_date', since);
     mbCount = await countArtistReleaseGroups(a.mbid);
-    if (stored != null && mbCount != null && mbCount === stored) {
+    if (stored != null && mbCount != null && mbCount === stored && !recent) {
+      if (!p?.name_native && NATIVE_NAME_COUNTRIES.has(p?.country ?? '')) {
+        const detail = await getArtist(a.mbid);
+        if (detail) await healArtistNames(db, a.id, detail);
+      }
       console.log(`  [freshness] ${a.name} — no change (MB count ${mbCount}, 1 request)`);
       await beat(db, 'freshness', { status: 'running', last_active: now(), items_done: fcount, current_item: `${a.name} ·` });
       return;
@@ -802,6 +835,44 @@ async function deezerLoop(db: DB) {
 function recencyCursor(): string { try { return JSON.parse(fs.readFileSync(RECENCY_STATE, 'utf8')).afterId ?? ''; } catch { return ''; } }
 function saveRecencyCursor(id: string) { try { fs.writeFileSync(RECENCY_STATE, JSON.stringify({ afterId: id })); } catch { /* best-effort */ } }
 
+// Tiered pass state + roster (see RECENCY_TIER_STATE). The roster (hot + active artists) is reloaded
+// every 6h, since freshness re-tiers artists once a day.
+type TierArtist = RecencyArtist & { ingest_priority: string };
+// File shape: { lastScan: {artistId: ISO}, needsSearch: [artistId] } (the first version stored lastScan bare).
+const tierStateFile = (() => { try { return JSON.parse(fs.readFileSync(RECENCY_TIER_STATE, 'utf8')); } catch { return {}; } })();
+let tierLastScan: Record<string, string> = tierStateFile.lastScan ?? (tierStateFile.needsSearch ? {} : tierStateFile);
+const tierNeedsSearch = new Set<string>(tierStateFile.needsSearch ?? []);
+function saveTierState() { try { fs.writeFileSync(RECENCY_TIER_STATE, JSON.stringify({ lastScan: tierLastScan, needsSearch: [...tierNeedsSearch] })); } catch { /* best-effort */ } }
+let tierRoster: TierArtist[] = [];
+let tierRosterAt = 0;
+async function loadTierRoster(db: DB): Promise<TierArtist[]> {
+  if (tierRoster.length && Date.now() - tierRosterAt < 6 * 3600_000) return tierRoster;
+  const out: TierArtist[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from('artists')
+      .select('id, name, name_native, native_language, country, itunes_artist_id, ingest_priority')
+      .eq('ingest_state', 'tracks_done').in('ingest_priority', ['hot', 'active'])
+      .order('id').range(from, from + 999);
+    if (error) throw new Error(`recency tier roster: ${error.message}`);
+    out.push(...((data ?? []) as TierArtist[]));
+    if (!data || data.length < 1000) break;
+  }
+  tierRoster = out; tierRosterAt = Date.now();
+  return out;
+}
+/** Due tier artists, hot before active, never-scanned / oldest scan first. */
+function dueTierArtists(roster: TierArtist[]): TierArtist[] {
+  const nowMs = Date.now();
+  const due = roster.filter(a => {
+    const last = tierLastScan[a.id];
+    const days = a.ingest_priority === 'hot' ? RECENCY_HOT_DAYS : RECENCY_ACTIVE_DAYS;
+    return !last || nowMs - Date.parse(last) >= days * 86_400_000;
+  });
+  return due.sort((x, y) =>
+    (Number(y.ingest_priority === 'hot') - Number(x.ingest_priority === 'hot'))
+    || (tierLastScan[x.id] ?? '').localeCompare(tierLastScan[y.id] ?? ''));
+}
+
 async function recencyLoop(db: DB) {
   if (!RECENCY) { await beat(db, 'recency', { status: 'off', last_active: now() }); return; }
   let ingested = 0, scanned = 0, errs = 0;
@@ -818,9 +889,32 @@ async function recencyLoop(db: DB) {
       // that point failed the same way forever. Found 2026-09-02 while widening this lane to the
       // whole catalog; unrelated to that change, but explains why "idle (swept) · 0 ingested" had
       // been showing long before this session touched anything.
+      // Tiered pass first: hot/active artists due for a re-scan. Two phases: artists we can resolve on
+      // Apple without its search endpoint (stored id / held collections, ~3 s each) go first; the ones
+      // that need search (~30 s+ under throttling) are deferred until no cheap one is due, so a slow
+      // tail never holds up the artists we can check quickly.
+      const due = dueTierArtists(await loadTierRoster(db));
+      const cheapDue = due.filter(a => !tierNeedsSearch.has(a.id));
+      const phase: 'cheap' | 'search' = cheapDue.length ? 'cheap' : 'search';
+      const batchList = (phase === 'cheap' ? cheapDue : due).slice(0, RECENCY_TIER_BATCH);
+      let tierBatch = 0;
+      for (const a of batchList) {
+        const r = await scanArtistRecency(db, a, { sinceMonths: RECENCY_SINCE_MONTHS, ingest: true, country: a.country ?? undefined, cheapResolveOnly: phase === 'cheap' });
+        scanned++; tierBatch += r.ingested; ingested += r.ingested;
+        if (r.artistId) a.itunes_artist_id = r.artistId; // also stored in the DB; saves re-resolving before the roster reloads
+        for (const g of r.gaps) console.log(`  [recency] +"${a.name}" — ${g.date} ${g.title} (tier ${a.ingest_priority})`);
+        if (phase === 'cheap' && !r.resolved) { tierNeedsSearch.add(a.id); saveTierState(); continue; } // retry in the search phase
+        tierNeedsSearch.delete(a.id);
+        tierLastScan[a.id] = now(); saveTierState();
+      }
+      if (due.length > batchList.length) { // catching up: skip the sweep batch, come back soon
+        await beat(db, 'recency', { status: 'running', last_active: now(), items_done: ingested, errors: errs, current_item: `tier catch-up (${phase}) · ${cheapDue.length} quick + ${due.length - cheapDue.length} need search · +${tierBatch} batch · ${ingested} total` });
+        await sleep(RECENCY_CATCHUP_MS); continue;
+      }
+
       const after = recencyCursor();
       let q = db.from('artists')
-        .select('id, name, name_native, native_language, country')
+        .select('id, name, name_native, native_language, country, itunes_artist_id')
         .eq('ingest_state', 'tracks_done')
         .order('id').limit(RECENCY_BATCH);
       if (after) q = q.gt('id', after);

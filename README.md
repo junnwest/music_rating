@@ -53,6 +53,17 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-11-17 (Windows) — ⚠ PIPELINE IS NOT RUNNING. Start it first (needs Jun: Claude's attempts to launch a detached process or register a task were blocked by the permission classifier).** Details in SESSIONS.
+> - **It died again 2026-11-16 22:14**, 23 min after the WMI restart: the log ends in a bare `^C`, no error, no Claude activity at that time. So WMI is not a durable launcher either. New `apps/web/scripts/run-pipeline.ps1` restarts the pipeline 60 s after any exit (stop for good: create `scripts\data\pipeline.stop`). Run it from a Scheduled Task so nothing session-bound owns it — once, in PowerShell:
+>   ```powershell
+>   $s = 'C:\Users\Kenneth\Desktop\Kenneth\coding\music_rating\apps\web\scripts\run-pipeline.ps1'
+>   Register-ScheduledTask -TaskName SillajukuPipeline -Action (New-ScheduledTaskAction -Execute powershell.exe -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$s`"") -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME) -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew)
+>   Start-ScheduledTask SillajukuPipeline
+>   ```
+> - **Then verify** (≈ first hour): `[freshness] 2hollis` → Pirouette has 16 tracks + a cover that loads; `[freshness] Bassagong` → `search_artists('뱃사공')` returns him (both have `next_check_at = now`). Run PIPELINE_CHECKS.
+> - **Done 11-17:** 오보에 cover repointed through `audit-caa-covers.ts --ids … --apply` (Deezer ≈ iTunes, CAA ≁ both at 0.45/0.47; now Apple's image, checked by eye) — the audit couldn't see it before because Apple's text search misses it; it now falls back to the artist's Apple discography. Recency lane re-checks Apple artwork on held releases ≤ 45 days old (fixes the 오보 single on 양홍원's next scan). iOS logs a near-miss (`ios_search_near`, real `db_count`) when results exist but no artist/title matches exactly — **needs an iOS build** to reach users (earfzilla).
+> - **Fixed in code 11-16:** freshness takes the full path for artists with a group dated in the last 45 days (Pirouette); recent groups fall back to the edition's CAA front when the group URL 404s; aliases/`name_native` heal on re-poll (뱃사공); full re-ingest no longer overwrites a non-CAA cover (오보에).
+
 > **2026-11-16 (Mac, later) — Album sitemaps 9–18 were being served empty (database timeout on deep row offsets); sitemaps rebuilt to slice by uuid range. Pushed.** All 25 files now 38–39k URLs; 853,734 albums + 114,298 artists, matching the tables. **After deploy:** submit `/sitemap/20.xml`–`22.xml` (new) in Google Search Console and Naver, resubmit the rest in Naver. Details in SESSIONS.
 
 > **2026-11-16 (Mac) — Album and artist pages render on the server (real content in the first HTML), and in Korean for Korean visitors. Pushed to main (Vercel deploy).** Details in SESSIONS.
@@ -62,6 +73,11 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > **2026-11-12 (Mac) — Web SEO fixes: artist sitemap split, descriptive homepage title, raw-ID artist pages noindexed. Pushed to main (Vercel deploy).** Details in SESSIONS.
 > - **After deploy:** in Search Console → Sitemaps, submit `/sitemap/1001.xml` and `/sitemap/1002.xml` (new artist files; robots.txt lists them too), and check `/sitemap/0.xml` now reads "Success" with ~45k URLs.
 > - **Open (not done):** robots.txt still blocks ChatGPT-User / PerplexityBot (AI assistants can't fetch the site on demand); no `WebSite` JSON-LD. (Album/artist server rendering: see 2026-11-16.)
+
+> **2026-11-10 (Windows) — Recency lane fixed (new KR releases were missing: asdf, 오보). Pipeline restarted on the new code.** Details in SESSIONS.
+> - **asdf ✅** ingested automatically via C Jamm 2026-11-10 15:31 (with DOMO). **오보 ✅** via YANGHONGWON ~16:30 (with 808 Ceremony, Plan B, Plan A-Z). Was: 오보 (양홍원 & Panda Gomm), DOMO (씨잼 & 블랙넛) and 양홍원's Dakshood releases should appear once the tiered pass reaches those artists (~600 artists/hour; hot artists first, so 기리보이 ~4 h and 양홍원 ~6 h after the 11-10 ~12:40 restart; grep `[recency] +` in `scripts/data/pipeline-live.log`). The search-needing artists (deferred phase) then take much longer.
+> - **Watch:** iTunes call volume went up during catch-up. If `recency`/`gapfill` show `blocked (iTunes 403)` often, raise `RECENCY_CATCHUP_MS` or lower `RECENCY_TIER_BATCH`.
+> - **Known gap:** an artist that resolves on Apple only through search (no `itunes_id` held, e.g. Panda Gomm) still fails while Apple throttles search.
 
 > **2026-11-06 (Mac) — Shared page links now open in the app (Universal Links); app-shared rating links fixed on web; post notifications open the author's profile at the post. Pushed (`b4001ee`).** Details in SESSIONS.
 > - **Before it works:** deploy the web (the AASA file is what lets iOS open these links in the app; Apple's CDN can take up to ~a day to pick it up, or delete and reinstall the app), then install the new iOS build on the iPhone.
