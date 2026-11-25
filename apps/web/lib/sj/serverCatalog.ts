@@ -4,43 +4,46 @@
 //
 // Plain fetch() against PostgREST with the anon key rather than lib/supabaseClient: that client
 // is the browser one (persisted session), and its requests don't go through Next's Data Cache.
-// Every read here is cached for an hour, so crawler traffic costs one Supabase round-trip per
-// page per hour, not one per visit (the Vercel CPU concern in app/robots.ts). The client page
-// still refetches after hydration, so signed-in users see live numbers.
+// Every read here is cached for 7 days, the same as the pages themselves (ISR, see middleware.ts):
+// a fetch's revalidate caps the page's, so an hour here would re-render every page hourly. The
+// client page still refetches after hydration, so visitors see live numbers; only the HTML that
+// crawlers read can be up to a week old.
+//
+// Failures THROW instead of returning null/[] (2026-11-24). A cached page is kept for a week, so
+// a transient Supabase error must not be stored as "0 ratings" or a 404. A throw during a first
+// render is a 500 that isn't cached (the crawler retries); during a background revalidation Next
+// keeps serving the previous version.
 import type { ReleaseGroupCreditRPC } from '../db/types';
 import type { SJRelease } from './data';
 import type { TrackEntry, TrackStats } from './tracks';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const REVALIDATE = 3600;
+export const CATALOG_REVALIDATE = 604800; // 7 days
+const REVALIDATE = CATALOG_REVALIDATE;
 
 const headers = { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` };
 
-async function rest<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers, next: { revalidate: REVALIDATE } });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
+/** GET a PostgREST path. Throws on any failure (see the header comment). */
+export async function rest<T>(path: string): Promise<T> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers, next: { revalidate: REVALIDATE } });
+  if (!res.ok) throw new Error(`[serverCatalog] GET ${path.split('?')[0]}: HTTP ${res.status}`);
+  return (await res.json()) as T;
 }
 
-async function rpc<T>(fn: string, body: Record<string, unknown>): Promise<T | null> {
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      next: { revalidate: REVALIDATE },
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
+/** POST a PostgREST RPC. Throws on any failure (see the header comment). */
+async function rpc<T>(fn: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    next: { revalidate: REVALIDATE },
+  });
+  if (!res.ok) throw new Error(`[serverCatalog] rpc ${fn}: HTTP ${res.status}`);
+  return (await res.json()) as T;
 }
+
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The album page's release_groups row: same columns as its client query. */
 export interface AlbumRow {
@@ -138,9 +141,7 @@ async function trackStatsServer(recordingIds: string[]): Promise<Record<string, 
   return out;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Everything public the album page shows above the fold. null = not found (or a fetch failed). */
+/** Everything public the album page shows above the fold. null = not found; throws if a fetch failed. */
 export async function loadAlbumInitial(releaseGroupId: string): Promise<AlbumInitial | null> {
   if (!UUID_RE.test(releaseGroupId)) return null;
   const [rows, credits, tracks, scores] = await Promise.all([
@@ -164,7 +165,7 @@ export interface ArtistInitial {
   scores: { release_group_id: string; score: number | null }[];
 }
 
-/** The artist page's header, stats row and discography. uuid ids only; null = not found / failed. */
+/** The artist page's header, stats row and discography. uuid ids only; null = not found; throws if a fetch failed. */
 export async function loadArtistInitial(artistId: string): Promise<ArtistInitial | null> {
   if (!UUID_RE.test(artistId)) return null;
   const [artistRows, rgs] = await Promise.all([

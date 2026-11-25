@@ -1,92 +1,26 @@
-import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { albumCommunityScoresServer, communityStats } from '../../../../lib/sj/serverCatalog';
-import { getServerLang } from '../../../../lib/i18n/server';
+import { fetchRatingStats, fetchRelease } from './release';
 
 // Every page on the site previously shared the root layout's static title/description
 // ("sillajuku" / "Every record you've loved.") -- Google was substituting its own titles/
 // snippets pulled from raw page content since the real <title>/<meta description> were
 // identical (and thus useless) across every album/song/artist/mix page, which is why search
-// results showed a repeated boilerplate snippet under unrelated titles. This is a Server
-// Component layout (the page itself stays a client component, untouched) purely so
-// generateMetadata has a place to run -- it renders nothing but `children`.
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// results showed a repeated boilerplate snippet under unrelated titles. The per-album
+// title/description now live in [lang]/page.tsx, since they depend on the language (2026-11-24).
 const BASE_URL = 'https://www.sillajuku.com';
 
-interface ReleaseRow {
-  title: string;
-  artist_display: string;
-  native_title: string | null;
-  release_group_type: string | null;
-  first_release_date: string | null;
-}
-
-async function fetchRelease(id: string): Promise<ReleaseRow | null> {
-  try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/release_groups?id=eq.${id}&select=title,artist_display,native_title,release_group_type,first_release_date`,
-      {
-        headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
-        next: { revalidate: 3600 },
-      }
-    );
-    const rows: ReleaseRow[] = await res.json();
-    return rows[0] ?? null;
-  } catch {
-    return null;
-  }
-}
-
-// The same scores and formula the page shows (lib/sj/serverCatalog.ts) -- structured data has to
-// match what's actually on the page, or it risks a Google manual action for misleading markup.
-// get_album_community_scores includes private accounts (anonymously), like the page's own number;
-// this used to read `ratings` directly, which RLS filters down to public accounts.
-async function fetchRatingStats(releaseGroupId: string): Promise<{ count: number; average: number | null }> {
-  const { count, avg } = communityStats(await albumCommunityScoresServer(releaseGroupId));
-  return { count, average: avg };
-}
-
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const release = await fetchRelease(params.id);
-  if (!release) {
-    return { title: 'Album — sillajuku', description: 'Rate and discover music on sillajuku.' };
-  }
-
-  const title = release.native_title || release.title;
-  const artist = release.artist_display;
-  const year = release.first_release_date ? new Date(release.first_release_date).getFullYear() : null;
-  const typeLabel =
-    release.release_group_type === 'ep' ? 'EP' : release.release_group_type === 'single' ? 'Single' : 'Album';
-  const { count } = await fetchRatingStats(params.id);
-
-  // Korean for Korean visitors / crawlers, same guess as the page body (ServerLanguage).
-  const ko = getServerLang() === 'ko';
-  const typeKo =
-    release.release_group_type === 'ep' ? 'EP' : release.release_group_type === 'single' ? '싱글' : '앨범';
-  const pageTitle = ko ? `${artist} - ${title} 평점 · 리뷰 — sillajuku` : `${title} by ${artist} — sillajuku`;
-  const description = ko
-    ? count > 0
-      ? `${artist}의 ${typeKo} ${title}${year ? ` (${year})` : ''}. sillajuku에서 ${count.toLocaleString()}명이 평가했어요. 평점과 리뷰를 보고 직접 평가해 보세요.`
-      : `${artist}의 ${typeKo} ${title}${year ? ` (${year})` : ''} 평점과 리뷰. sillajuku에서 직접 평가해 보세요.`
-    : count > 0
-      ? `Rate ${title} by ${artist}${year ? ` (${year})` : ''}. ${typeLabel} rated by ${count.toLocaleString()} ${count === 1 ? 'person' : 'people'} on sillajuku.`
-      : `Rate ${title} by ${artist}${year ? ` (${year})` : ''} on sillajuku — every record you've loved, documented.`;
-
-  return {
-    title: pageTitle,
-    description,
-    openGraph: { title: pageTitle, description },
-    twitter: { title: pageTitle, description },
-  };
+// Cached on the CDN, rendered on first request (ISR); see middleware.ts. An empty list = no pages
+// built at deploy time. The 7-day revalidate is set in [lang]/page.tsx.
+export function generateStaticParams() {
+  return [];
 }
 
 // Confirmed live: /album/<anything-that-isn't-a-real-id> (e.g. a raw Spotify id someone linked
 // to instead of our own uuid) returns HTTP 200 with a client-rendered "isn't in sillajuku's
 // catalog yet" message -- a soft 404. Crawlers have no signal that the page is actually invalid,
 // so it stays indexed indefinitely with a "doesn't exist" description forever. fetchRelease is
-// already called in generateMetadata above; Next dedupes the identical fetch() call within the
+// also called in [lang]/page.tsx's generateMetadata; Next dedupes the identical fetch() call within the
 // same request, so this is a cache hit, not a second real round-trip.
 //
 // Also renders AggregateRating JSON-LD (MusicAlbum) when there's at least one rating, so a real

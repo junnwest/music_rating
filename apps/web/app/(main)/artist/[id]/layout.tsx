@@ -1,67 +1,24 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { getServerLang } from '../../../../lib/i18n/server';
+import { fetchArtist, isUuidParam } from './artist';
 
-// See album/[id]/layout.tsx for why this exists. The artist route accepts either a real
-// artists.id (uuid) or a raw artist-name slug (page.tsx's own `isId` check) -- mirrored here.
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// See album/[id]/layout.tsx for why this exists. The per-language title/description live in
+// [lang]/page.tsx (2026-11-24); this keeps what doesn't depend on the language.
 const BASE_URL = 'https://www.sillajuku.com';
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-interface ArtistInfo {
-  name: string;
-  coverUrl: string | null;
-  isMissingId: boolean;
+// Cached on the CDN, rendered on first request (ISR); see middleware.ts and [lang]/page.tsx.
+export function generateStaticParams() {
+  return [];
 }
 
-// Returns { isMissingId: true } only when the param IS a uuid and no artist row matches --
-// an unambiguous "this id doesn't exist" case, safe to 404. A name-slug param that just has zero
-// results isn't treated as missing here (that's more like a no-results search than a broken
-// link, and the client page already has its own empty state for it) -- only the exact-id-lookup
-// case is what this fixes.
-async function fetchArtist(rawId: string): Promise<ArtistInfo> {
-  const decoded = decodeURIComponent(rawId);
-  if (!UUID_RE.test(decoded)) return { name: decoded, coverUrl: null, isMissingId: false };
-  try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/artists?id=eq.${decoded}&select=name,cover_url`,
-      {
-        headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
-        next: { revalidate: 3600 },
-      }
-    );
-    const rows: { name: string; cover_url: string | null }[] = await res.json();
-    if (!rows[0]) return { name: decoded, coverUrl: null, isMissingId: true };
-    return { name: rows[0].name, coverUrl: rows[0].cover_url ?? null, isMissingId: false };
-  } catch {
-    return { name: decoded, coverUrl: null, isMissingId: false };
-  }
-}
-
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const { name } = await fetchArtist(params.id);
-  const pageTitle = `${name} — sillajuku`;
-  // Korean for Korean visitors / crawlers, same guess as the page body (ServerLanguage).
-  const description =
-    getServerLang() === 'ko'
-      ? `${name}의 디스코그래피와 앨범별 커뮤니티 평점, 리뷰를 sillajuku에서 확인하세요.`
-      : `Explore ${name}'s discography, community ratings, and reviews on sillajuku.`;
-  // Name-slug URLs (anything that isn't an artists.id uuid) are noindex, follow (2026-11-12).
-  // They're a name search, not a canonical page -- the uuid page is the one in the sitemap -- and
-  // old links carrying raw Spotify artist ids land here too, which got pages titled
-  // "0K4MGKGmjtdIE0W3GkGmyU — sillajuku" into Google's index. `follow` keeps the album links on
-  // them crawlable.
-  const isUuid = UUID_RE.test(decodeURIComponent(params.id));
-
-  return {
-    title: pageTitle,
-    description,
-    openGraph: { title: pageTitle, description },
-    twitter: { title: pageTitle, description },
-    ...(isUuid ? {} : { robots: { index: false, follow: true } }),
-  };
+// Name-slug URLs (anything that isn't an artists.id uuid) are noindex, follow (2026-11-12).
+// They're a name search, not a canonical page -- the uuid page is the one in the sitemap -- and
+// old links carrying raw Spotify artist ids land here too, which got pages titled
+// "0K4MGKGmjtdIE0W3GkGmyU — sillajuku" into Google's index. `follow` keeps the album links on
+// them crawlable.
+export function generateMetadata({ params }: { params: { id: string } }): Metadata {
+  return isUuidParam(params.id) ? {} : { robots: { index: false, follow: true } };
 }
 
 // See album/[id]/layout.tsx's matching comment -- same soft-404 fix, scoped to the unambiguous
