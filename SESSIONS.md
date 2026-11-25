@@ -4,6 +4,32 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-11-24 — Vercel costs.**
+
+- **Receipt:** Oct 30–Nov 24, $100 subtotal + 15% Chicago lease tax = $115, billed mid-cycle on top of the $20 Pro plan (its $20 credit was used up). Observability Events $69.28 (65.9M), Fast Origin Transfer $16.44 (88 GB), Fluid CPU + memory $7.99, Function Invocations $2.03 (4.8M, ~190k/day with ~30 real users, so crawlers), ISR reads/writes $2.85, the rest under $1.
+- **Dashboard changes (Jun):**
+  - Observability Plus turned off.
+  - Spend Management cap set, without auto-pause.
+  - Firewall AI Crawlers set to Deny.
+  - Bot Protection left Off: it challenges non-browser clients, which includes the iOS app's API calls. It's also unclear whether Naver's Yeti counts as a verified bot.
+- **Found:** `/album/*` and `/song/*` respond `private, no-cache, no-store` with `x-vercel-cache: MISS` on repeat requests. Song pages are only a permanent redirect since 10-06 (cheap). Album and artist pages never had `generateStaticParams`, so they were rendered per request before 11-16 as well. Since 11-16, `getServerLang()` (cookies/headers) is a second reason. A fix would rewrite through middleware to an internal `[lang]` segment plus ISR. Its value depends on how often crawlers revisit the same page within the cache window, so check the Usage breakdown by path first.
+- **Naver 연관 채널:** Organization JSON-LD (`app/layout.tsx`) gains `alternateName: '실라주쿠'` and `sameAs: ['https://www.instagram.com/sillajukukr/']`.
+- **Usage by route (Observability, last 12 h):** `/album/[id]` 173K of 184K invocations, `/artist/[id]` 21K, everything else under 500 (iOS API calls negligible). The weekly total has been steady at 1–1.3M since late September, with no jump after the 11-16 server rendering.
+- **Caching fix (verified locally, pushed):**
+  - `middleware.ts` (matcher `/album/:path*`, `/artist/:path*`) rewrites `/album/<id>` → `/album/<id>/<lang>`. The lang comes from the sj-lang cookie, else a Korean first Accept-Language, else en. A direct request with the 3-segment shape is a 404.
+  - Pages moved to `album/[id]/[lang]/page.tsx` and `artist/[id]/[lang]/page.tsx`, with `revalidate = 604800` and `generateStaticParams() → []`. The per-language `generateMetadata` moved there too.
+  - The layouts keep the 404, JSON-LD and noindex, and use new shared helpers `album/[id]/release.ts` and `artist/[id]/artist.ts`.
+  - `serverCatalog` fetches are now cached for 7 days (a fetch's revalidate caps the page's) and **throw** on failure, so a Supabase error can't be cached for a week as "0 ratings" or a 404.
+  - Checked with `next build` + `next start`:
+    - Both routes are ● (ISR). Requests show `s-maxage=604800`, MISS then HIT.
+    - Korean title and UI for ko; the cookie overrides Accept-Language.
+    - 404s for `/ko` direct, a missing uuid and a non-uuid album id.
+    - Slug artist pages keep `noindex, follow`. Client navigation (RSC) gets HIT. The page renders and hydrates in Chrome.
+  - Local build needed `npm install` on the Mac (three / d3-contour etc. were missing from node_modules); the lockfile churn from npm's version was reverted.
+- **@yosm** granted `is_verified` (the creator badge) on request, via the service role.
+
+---
+
 **2026-11-17 (Windows) — "fix everything": the open items from 11-16.**
 - **Pipeline died again 11-16 22:14**, 23 min after the WMI restart. Log ends in a bare `^C` (cmd's Ctrl-C echo), no error; the Claude session made no calls at that time. WMI is therefore not a durable launcher. Added `apps/web/scripts/run-pipeline.ps1` (restart 60 s after any exit; `scripts/data/pipeline.stop` ends it). Registering it as a Scheduled Task and relaunching were both **blocked by Claude's permission classifier**, so the pipeline is down until Jun runs the README command. Its 23 minutes did show `recency`, `gapfill` and `reconcile` working again.
 - **오보에 cover fixed through the pipeline tool, not by hand.** `audit-caa-covers.ts --ids` skipped it ("need 2 sources"): Apple's text search returns nothing for it. Added a fallback to the artist's Apple discography (`itunes_artist_id`), matching title or native title. Then it flagged it (caa≁dz 0.453, caa≁it 0.469; dz≈it) and `--apply` repointed it to Apple's image, checked by eye (striped collage, 오보에 on the left). The 11-16 cover guard keeps it.
@@ -18,6 +44,17 @@ Historical record of shipped features and session notes. Not needed at conversat
 - **Bassagong — "뱃사공" returned nothing.** MB has the primary ko_KR alias 뱃사공, but aliases were written only at artist creation (06-30). New `healArtistNames` (additive aliases + `name_native` only while NULL) runs on every full re-ingest and, for KR/JP/CN/TW/HK artists missing a native name, on the fast path (one extra `getArtist`).
 - **earfzilla — not in catalog.** Irish rapper, all releases 2026. Auto-discovery is at its ceiling and the newreleases lane never queues unowned artists, so only a logged search miss would bring him in — and iOS logs a miss only when albums, artists AND songs are all empty; "earfzilla" partial-matches other names. Not fixed (iOS change); proposal in README.
 - Also seen: search misses since 11-12 unprocessed (pipeline down), e.g. `elton jo`, `도작`.
+
+---
+
+**2026-11-16 (Mac, latest) — User badges on web.**
+
+- **Gap:** iOS has shown badges since `ea1811f` (2026-09-28). The web showed none on posts, only the verified check on album comments, and only the founding tile on profiles.
+- **`components/sj/UserBadges.tsx`** (mirror of iOS `FeaturedBadge.swift` / `QuestBadge.swift`): `ownedBadges` / `resolveFeaturedBadge` (pick if still owned, else verified > founding > quest). `PostBadge`: one glyph; founding is rocket-only at row size. `ProfileBadges`: every owned badge, in iOS header order quest, verified, founding. On your own profile they open `BadgePickerModal`, which updates `profiles.featured_badge` (owners can already update their row; no migration). Quest colors and the flower path are copied from iOS. New strings `sj.badges.*` (en/ko, from Localizable.xcstrings).
+- **Wired in:** `FeedCard`, `MixPostCard` (mix posts now select the badge columns in `lib/sj/mixShares.ts`; `FEED_SELECT` too). `CommentsSection`: `get_album_ratings` returns only `is_verified`, so one extra `profiles` lookup per page; if it fails, only the verified check shows. `ProfileView` header: its own query now selects all four badge columns.
+- **Checked on the dev server (headless, signed out):** Home shows the verified check on after_vinyl and the founding rocket on one and zero. Album ratings show the verified check. junnwest's profile shows the mint flower plus the founding tile. Typecheck is clean apart from existing missing-module errors (`tasteMap`, `playwright`). Not tested: picker save while signed in.
+
+---
 
 **2026-11-16 (Mac, later) — Album sitemaps 9–18 were empty; sitemaps now sliced by uuid range (pushed).**
 
