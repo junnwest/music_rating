@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Heart, MessageCircle, MoreHorizontal, Ban, Trash2, ListMusic, ExternalLink } from 'lucide-react';
 import Avatar from './Avatar';
+import { PostBadge } from './UserBadges';
 import MixMosaic from './MixMosaic';
 import CommentsModal from './CommentsModal';
 import LikersModal from './LikersModal';
@@ -95,6 +96,7 @@ export default function MixPostCard({
           <span className="text-[13.5px] font-semibold text-ink truncate group-hover:underline">
             @{handle}
           </span>
+          <PostBadge profile={post.profile} />
         </Link>
         <span className="text-[12px] text-muted shrink-0">{t('sj.mixPost.postedAMix')}</span>
         <span className="text-divider text-[13px]">·</span>

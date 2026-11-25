@@ -65,12 +65,17 @@ export const RG_EMBED_NATIVE =
 export const FEED_SELECT =
   `id, user_id, score, review_text, created_at, ` +
   `release_groups(id, title, artist_display, genres, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), ` +
-  `profiles!ratings_user_id_fkey(username, display_name, avatar_url)`;
+  `profiles!ratings_user_id_fkey(username, display_name, avatar_url, is_verified, founding_number, badge_color, featured_badge)`;
 
 export interface FeedProfileEmbed {
   username: string | null;
   display_name: string | null;
   avatar_url?: string | null;
+  /** Badge fields (components/sj/UserBadges.tsx); posts show one, resolved client-side. */
+  is_verified?: boolean | null;
+  founding_number?: number | null;
+  badge_color?: string | null;
+  featured_badge?: string | null;
 }
 
 export function profileHandle(p?: FeedProfileEmbed | null): string {

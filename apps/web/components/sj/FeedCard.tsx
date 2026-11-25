@@ -13,6 +13,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import Avatar from './Avatar';
+import { PostBadge } from './UserBadges';
 import Cover from './Cover';
 import ScoreBadge from './ScoreBadge';
 import AlbumRateButton from './AlbumRateButton';
@@ -163,6 +164,7 @@ export default function FeedCard({
           <span className="text-[13.5px] font-semibold text-ink truncate group-hover:underline">
             @{handle}
           </span>
+          <PostBadge profile={item.profiles} />
         </Link>
         <span className="text-divider text-[13px]">·</span>
         <span className="text-[12px] text-muted shrink-0">

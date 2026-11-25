@@ -1005,6 +1005,16 @@ const ko: Translations = {
       summary: '{n}곡 · {time}',
       nRatings: '평가 {n}개',
     },
+    badges: {
+      title: '배지',
+      verified: '인증됨',
+      founding: '창립 멤버 #{n}',
+      quest: '퀘스트 완료',
+      pickHint: '게시물에 표시할 배지 선택',
+      pickFooter: '프로필에는 보유한 모든 배지가 표시돼요. 게시물에는 여기서 고른 배지 하나만 표시돼요.',
+      save: '저장',
+      saveFailed: '저장하지 못했어요. 다시 시도해 주세요.',
+    },
     commentsSection: {
       title: '코멘트',
       titleN: '코멘트 ({n})',

@@ -31,7 +31,7 @@ import MixPostCard from './MixPostCard';
 import MixKindPicker from './MixKindPicker';
 import type { MixKind } from '../../lib/sj/mixes';
 import ProfileStats from './ProfileStats';
-import FoundingNumberBadge from './FoundingNumberBadge';
+import { BADGE_COLUMNS, ProfileBadges, type BadgeFields } from './UserBadges';
 import FoundingLineage from './FoundingLineage';
 import { useSession } from './SessionContext';
 import { useMixName, useMixTarget } from './MixTargetContext';
@@ -204,19 +204,20 @@ export default function ProfileView({ username }: { username?: string }) {
   // Founding badge + lineage — independent of the main `load()` above (own
   // fetch, own loading state) so a slow/failed founding-data lookup never
   // blocks or breaks the rest of the profile.
-  // First-500 founding number (profiles.founding_number, migration
-  // 20260926000003). Own query so a missing column can't break the profile.
-  const [foundingNumber, setFoundingNumber] = useState<number | null>(null);
+  // Badges beside the @handle (components/sj/UserBadges.tsx): verified, founding
+  // number (migration 20260926000003), quest color, and which one posts show
+  // (featured_badge, 20260928000002). Own query so a missing column can't break the profile.
+  const [badgeFields, setBadgeFields] = useState<BadgeFields | null>(null);
   useEffect(() => {
     if (!supabase || !targetId) return;
     let cancelled = false;
     supabase
       .from('profiles')
-      .select('founding_number')
+      .select(BADGE_COLUMNS)
       .eq('id', targetId)
       .maybeSingle()
       .then(({ data }) => {
-        if (!cancelled) setFoundingNumber((data as { founding_number: number | null } | null)?.founding_number ?? null);
+        if (!cancelled) setBadgeFields((data as BadgeFields | null) ?? null);
       });
     return () => {
       cancelled = true;
@@ -752,7 +753,12 @@ export default function ProfileView({ username }: { username?: string }) {
             so it reads as the secondary line (see also FollowListModal). */}
         <div className="flex items-center gap-2">
           <p className="text-[16px] font-semibold text-ink">@{handle}</p>
-          {foundingNumber != null && <FoundingNumberBadge number={foundingNumber} size={18} />}
+          <ProfileBadges
+            profile={badgeFields}
+            isSelf={isSelf}
+            userId={myId ?? null}
+            onFeaturedChange={(featured_badge) => setBadgeFields((p) => (p ? { ...p, featured_badge } : p))}
+          />
         </div>
         {display?.displayName && (
           <p className="text-[13px] text-muted">{display.displayName}</p>

@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import type { FeedProfileEmbed } from './data';
 
 /**
  * Mix posts — `mix_shares` (migration 20260706000015): a public mix posted to
@@ -17,14 +18,14 @@ export interface MixSharePost {
   mixIsDefault: boolean;
   /** Album-Mix posts sit with album ratings on the profile; song-Mix posts don't. */
   mixKind: 'album' | 'song';
-  profile: { username: string | null; display_name: string | null; avatar_url?: string | null } | null;
+  profile: (FeedProfileEmbed & { username: string | null; display_name: string | null }) | null;
   coverUrls: string[];
 }
 
 export const MIX_SHARE_CAPTION_MAX = 500;
 
 const SELECT =
-  'id, user_id, mix_id, caption, created_at, mixes(id, name, description, is_default, kind), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url)';
+  'id, user_id, mix_id, caption, created_at, mixes(id, name, description, is_default, kind), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url, is_verified, founding_number, badge_color, featured_badge)';
 
 type Err = { message: string } | null;
 

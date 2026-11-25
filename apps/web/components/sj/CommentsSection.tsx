@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { BadgeCheck, Flag, Heart, MessageCircle, MoreHorizontal, Pencil } from 'lucide-react';
+import { Flag, Heart, MessageCircle, MoreHorizontal, Pencil } from 'lucide-react';
 import Avatar from './Avatar';
 import ScoreBadge from './ScoreBadge';
+import { BADGE_COLUMNS, PostBadge, type BadgeFields } from './UserBadges';
 import CommentsModal from './CommentsModal';
 import RatedTracksDropdown from './RatedTracksDropdown';
 import ReportModal from './ReportModal';
@@ -33,6 +34,8 @@ interface CommentRow {
   display_name: string | null;
   avatar_url: string | null;
   is_verified: boolean;
+  /** Badge fields beyond is_verified, from a profiles lookup (get_album_ratings doesn't return them). */
+  badges?: BadgeFields;
   score: number | null;
   /** null for a score-only rating (album list). */
   review_text: string | null;
@@ -75,7 +78,7 @@ export default function CommentsSection({
         console.error('[comments] get_album_ratings failed:', error.message);
         return null;
       }
-      return ((data as any[]) ?? []).map(
+      const page = ((data as any[]) ?? []).map(
         (r): CommentRow => ({
           id: r.rating_id,
           user_id: r.user_id,
@@ -92,6 +95,19 @@ export default function CommentsSection({
           total_count: Number(r.total_count),
         }),
       );
+      // One badge beside each @handle (UserBadges). A failed lookup just leaves the
+      // verified check from the RPC row, never the comments themselves.
+      const ids = Array.from(new Set(page.map((r) => r.user_id)));
+      if (ids.length) {
+        const { data: profs, error: pErr } = await supabase
+          .from('profiles')
+          .select(`id,${BADGE_COLUMNS}`)
+          .in('id', ids);
+        if (pErr) console.error('[comments] badge lookup failed:', pErr.message);
+        const byId = new Map(((profs as (BadgeFields & { id: string })[] | null) ?? []).map((p) => [p.id, p]));
+        for (const r of page) r.badges = byId.get(r.user_id);
+      }
+      return page;
     },
     [parentId],
   );
@@ -326,10 +342,7 @@ function CommentCard({
           <span className="min-w-0">
             <span className="flex items-center gap-1 text-[13px] font-semibold text-ink truncate group-hover:underline">
               @{handle}
-              {/* Role badge slot — verified today; critic etc. once roles exist. */}
-              {row.is_verified && (
-                <BadgeCheck size={13} className="text-accent shrink-0" aria-label={t('sj.commentsSection.verified')} />
-              )}
+              <PostBadge profile={row.badges ?? { is_verified: row.is_verified }} />
             </span>
             <span className="block text-[11px] text-muted">{relativeTime(row.created_at, lang)}</span>
           </span>

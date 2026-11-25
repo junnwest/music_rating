@@ -1003,6 +1003,16 @@ const en = {
       summary: '{n} tracks · {time}',
       nRatings: '{n} ratings',
     },
+    badges: {
+      title: 'Badges',
+      verified: 'Verified',
+      founding: 'Founding member #{n}',
+      quest: 'Quests complete',
+      pickHint: 'Choose which badge shows on your posts',
+      pickFooter: 'Your profile shows every badge you own. Posts show only the one you pick here.',
+      save: 'Save',
+      saveFailed: "Couldn't save. Try again.",
+    },
     commentsSection: {
       title: 'Comments',
       titleN: 'Comments ({n})',
