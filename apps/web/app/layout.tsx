@@ -64,8 +64,12 @@ const organizationJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
   name: 'sillajuku',
+  alternateName: '실라주쿠',
   url: 'https://www.sillajuku.com',
   logo: 'https://www.sillajuku.com/logo-flower.png',
+  // Official channels. Naver Search Advisor's 연관 채널 only accepts a channel listed here, and
+  // Google uses it for the Knowledge Panel. Add new accounts here before registering them there.
+  sameAs: ['https://www.instagram.com/sillajukukr/'],
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
